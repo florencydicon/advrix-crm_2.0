@@ -20,7 +20,7 @@ import {
   WrittenContent,
 } from '../types/crm';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://127.0.0.1:3000' : '');
+const API_BASE_URL = (import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> }).env?.VITE_API_URL || 'http://127.0.0.1:3000';
 const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' && input.startsWith('/api/')
     ? `${API_BASE_URL}${input}`
@@ -46,7 +46,7 @@ interface CRMContextType {
   currentUser: User;
   currentRole: UserRole;
   isAuthenticated: boolean;
-  login: (email: string, pass: string) => { success: boolean; message?: string };
+  login: (email: string, pass: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   addUser: (userData: Omit<User, 'id'>) => void;
   updateUser: (userId: string, data: Partial<User>) => void;
@@ -310,41 +310,30 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const login = (email: string, pass: string): { success: boolean; message?: string } => {
+  const login = async (email: string, pass: string): Promise<{ success: boolean; message?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Async live database authentication sync
-    fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: normalizedEmail, password: pass }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && data.user) {
-          setCurrentUser(data.user);
-          setIsAuthenticated(true);
-          localStorage.setItem('advrix_auth', 'true');
-          localStorage.setItem('advrix_current_user_id', data.user.id);
-          void loadLiveData();
-        }
-      })
-      .catch(() => {});
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, password: pass }),
+      });
+      const data = await response.json();
 
-    const user = users.find((u) => (u.email || '').toLowerCase() === normalizedEmail);
-    if (!user) {
-      return { success: false, message: 'No account found with this email address.' };
-    }
-    const validPassword = user.password || 'admin123';
-    if (pass !== validPassword && pass !== 'admin123' && pass !== 'advrix123' && pass !== '123456' && pass !== 'Vishvas@123') {
-      return { success: false, message: 'Incorrect password. Please verify and try again.' };
-    }
+      if (data.success && data.user) {
+        setCurrentUser(data.user);
+        setIsAuthenticated(true);
+        localStorage.setItem('advrix_auth', 'true');
+        localStorage.setItem('advrix_current_user_id', data.user.id);
+        void loadLiveData();
+        return { success: true };
+      }
 
-    setCurrentUser(user);
-    setIsAuthenticated(true);
-    localStorage.setItem('advrix_auth', 'true');
-    localStorage.setItem('advrix_current_user_id', user.id);
-    return { success: true };
+      return { success: false, message: data.message || 'Authentication failed.' };
+    } catch (err) {
+      return { success: false, message: 'Unable to reach the live server.' };
+    }
   };
 
   const logout = () => {

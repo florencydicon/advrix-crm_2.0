@@ -33,7 +33,7 @@ export const LoginScreen: React.FC = () => {
     SOCIAL_MEDIA_MANAGER: 'Social Media Manager',
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -43,13 +43,14 @@ export const LoginScreen: React.FC = () => {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const result = login(email, password);
-      setLoading(false);
+    try {
+      const result = await login(email, password);
       if (!result.success) {
         setErrorMsg(result.message || 'Authentication failed');
       }
-    }, 300);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleQuickDemoLogin = (_demoEmail: string, _demoRole: UserRole) => {

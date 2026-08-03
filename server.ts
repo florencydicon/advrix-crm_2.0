@@ -26,6 +26,38 @@ const pool = new Pool({
 });
 
 
+async function ensureDefaultAdminUser() {
+  try {
+    const client = await pool.connect();
+    const existing = await client.query('SELECT id FROM users LIMIT 1');
+    if (existing.rows.length === 0) {
+      const defaultAdminEmail = 'admin@advrix.com';
+      const defaultAdminPassword = '123456';
+      const hashedPassword = await bcrypt.hash(defaultAdminPassword, 10);
+      await client.query(
+        `INSERT INTO users (id, name, email, password_hash, role, phone, whatsapp_number, capacity_limit, is_checked_in, check_in_time, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACTIVE')`,
+        [
+          '5ed54512-4d3f-4d61-ab90-000000000001',
+          'Advrix Super Admin',
+          defaultAdminEmail.toLowerCase(),
+          hashedPassword,
+          'SUPER_ADMIN',
+          '+91 97731 24598',
+          '+91 97731 24598',
+          50,
+          true,
+          '09:00 AM',
+        ]
+      );
+      console.log('[Neon DB] Created default admin user admin@advrix.com');
+    }
+    client.release();
+  } catch (err) {
+    console.error('[Neon DB Error] Failed to ensure default admin user:', err);
+  }
+}
+
 async function initDatabaseSchema() {
   try {
     console.log('[Neon DB] Connecting to Neon Live PostgreSQL...');
@@ -174,6 +206,7 @@ async function initDatabaseSchema() {
     `);
 
     client.release();
+    await ensureDefaultAdminUser();
     console.log('[Neon DB] Live database initialized successfully!');
   } catch (err) {
     console.error('[Neon DB Error] Failed to initialize database:', err);
@@ -344,6 +377,7 @@ app.delete('/api/flush', async (_req, res) => {
       pool.query('DELETE FROM clients'),
       pool.query('DELETE FROM users'),
     ]);
+    await ensureDefaultAdminUser();
     res.json({ success: true, message: 'All stored CRM data cleared from the live database.' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
