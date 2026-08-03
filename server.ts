@@ -1,18 +1,11 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-const currentFilename =
-  typeof import.meta !== 'undefined' && import.meta?.url
-    ? fileURLToPath(import.meta.url)
-    : '';
-const currentDirname = currentFilename
-  ? path.dirname(currentFilename)
-  : process.cwd();
+const appRoot = process.cwd();
 
 const PORT = 3000;
 const app = express();
@@ -32,116 +25,6 @@ const pool = new Pool({
   },
 });
 
-// Seed data definitions with valid UUID format
-const defaultUsers = [
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000001',
-    name: 'Advrix Super Admin',
-    email: 'admin@advrix.com',
-    password: '123456',
-    role: 'SUPER_ADMIN',
-    phone: '+91 97731 24598',
-    whatsappNumber: '+91 97731 24598',
-    capacityLimit: 50,
-    isCheckedIn: true,
-    checkInTime: '09:00 AM',
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000002',
-    name: 'Vishvas (PM)',
-    email: 'vishvas@advrix.com',
-    password: 'Vishvas@123',
-    role: 'PROJECT_MANAGER',
-    phone: '+91 98765 00002',
-    whatsappNumber: '+91 98765 00002',
-    capacityLimit: 30,
-    isCheckedIn: true,
-    checkInTime: '09:15 AM',
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000003',
-    name: 'Saurabh (Writer)',
-    email: 'saurabh@advrix.com',
-    password: 'Saurabh@123',
-    role: 'CONTENT_WRITER',
-    phone: '+91 98765 00003',
-    whatsappNumber: '+91 98765 00003',
-    capacityLimit: 25,
-    isCheckedIn: true,
-    checkInTime: '09:30 AM',
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000004',
-    name: 'Sudhir (Designer)',
-    email: 'sudhir@advrix.com',
-    password: 'Sudhir@123',
-    role: 'GRAPHIC_DESIGNER',
-    phone: '+91 98765 00004',
-    whatsappNumber: '+91 98765 00004',
-    capacityLimit: 25,
-    isCheckedIn: true,
-    checkInTime: '09:30 AM',
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000005',
-    name: 'Kaushal (Videographer)',
-    email: 'kaushal@advrix.com',
-    password: 'Kaushal@123',
-    role: 'VIDEO_EDITOR',
-    phone: '+91 98765 00005',
-    whatsappNumber: '+91 98765 00005',
-    capacityLimit: 25,
-    isCheckedIn: false,
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000006',
-    name: 'Rushi (Designer)',
-    email: 'rushi@advrix.com',
-    password: 'Rushi@123',
-    role: 'GRAPHIC_DESIGNER',
-    phone: '+91 98765 00006',
-    whatsappNumber: '+91 98765 00006',
-    capacityLimit: 25,
-    isCheckedIn: true,
-    checkInTime: '09:45 AM',
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000007',
-    name: 'Sabir (Video Editor)',
-    email: 'sabir@advrix.com',
-    password: 'Sabir@123',
-    role: 'VIDEO_EDITOR',
-    phone: '+91 98765 00007',
-    whatsappNumber: '+91 98765 00007',
-    capacityLimit: 20,
-    isCheckedIn: true,
-    checkInTime: '09:10 AM',
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000008',
-    name: 'Priyanka (Sales Executive)',
-    email: 'priyanka@advrix.com',
-    password: 'Priyanka@123',
-    role: 'SALES_REP',
-    phone: '+91 98765 00008',
-    whatsappNumber: '+91 98765 00008',
-    capacityLimit: 30,
-    isCheckedIn: true,
-    checkInTime: '09:00 AM',
-  },
-  {
-    id: '5ed54512-4d3f-4d61-ab90-000000000009',
-    name: 'Social Vishvash (SMM)',
-    email: 'Social@advrix.com',
-    password: 'Social@123',
-    role: 'SOCIAL_MEDIA_MANAGER',
-    phone: '+91 98765 00009',
-    whatsappNumber: '+91 98765 00009',
-    capacityLimit: 25,
-    isCheckedIn: true,
-    checkInTime: '09:20 AM',
-  },
-];
 
 async function initDatabaseSchema() {
   try {
@@ -289,31 +172,6 @@ async function initDatabaseSchema() {
         timestamp VARCHAR(100) NOT NULL
       );
     `);
-
-    // Seed default users if users table has no or missing entries
-    for (const u of defaultUsers) {
-      const existing = await client.query('SELECT * FROM users WHERE email = $1', [u.email.toLowerCase()]);
-      if (existing.rows.length === 0) {
-        const hashedPassword = await bcrypt.hash(u.password, 10);
-        await client.query(
-          `INSERT INTO users (id, name, email, password_hash, role, phone, whatsapp_number, capacity_limit, is_checked_in, check_in_time, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACTIVE')`,
-          [
-            u.id,
-            u.name,
-            u.email.toLowerCase(),
-            hashedPassword,
-            u.role,
-            u.phone,
-            u.whatsappNumber,
-            u.capacityLimit,
-            u.isCheckedIn,
-            u.checkInTime || '09:00 AM',
-          ]
-        );
-        console.log(`[Neon DB] Seeded user ${u.email} (${u.role})`);
-      }
-    }
 
     client.release();
     console.log('[Neon DB] Live database initialized successfully!');
@@ -470,6 +328,23 @@ app.delete('/api/users/:id', async (req, res) => {
     const { id } = req.params;
     await pool.query('DELETE FROM users WHERE id = $1', [id]);
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Flush all stored data from the live database
+app.delete('/api/flush', async (_req, res) => {
+  try {
+    await Promise.all([
+      pool.query('DELETE FROM attendance_records'),
+      pool.query('DELETE FROM notifications'),
+      pool.query('DELETE FROM tasks'),
+      pool.query('DELETE FROM projects'),
+      pool.query('DELETE FROM clients'),
+      pool.query('DELETE FROM users'),
+    ]);
+    res.json({ success: true, message: 'All stored CRM data cleared from the live database.' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -690,7 +565,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(appRoot, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

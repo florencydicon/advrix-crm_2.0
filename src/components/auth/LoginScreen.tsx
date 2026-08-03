@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const LoginScreen: React.FC = () => {
-  const { login, users } = useCRM();
+  const { login } = useCRM();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,18 +52,8 @@ export const LoginScreen: React.FC = () => {
     }, 300);
   };
 
-  const handleQuickDemoLogin = (demoEmail: string, demoRole: UserRole) => {
-    setErrorMsg(null);
-    setEmail(demoEmail);
-    const user = users.find((u) => (u.email || '').toLowerCase() === (demoEmail || '').toLowerCase());
-    const pass = user?.password || 'admin123';
-    setPassword(pass);
-
-    setLoading(true);
-    setTimeout(() => {
-      login(demoEmail, pass);
-      setLoading(false);
-    }, 200);
+  const handleQuickDemoLogin = (_demoEmail: string, _demoRole: UserRole) => {
+    setErrorMsg('Live database login is enabled. Please enter your real credentials.');
   };
 
   return (

@@ -19,16 +19,14 @@ import {
   SocialPlatform,
   WrittenContent,
 } from '../types/crm';
-import {
-  initialUsers,
-  initialClients,
-  initialProjects,
-  initialTasks,
-  initialNotifications,
-  initialActivityLogs,
-  initialLeaveRequests,
-  initialAttendanceRecords,
-} from '../data/initialData';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://127.0.0.1:3000' : '');
+const fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' && input.startsWith('/api/')
+    ? `${API_BASE_URL}${input}`
+    : input;
+  return globalThis.fetch(url as RequestInfo | URL, init);
+}) as typeof globalThis.fetch;
 
 interface SystemModalConfig {
   isOpen: boolean;
@@ -174,15 +172,15 @@ interface CRMContextType {
 
   // Reset demo
   resetDemoData: () => void;
+  flushStoredData: () => Promise<void>;
 }
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load from localStorage or seed
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('advrix_users');
-    return saved ? JSON.parse(saved) : initialUsers;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -201,46 +199,115 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('advrix_admin_whatsapp') || '+91 97731 24598';
   });
 
+  const loadLiveData = async () => {
+    try {
+      const [usersRes, clientsRes, projectsRes, tasksRes] = await Promise.all([
+        fetch('/api/users').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/clients').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/projects').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/tasks').then((r) => (r.ok ? r.json() : null)),
+      ]);
+
+      const nextUsers = Array.isArray(usersRes) ? usersRes : [];
+      setUsers(nextUsers);
+      localStorage.setItem('advrix_users', JSON.stringify(nextUsers));
+      if (nextUsers.length > 0) {
+        const savedUserId = localStorage.getItem('advrix_current_user_id');
+        const found = nextUsers.find(
+          (u: User) => u.id === savedUserId || (u.email || '').toLowerCase() === 'admin@advrix.com'
+        );
+        if (found) {
+          setCurrentUser(found);
+        }
+      } else {
+        setCurrentUser({
+          id: '',
+          name: '',
+          email: '',
+          role: 'SUPER_ADMIN',
+          capacityLimit: 0,
+        });
+      }
+
+      const nextClients = Array.isArray(clientsRes) ? clientsRes : [];
+      setClients(nextClients);
+      localStorage.setItem('advrix_clients', JSON.stringify(nextClients));
+
+      const nextProjects = Array.isArray(projectsRes) ? projectsRes : [];
+      setProjects(nextProjects);
+      localStorage.setItem('advrix_projects', JSON.stringify(nextProjects));
+
+      const nextTasks = Array.isArray(tasksRes) ? tasksRes : [];
+      setTasks(nextTasks);
+      localStorage.setItem('advrix_tasks', JSON.stringify(nextTasks));
+    } catch (err) {
+      console.warn('Neon Live Database sync:', err);
+    }
+  };
+
   // Fetch live database state on mount
   useEffect(() => {
-    const fetchLiveData = async () => {
-      try {
-        const [usersRes, clientsRes, projectsRes, tasksRes] = await Promise.all([
-          fetch('/api/users').then((r) => (r.ok ? r.json() : null)),
-          fetch('/api/clients').then((r) => (r.ok ? r.json() : null)),
-          fetch('/api/projects').then((r) => (r.ok ? r.json() : null)),
-          fetch('/api/tasks').then((r) => (r.ok ? r.json() : null)),
-        ]);
-
-        if (usersRes && Array.isArray(usersRes) && usersRes.length > 0) {
-          setUsers(usersRes);
-          localStorage.setItem('advrix_users', JSON.stringify(usersRes));
-          const savedUserId = localStorage.getItem('advrix_current_user_id');
-          const found = usersRes.find((u: User) => u.id === savedUserId || (u.email || '').toLowerCase() === 'admin@advrix.com');
-          if (found) setCurrentUser(found);
-        }
-        if (clientsRes && Array.isArray(clientsRes) && clientsRes.length > 0) {
-          setClients(clientsRes);
-          localStorage.setItem('advrix_clients', JSON.stringify(clientsRes));
-        }
-        if (projectsRes && Array.isArray(projectsRes) && projectsRes.length > 0) {
-          setProjects(projectsRes);
-          localStorage.setItem('advrix_projects', JSON.stringify(projectsRes));
-        }
-        if (tasksRes && Array.isArray(tasksRes) && tasksRes.length > 0) {
-          setTasks(tasksRes);
-          localStorage.setItem('advrix_tasks', JSON.stringify(tasksRes));
-        }
-      } catch (err) {
-        console.warn('Neon Live Database sync:', err);
-      }
-    };
-    fetchLiveData();
+    void loadLiveData();
   }, []);
 
   const updateAdminWhatsappNumber = (num: string) => {
     setAdminWhatsappNumber(num);
     localStorage.setItem('advrix_admin_whatsapp', num);
+  };
+
+  const flushStoredData = async () => {
+    const keys = [
+      'advrix_users',
+      'advrix_clients',
+      'advrix_projects',
+      'advrix_tasks',
+      'advrix_notifications',
+      'advrix_activity_logs',
+      'advrix_leave_requests',
+      'advrix_attendance',
+      'advrix_auth',
+      'advrix_current_user_id',
+    ];
+
+    keys.forEach((key) => localStorage.removeItem(key));
+
+    setUsers([]);
+    setClients([]);
+    setProjects([]);
+    setTasks([]);
+    setNotifications([]);
+    setActivityLogs([]);
+    setLeaveRequests([]);
+    setAttendanceRecords([]);
+    setIsAuthenticated(false);
+    setCurrentUser({
+      id: '',
+      name: '',
+      email: '',
+      role: 'SUPER_ADMIN',
+      capacityLimit: 0,
+    });
+
+    try {
+      const response = await fetch('/api/flush', { method: 'DELETE' });
+      if (response.ok) {
+        await loadLiveData();
+        showModal({
+          type: 'SUCCESS',
+          title: 'Data Flushed',
+          message: 'All stored CRM data was removed from the live database and the UI was refreshed.',
+        });
+      } else {
+        throw new Error('Flush failed');
+      }
+    } catch (err) {
+      console.error('Flush error:', err);
+      showModal({
+        type: 'WARNING',
+        title: 'Flush Failed',
+        message: 'The app cleared local state, but the live database flush did not complete.',
+      });
+    }
   };
 
   const login = (email: string, pass: string): { success: boolean; message?: string } => {
@@ -259,6 +326,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIsAuthenticated(true);
           localStorage.setItem('advrix_auth', 'true');
           localStorage.setItem('advrix_current_user_id', data.user.id);
+          void loadLiveData();
         }
       })
       .catch(() => {});
@@ -365,37 +433,37 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('advrix_clients');
-    return saved ? JSON.parse(saved) : initialClients;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem('advrix_projects');
-    return saved ? JSON.parse(saved) : initialProjects;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [tasks, setTasks] = useState<Task[]>(() => {
     const saved = localStorage.getItem('advrix_tasks');
-    return saved ? JSON.parse(saved) : initialTasks;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     const saved = localStorage.getItem('advrix_notifications');
-    return saved ? JSON.parse(saved) : initialNotifications;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
     const saved = localStorage.getItem('advrix_activity_logs');
-    return saved ? JSON.parse(saved) : initialActivityLogs;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
     const saved = localStorage.getItem('advrix_leave_requests');
-    return saved ? JSON.parse(saved) : initialLeaveRequests;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => {
     const saved = localStorage.getItem('advrix_attendance');
-    return saved ? JSON.parse(saved) : initialAttendanceRecords;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [systemModal, setSystemModal] = useState<SystemModalConfig | null>(null);
@@ -1927,20 +1995,26 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('advrix_leave_requests');
     localStorage.removeItem('advrix_attendance');
 
-    setUsers(initialUsers);
-    setCurrentUser(initialUsers[0]);
-    setClients(initialClients);
-    setProjects(initialProjects);
-    setTasks(initialTasks);
-    setNotifications(initialNotifications);
-    setActivityLogs(initialActivityLogs);
-    setLeaveRequests(initialLeaveRequests);
-    setAttendanceRecords(initialAttendanceRecords);
+    setUsers([]);
+    setCurrentUser({
+      id: '',
+      name: '',
+      email: '',
+      role: 'SUPER_ADMIN',
+      capacityLimit: 0,
+    });
+    setClients([]);
+    setProjects([]);
+    setTasks([]);
+    setNotifications([]);
+    setActivityLogs([]);
+    setLeaveRequests([]);
+    setAttendanceRecords([]);
 
     showModal({
       type: 'SUCCESS',
-      title: 'Demo Data Reset',
-      message: 'Advrix CRM seed data has been restored to default state.',
+      title: 'Live Data Reset',
+      message: 'Local fallback data was cleared. The app will show live database data only.',
     });
   };
 
@@ -2027,6 +2101,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markAllNotificationsAsRead,
 
         resetDemoData,
+        flushStoredData,
       }}
     >
       {children}

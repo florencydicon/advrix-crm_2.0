@@ -32,6 +32,7 @@ export const UserManagementSection: React.FC<{ theme?: 'light' | 'dark' }> = ({ 
     getUserActiveTaskCount,
     adminWhatsappNumber,
     updateAdminWhatsappNumber,
+    flushStoredData,
   } = useCRM();
 
   const [whatsappInput, setWhatsappInput] = useState(adminWhatsappNumber || '+91 97731 24598');
@@ -262,6 +263,28 @@ export const UserManagementSection: React.FC<{ theme?: 'light' | 'dark' }> = ({ 
               {whatsappSaved ? 'Saved ✓' : 'Update Number'}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="p-4 bg-rose-950/30 border border-rose-800/60 rounded-xl space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-rose-200 flex items-center space-x-2">
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>Flush Stored Data</span>
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Clear locally cached data and reload from the live database only.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              void flushStoredData();
+            }}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg shadow-xs transition-all cursor-pointer"
+          >
+            Flush Data
+          </button>
         </div>
       </div>
 
