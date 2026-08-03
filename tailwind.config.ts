@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate"; // 🚀 FIX: require() ni jagya e import lagavyu
 
 const config = {
   darkMode: "class",
@@ -26,14 +27,14 @@ const config = {
         foreground: "hsl(var(--foreground))",
         
         sidebar: {
-          bg: "#111424", // Dark Navy Sidebar
+          bg: "#111424", 
           hover: "#1E2235",
           active: "#1E3A8A",
           text: "#9CA3AF",
           textActive: "#FFFFFF",
         },
         app: {
-          bg: "#F4F5F8", // Light gray background
+          bg: "#F4F5F8", 
           card: "#FFFFFF",
           border: "#E5E7EB",
         },
@@ -60,7 +61,8 @@ const config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  // 🚀 FIX: Plugin ne sidhu call karyu
+  plugins: [tailwindcssAnimate],
 } satisfies Config;
 
 export default config;

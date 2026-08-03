@@ -13,7 +13,7 @@ const roleRoutes: Record<string, string> = {
   SOCIAL_MEDIA_MANAGER: "/smm",
 };
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
   // Login page par koi check nathi karvanu

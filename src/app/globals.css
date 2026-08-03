@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.ts"; /* Tailwind v4 ne aapni config vanchva mate force karse */
 
 @layer base {
   :root {
@@ -38,13 +37,18 @@
  
 @layer base {
   * {
-    @apply border-border;
+    /* FIX: @apply ni jagya e standard CSS use karyu jethi error na aave */
+    border-color: hsl(var(--border)); 
   }
   body {
-    @apply bg-app-bg text-foreground antialiased;
+    /* FIX: Standard CSS for background and text colors */
+    background-color: #F4F5F8;
+    color: hsl(var(--foreground));
+    @apply antialiased;
   }
 }
 
+/* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
