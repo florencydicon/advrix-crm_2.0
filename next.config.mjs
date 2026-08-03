@@ -10,6 +10,9 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Any existing config options
+  // Provide an explicit (possibly empty) turbopack config to avoid
+  // the Turbopack vs webpack config detection error during build.
+  turbopack: {},
 };
 
 export default withPWA(nextConfig);
