@@ -1,0 +1,6 @@
+{
+  "name": "Advrix Media CRM V2.0",
+  "description": "Text-Based Agency Workflow & WhatsApp File Sharing CRM",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,17 +1,21 @@
 {
-  "name": "Advrix Media CRM",
-  "short_name": "Advrix",
-  "description": "Agency Workflow Management",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#F4F5F8",
-  "theme_color": "#111424",
-  "orientation": "portrait-primary",
+  "short_name": "Advrix CRM",
+  "name": "Advrix Media Agency CRM",
   "icons": [
     {
-      "src": "/window.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml"
+      "src": "pwa-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "pwa-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
-  ]
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "portrait"
 }
