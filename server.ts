@@ -6,8 +6,13 @@ import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFilename =
+  typeof import.meta !== 'undefined' && import.meta?.url
+    ? fileURLToPath(import.meta.url)
+    : '';
+const currentDirname = currentFilename
+  ? path.dirname(currentFilename)
+  : process.cwd();
 
 const PORT = 3000;
 const app = express();
