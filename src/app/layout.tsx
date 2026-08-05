@@ -1,32 +1,20 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-export const viewport: Viewport = {
-  themeColor: "#111424",
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false, // Prevents zooming on mobile
-};
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "Advrix Media CRM",
-  description: "Automated Agency CRM v3.0",
-  manifest: "/manifest.json",
+  title: "Advrix CRM — Creative Agency Workflow",
+  description: "High-performance CRM & automated task handoff for creative production teams.",
 };
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="bg-app-bg text-gray-900 antialiased min-h-screen flex overflow-hidden">
-        <div className="flex-1 flex flex-col h-screen overflow-hidden">
-          {children}
-        </div>
-      </body>
+      <body className={`${inter.variable} font-sans antialiased`}>{children}</body>
     </html>
   );
 }

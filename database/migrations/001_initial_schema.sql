@@ -1,81 +1,137 @@
--- 1. Create Roles ENUM
-CREATE TYPE user_role AS ENUM (
-    'SUPER_ADMIN', 
-    'PROJECT_MANAGER', 
-    'SALES_REP', 
-    'CONTENT_WRITER', 
-    'GRAPHIC_DESIGNER', 
-    'VIDEO_EDITOR', 
-    'SOCIAL_MEDIA_MANAGER'
+-- ============================================================
+-- Advrix CRM 2.0 — Initial Schema
+-- Raw SQL for Neon (PostgreSQL). Run via scripts/seed.mjs.
+-- NOTE: drops any legacy tables from prior app versions.
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+DROP TABLE IF EXISTS attendance_records CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS assignments CASCADE;
+DROP TABLE IF EXISTS project_deliverables CASCADE;
+DROP TABLE IF EXISTS deliverable_types CASCADE;
+DROP TABLE IF EXISTS workflow_steps CASCADE;
+DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS projects CASCADE;
+DROP TABLE IF EXISTS clients CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS roles CASCADE;
+
+-- ---------- Roles ----------
+CREATE TABLE IF NOT EXISTS roles (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key           TEXT UNIQUE NOT NULL,
+  label         TEXT NOT NULL,
+  permissions   TEXT[] NOT NULL DEFAULT '{}',
+  dashboard     TEXT NOT NULL DEFAULT 'staff',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2. Create Users Table
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role user_role DEFAULT 'CONTENT_WRITER',
-    status TEXT DEFAULT 'ACTIVE',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- ---------- Users ----------
+CREATE TABLE IF NOT EXISTS users (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name     TEXT NOT NULL,
+  email         TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role_id       UUID NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
+  is_active     BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 3. Create Clients Table
-CREATE TABLE clients (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_name TEXT NOT NULL,
-    contact_person TEXT,
-    phone TEXT NOT NULL,
-    whatsapp_number TEXT,
-    email TEXT,
-    remarks TEXT,
-    created_by UUID NOT NULL REFERENCES users(id),
-    status TEXT NOT NULL DEFAULT 'ACTIVE',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- ---------- Clients ----------
+CREATE TABLE IF NOT EXISTS clients (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  company       TEXT,
+  email         TEXT,
+  phone         TEXT,
+  created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 4. Create Projects (Campaigns) Table
-CREATE TABLE projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    work_type TEXT NOT NULL,
-    is_retainer BOOLEAN DEFAULT FALSE,
-    total_payment INTEGER DEFAULT 0,
-    advance_payment INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'Awaiting Team Assignment',
-    created_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- ---------- Projects ----------
+CREATE TABLE IF NOT EXISTS projects (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending_approval', -- pending_approval | in_progress | completed | rejected
+  brief         TEXT,
+  deliverables  TEXT,
+  deadline      DATE,
+  created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+  approved_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+  approved_at   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 5. Create Tasks (Deliverables) Table for Auto-Generation
-CREATE TABLE tasks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    title TEXT NOT NULL, -- e.g., "Static Post 01"
-    task_type TEXT NOT NULL, -- e.g., "Static Post", "Reel", "Video Edit"
-    status TEXT NOT NULL DEFAULT 'Not Started',
-    
-    -- Content & WhatsApp Details (Text based tracking)
-    content_text TEXT, 
-    whatsapp_shared_version TEXT,
-    client_feedback TEXT,
-    post_url TEXT,
-    
-    -- Assigned Team
-    assigned_writer UUID REFERENCES users(id),
-    assigned_designer UUID REFERENCES users(id),
-    assigned_editor UUID REFERENCES users(id),
-    assigned_smm UUID REFERENCES users(id),
-    
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- ---------- Deliverable types (config) ----------
+CREATE TABLE IF NOT EXISTS deliverable_types (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key           TEXT UNIQUE NOT NULL,
+  label         TEXT NOT NULL,
+  content_role  TEXT REFERENCES roles(key) ON DELETE RESTRICT, -- role that drafts copy first (nullable)
+  visual_role   TEXT REFERENCES roles(key) ON DELETE RESTRICT, -- role that produces the visual after content (nullable)
+  default_qty   INT NOT NULL DEFAULT 1,
+  sort          INT NOT NULL DEFAULT 0
 );
 
--- 6. Indexes for Fast Searching
-CREATE INDEX idx_clients_created_by ON clients(created_by);
-CREATE INDEX idx_projects_client_id ON projects(client_id);
-CREATE INDEX idx_tasks_project_id ON tasks(project_id);
+-- ---------- Project deliverables (structured breakdown) ----------
+CREATE TABLE IF NOT EXISTS project_deliverables (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  category_key  TEXT NOT NULL,
+  category_label TEXT NOT NULL,
+  quantity      INT NOT NULL CHECK (quantity >= 1),
+  is_custom     BOOLEAN NOT NULL DEFAULT false,
+  custom_label  TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_deliverables_project ON project_deliverables(project_id);
+
+-- ---------- Tasks ----------
+CREATE TABLE IF NOT EXISTS tasks (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  step_key      TEXT NOT NULL DEFAULT 'manual',
+  group_key     TEXT NOT NULL DEFAULT 'manual',
+  role_key      TEXT NOT NULL REFERENCES roles(key) ON DELETE RESTRICT,
+  deliverable_id UUID REFERENCES project_deliverables(id) ON DELETE CASCADE,
+  sequence      INT NOT NULL DEFAULT 1,
+  title         TEXT NOT NULL,
+  description   TEXT,
+  content       TEXT,
+  status        TEXT NOT NULL DEFAULT 'pending', -- pending | in_progress | review | completed
+  priority      TEXT NOT NULL DEFAULT 'medium',
+  assigned_to   UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+  due_date      DATE,
+  completed_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+
+-- ---------- Workflow (Automation Logic Engine) ----------
+CREATE TABLE IF NOT EXISTS workflow_steps (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  step_key            TEXT NOT NULL,
+  group_key           TEXT NOT NULL,
+  name                TEXT NOT NULL,
+  target_role         TEXT NOT NULL REFERENCES roles(key) ON DELETE RESTRICT,
+  title_template      TEXT NOT NULL,
+  description_template TEXT NOT NULL DEFAULT '',
+  await               TEXT NOT NULL DEFAULT '', -- comma-separated group_keys that must complete first
+  sequence            INT NOT NULL DEFAULT 0,
+  active              BOOLEAN NOT NULL DEFAULT true,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS assignments (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  role_key      TEXT NOT NULL REFERENCES roles(key) ON DELETE RESTRICT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, project_id, role_key)
+);
