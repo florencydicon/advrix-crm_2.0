@@ -90,34 +90,40 @@ export default function SmartTable<T>({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-        <div className="relative flex-1 w-full sm:max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input
-            type="text"
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            placeholder={searchPlaceholder}
-            className="input !pl-8 !py-1.5 text-xs"
-          />
-        </div>
+        {searchPlaceholder && (
+          <div className="relative flex-1 w-full sm:max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              placeholder={searchPlaceholder}
+              className="input !pl-8 !py-1.5 text-xs"
+            />
+          </div>
+        )}
         {filterTabs && filterTabs.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {filterTabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => handleFilter(tab.key)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                   activeFilter === tab.key
-                    ? "bg-brand-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    ? "bg-brand-600 text-white shadow-sm"
+                    : "bg-white border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-600"
                 }`}
               >
                 {tab.label}
                 {tab.count !== undefined && (
-                  <span className="ml-1 opacity-70">({tab.count})</span>
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
+                    activeFilter === tab.key ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    {tab.count}
+                  </span>
                 )}
               </button>
             ))}

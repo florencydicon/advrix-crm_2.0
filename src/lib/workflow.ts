@@ -1,19 +1,6 @@
 import { query } from "@/lib/db";
 import type { RoleKey } from "@/lib/types";
 
-interface WorkflowStepRow {
-  id: string;
-  step_key: string;
-  group_key: string;
-  name: string;
-  target_role: string;
-  title_template: string;
-  description_template: string;
-  await: string;
-  sequence: number;
-  active: boolean;
-}
-
 interface TaskRow {
   id: string;
   step_key: string;
@@ -68,75 +55,11 @@ async function allocateTasksForRole(projectId: string, roleKey: string, userId: 
 }
 
 /**
- * Core automation engine for pipeline (workflow_steps) projects.
- * Called after any task status change and after PM approval.
- * Idempotently cascades: creates every workflow task whose prerequisite groups
- * are complete and whose task does not exist yet. Loops until stable.
+ * Legacy workflow runner - now a no-op since we use deliverables-based workflow.
+ * Kept for backwards compatibility with existing action calls.
  */
-export async function runWorkflow(projectId: string) {
-  const steps = await query<WorkflowStepRow>(
-    `SELECT * FROM workflow_steps WHERE active = true ORDER BY sequence, id`
-  );
-
-  const assigneeCache = new Map<string, string | null>();
-
-  for (let pass = 0; pass < steps.length + 2; pass++) {
-    const groups = await query<TaskRow>(
-      `SELECT id, step_key, status FROM tasks WHERE project_id = $1`,
-      [projectId]
-    );
-
-    const byStep = new Map<string, TaskRow[]>();
-    for (const t of groups) {
-      const arr = byStep.get(t.step_key) || [];
-      arr.push(t);
-      byStep.set(t.step_key, arr);
-    }
-
-    const groupStatus = new Map<string, { created: boolean; completed: boolean }>();
-    for (const s of steps) {
-      const g = s.group_key;
-      const tasksInGroup = steps
-        .filter((x) => x.group_key === g)
-        .flatMap((x) => byStep.get(x.step_key) || []);
-      const created = tasksInGroup.length > 0;
-      const completed = created && tasksInGroup.every((t) => t.status === "completed");
-      groupStatus.set(g, { created, completed });
-    }
-
-    let changed = false;
-
-    for (const s of steps) {
-      if ((byStep.get(s.step_key) || []).length > 0) continue;
-
-      const prereqs = s.await.split(",").map((x) => x.trim()).filter(Boolean);
-      const ready = prereqs.every((g) => groupStatus.get(g)?.completed === true);
-      if (!ready) continue;
-
-      if (!assigneeCache.has(s.target_role)) {
-        assigneeCache.set(s.target_role, await assigneeForRole(s.target_role));
-      }
-
-      await query(
-        `INSERT INTO tasks (project_id, step_key, group_key, role_key, title, description, status, priority, assigned_to, created_by, due_date)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'medium', $7, NULL, NULL)`,
-        [
-          projectId,
-          s.step_key,
-          s.group_key,
-          s.target_role,
-          s.title_template,
-          s.description_template,
-          assigneeCache.get(s.target_role),
-        ]
-      );
-      changed = true;
-    }
-
-    if (!changed) break;
-  }
-
-  await maybeCompleteProject(projectId);
+export async function runWorkflow(_projectId: string) {
+  // No-op: deliverables-based workflow handles task generation via generateDeliverableTasks
 }
 
 /**
