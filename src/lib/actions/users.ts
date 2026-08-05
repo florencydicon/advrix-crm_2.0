@@ -41,6 +41,7 @@ export async function createUserAction(formData: FormData) {
   if (!rows[0]) return { error: "Invalid role." };
 
   revalidatePath("/team");
+  revalidatePath("/settings");
   return { ok: true };
 }
 
@@ -53,6 +54,7 @@ export async function toggleUserActiveAction(userId: string, active: boolean) {
 
   await query(`UPDATE users SET is_active = $2 WHERE id = $1`, [userId, active]);
   revalidatePath("/team");
+  revalidatePath("/settings");
   return { ok: true };
 }
 
@@ -66,6 +68,7 @@ export async function resetPasswordAction(userId: string, password: string) {
   const hash = bcrypt.hashSync(password, 10);
   await query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [userId, hash]);
   revalidatePath("/team");
+  revalidatePath("/settings");
   return { ok: true };
 }
 
@@ -79,5 +82,6 @@ export async function changeRoleAction(userId: string, roleKey: string) {
     [userId, roleKey]
   );
   revalidatePath("/team");
+  revalidatePath("/settings");
   return { ok: true };
 }

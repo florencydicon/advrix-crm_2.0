@@ -38,6 +38,8 @@ export default function TeamView({
   roleFilter,
   filterTabs,
   basePath,
+  title = "Team",
+  subtitle = "Manage members, roles, and access.",
 }: {
   users: UserRow[];
   roles: { key: string; label: string }[];
@@ -49,6 +51,8 @@ export default function TeamView({
   roleFilter: string;
   filterTabs: FilterTab[];
   basePath: string;
+  title?: string;
+  subtitle?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -135,8 +139,8 @@ export default function TeamView({
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-bold tracking-tight">Team</h1>
-        <p className="text-sm text-slate-500">Manage members, roles, and access.</p>
+        <h1 className="text-xl font-bold tracking-tight">{title}</h1>
+        <p className="text-sm text-slate-500">{subtitle}</p>
       </div>
 
       <SmartTable

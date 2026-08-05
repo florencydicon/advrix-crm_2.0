@@ -15,6 +15,7 @@ import {
   Bell,
   Check,
   ArrowRight,
+  Settings,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -36,6 +37,7 @@ const NAV: NavItem[] = [
   { href: "/clients", label: "Clients", icon: Users, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/team", label: "Team", icon: Users, roles: ["SUPER_ADMIN"] },
   { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
+  { href: "/settings", label: "Settings", icon: Settings, roles: ["SUPER_ADMIN"] },
 ];
 
 const ROLE_STYLES: Record<string, string> = {
