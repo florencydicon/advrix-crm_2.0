@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   ChevronLeft,
+  Clock,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import type { SessionPayload } from "@/lib/session";
@@ -25,6 +26,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/attendance", label: "Attendance", icon: Clock },
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/clients", label: "Clients", icon: Users, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/team", label: "Team", icon: Users, roles: ["SUPER_ADMIN"] },

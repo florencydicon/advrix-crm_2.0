@@ -156,3 +156,63 @@ export interface ProjectRow {
   total_tasks: number;
   completed_tasks: number;
 }
+
+export type AttendanceStatus = "present" | "absent" | "half_day" | "late" | "on_leave";
+
+export interface Attendance {
+  id: string;
+  user_id: string;
+  date: string;
+  punch_in: string | null;
+  punch_out: string | null;
+  status: AttendanceStatus;
+  hours_worked: number;
+  note: string | null;
+  created_at: string;
+}
+
+export interface AttendanceWithUser extends Attendance {
+  full_name: string;
+  role_label: string;
+}
+
+export interface AttendanceStats {
+  presentToday: number;
+  absentToday: number;
+  lateToday: number;
+  onLeaveToday: number;
+  totalTeam: number;
+  avgHoursToday: number;
+}
+
+export type LeaveType = "sick" | "casual" | "earned" | "unpaid" | "emergency";
+export type LeaveStatus = "pending" | "approved" | "rejected";
+
+export interface Leave {
+  id: string;
+  user_id: string;
+  leave_type: LeaveType;
+  start_date: string;
+  end_date: string;
+  days: number;
+  reason: string;
+  status: LeaveStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+}
+
+export interface LeaveWithUser extends Leave {
+  full_name: string;
+  role_label: string;
+  approver_name: string | null;
+}
+
+export interface LeaveBalance {
+  sick: number;
+  casual: number;
+  earned: number;
+  unpaid: number;
+  emergency: number;
+}

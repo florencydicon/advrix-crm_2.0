@@ -1,8 +1,13 @@
 import { query } from "@/lib/db";
 import type {
   Assignment,
+  Attendance,
+  AttendanceStats,
+  AttendanceWithUser,
   Client,
   DeliverableType,
+  Leave,
+  LeaveWithUser,
   PaginatedResult,
   Project,
   ProjectDeliverable,
@@ -387,4 +392,128 @@ export async function getAnalytics(): Promise<Analytics> {
       created_at: r.created_at,
     })),
   };
+}
+
+// ---------- Attendance ----------
+
+export async function getTodayAttendance(userId: string): Promise<Attendance | null> {
+  const rows = await query<Attendance>(
+    `SELECT * FROM attendance WHERE user_id = $1 AND date = CURRENT_DATE`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+export async function getAttendanceHistory(userId: string, limit = 30): Promise<Attendance[]> {
+  return query<Attendance>(
+    `SELECT * FROM attendance WHERE user_id = $1 ORDER BY date DESC LIMIT $2`,
+    [userId, limit]
+  );
+}
+
+export async function getTeamAttendance(date: string = new Date().toISOString().slice(0, 10)): Promise<AttendanceWithUser[]> {
+  return query<AttendanceWithUser>(
+    `SELECT a.*, u.full_name, r.label AS role_label
+     FROM attendance a
+     JOIN users u ON u.id = a.user_id
+     JOIN roles r ON r.id = u.role_id
+     WHERE a.date = $1
+     ORDER BY a.punch_in ASC`,
+    [date]
+  );
+}
+
+export async function getAttendanceStats(date: string = new Date().toISOString().slice(0, 10)): Promise<AttendanceStats> {
+  const [stats, avgHours] = await Promise.all([
+    query<{ status: string; count: string }>(
+      `SELECT status, COUNT(*)::text AS count FROM attendance WHERE date = $1 GROUP BY status`,
+      [date]
+    ),
+    query<{ avg: string | null }>(
+      `SELECT AVG(hours_worked)::text AS avg FROM attendance WHERE date = $1 AND hours_worked > 0`,
+      [date]
+    ),
+  ]);
+
+  const statusMap = Object.fromEntries(stats.map((s) => [s.status, Number(s.count)]));
+
+  return {
+    presentToday: statusMap["present"] || 0,
+    absentToday: statusMap["absent"] || 0,
+    lateToday: statusMap["late"] || 0,
+    onLeaveToday: statusMap["on_leave"] || 0,
+    totalTeam: Object.values(statusMap).reduce((a, b) => a + b, 0),
+    avgHoursToday: Math.round((Number(avgHours[0]?.avg) || 0) * 100) / 100,
+  };
+}
+
+// ---------- Leaves ----------
+
+export async function getMyLeaves(userId: string): Promise<LeaveWithUser[]> {
+  return query<LeaveWithUser>(
+    `SELECT l.*, u.full_name, r.label AS role_label, au.full_name AS approver_name
+     FROM leaves l
+     JOIN users u ON u.id = l.user_id
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN users au ON au.id = l.approved_by
+     WHERE l.user_id = $1
+     ORDER BY l.created_at DESC`,
+    [userId]
+  );
+}
+
+export async function getAllLeaves(status?: string): Promise<LeaveWithUser[]> {
+  const where = status ? `WHERE l.status = $1` : "";
+  const args: string[] = status ? [status] : [];
+  return query<LeaveWithUser>(
+    `SELECT l.*, u.full_name, r.label AS role_label, au.full_name AS approver_name
+     FROM leaves l
+     JOIN users u ON u.id = l.user_id
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN users au ON au.id = l.approved_by
+     ${where}
+     ORDER BY l.created_at DESC`,
+    args
+  );
+}
+
+export async function getPendingLeavesCount(): Promise<number> {
+  const rows = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM leaves WHERE status = 'pending'`
+  );
+  return Number(rows[0]?.count || 0);
+}
+
+export async function getLeaveBalance(userId: string): Promise<Record<string, { used: number; total: number }>> {
+  const year = new Date().getFullYear();
+  const rows = await query<{ leave_type: string; total_days: string }>(
+    `SELECT leave_type, COALESCE(SUM(days), 0)::text AS total_days
+     FROM leaves
+     WHERE user_id = $1 AND status = 'approved' AND EXTRACT(YEAR FROM start_date) = $2
+     GROUP BY leave_type`,
+    [userId, year]
+  );
+
+  const allTypes = ["sick", "casual", "earned", "unpaid", "emergency"];
+  const limits: Record<string, number> = { sick: 12, casual: 12, earned: 15, unpaid: 365, emergency: 5 };
+
+  const result: Record<string, { used: number; total: number }> = {};
+  for (const t of allTypes) {
+    const used = Number(rows.find((r) => r.leave_type === t)?.total_days || 0);
+    result[t] = { used, total: limits[t] };
+  }
+  return result;
+}
+
+export async function getLeavesForDateRange(startDate: string, endDate: string): Promise<LeaveWithUser[]> {
+  return query<LeaveWithUser>(
+    `SELECT l.*, u.full_name, r.label AS role_label, au.full_name AS approver_name
+     FROM leaves l
+     JOIN users u ON u.id = l.user_id
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN users au ON au.id = l.approved_by
+     WHERE l.status = 'approved' AND l.start_date <= $2 AND l.end_date >= $1
+     ORDER BY l.start_date ASC`,
+    [startDate, endDate]
+  );
 }
