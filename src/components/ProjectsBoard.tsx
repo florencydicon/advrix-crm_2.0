@@ -159,6 +159,35 @@ export default function ProjectsBoard({
 
   return (
     <div className="space-y-3">
+      {expandedId && (() => {
+        const p = projects.find((pr) => pr.id === expandedId);
+        if (!p) return null;
+
+        return (
+          <div className="card p-4 space-y-3 border-brand-200 bg-brand-50/30">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm text-slate-800">{p.name} — Team Allocation</h3>
+              <button className="btn-ghost !py-0.5 !px-2 text-[11px]" onClick={() => setExpandedId(null)}>Close</button>
+            </div>
+
+            {p.brief && (
+              <div className="text-xs text-slate-600">{p.brief}</div>
+            )}
+
+            {canManage && p.status === "in_progress" && (
+              <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+                <QuickAssignFullTeam
+                  project={p}
+                  team={team}
+                  onAssignAll={(assignments) => run(() => assignProjectTeamAction(p.id, assignments))}
+                  pending={pending}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <SmartTable
         columns={columns}
         data={projects}
@@ -175,39 +204,9 @@ export default function ProjectsBoard({
         emptySubtitle="Try a different search or filter."
       />
 
-      {expandedId && (() => {
-        const p = projects.find((pr) => pr.id === expandedId);
-        if (!p) return null;
-
-        return (
-          <div className="card p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm text-slate-800">{p.name}</h3>
-              <button className="btn-ghost !py-0.5 !px-2 text-[11px]" onClick={() => setExpandedId(null)}>Close</button>
-            </div>
-
-            {p.brief && (
-              <div className="text-xs text-slate-600">{p.brief}</div>
-            )}
-
-            {canManage && p.status === "in_progress" && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Users className="h-3.5 w-3.5 text-brand-700" />
-                  <p className="text-xs font-semibold text-slate-700">Team Allocation</p>
-                </div>
-
-                <QuickAssignFullTeam
-                  project={p}
-                  team={team}
-                  onAssignAll={(assignments) => run(() => assignProjectTeamAction(p.id, assignments))}
-                  pending={pending}
-                />
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      <div className="text-xs text-slate-400 text-center py-2">
+        Click "Team" on any in_progress project to assign team members
+      </div>
     </div>
   );
 }

@@ -17,23 +17,10 @@ export default function LoginPage() {
 
           <h2 className="text-lg font-semibold mb-1">Welcome back</h2>
           <p className="text-sm text-slate-500 mb-6">
-            Sign in to your workspace. Demo password: <code className="text-brand-700 bg-brand-50 px-1 rounded">password123</code>
+            Sign in to your workspace.
           </p>
 
           <LoginForm />
-
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <p className="text-xs text-slate-400 mb-2">Demo accounts</p>
-            <div className="grid grid-cols-2 gap-1.5 text-xs text-slate-500">
-              <span className="truncate">admin@advrix.agency</span>
-              <span className="truncate">pm@advrix.agency</span>
-              <span className="truncate">sales@advrix.agency</span>
-              <span className="truncate">writer@advrix.agency</span>
-              <span className="truncate">designer@advrix.agency</span>
-              <span className="truncate">editor@advrix.agency</span>
-              <span className="truncate">smm@advrix.agency</span>
-            </div>
-          </div>
         </div>
       </div>
     </div>
