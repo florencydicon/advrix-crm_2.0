@@ -16,7 +16,7 @@ export default async function DashboardPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-xl font-bold">My Workspace</h1>
-          <p className="text-sm text-slate-500">Welcome back, {session.name.split(" ")[0]}. Here are your assignments.</p>
+          <p className="text-sm text-slate-500">Welcome back, {session.name}. Here are your assignments.</p>
         </div>
         <StaffDashboard tasks={tasks} roleKey={session.role_key} />
       </div>

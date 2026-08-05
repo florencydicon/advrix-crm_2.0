@@ -67,16 +67,16 @@ export default function AppShell({
   }
 
   const sidebar = (
-    <div className="flex h-full flex-col bg-ink text-slate-300">
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="h-9 w-9 rounded-lg bg-brand-600 flex items-center justify-center text-white font-black">
-          A
+      <div className="flex h-full flex-col bg-ink text-slate-300">
+        <div className="flex items-center gap-3 px-5 py-5">
+          <div className="h-9 w-9 rounded-lg bg-brand-600 flex items-center justify-center text-white font-black">
+            A
+          </div>
+          <div>
+            <p className="text-sm font-bold text-white leading-none">Advrix Media</p>
+            <p className="text-[11px] text-slate-400 mt-1">Creative Workflow</p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-bold text-white leading-none">Advrix CRM</p>
-          <p className="text-[11px] text-slate-400 mt-1">Creative Workflow</p>
-        </div>
-      </div>
 
       <nav className="flex-1 px-3 space-y-1">
         {items.map((item) => {
@@ -137,6 +137,10 @@ export default function AppShell({
             <p className="text-sm text-slate-500">
               {items.find((n) => pathname.startsWith(n.href))?.label || "Dashboard"}
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-600 font-medium">{session.name}</span>
+            <span className="badge bg-slate-100 text-slate-500 text-[10px]">{session.role_label}</span>
           </div>
         </header>
         <main className="p-4 sm:p-6">{children}</main>

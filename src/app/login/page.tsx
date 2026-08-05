@@ -5,12 +5,12 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 via-brand-800 to-ink p-4">
       <div className="w-full max-w-md">
         <div className="card p-8">
-          <div className="flex items-center gap-3 mb-6">
+           <div className="flex items-center gap-3 mb-6">
             <div className="h-11 w-11 rounded-xl bg-brand-600 flex items-center justify-center text-white font-black text-lg">
               A
             </div>
             <div>
-              <h1 className="text-xl font-bold text-ink">Advrix CRM</h1>
+              <h1 className="text-xl font-bold text-ink">Advrix Media</h1>
               <p className="text-sm text-slate-500">Creative Agency Workflow</p>
             </div>
           </div>
