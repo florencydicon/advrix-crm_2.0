@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Building2, Mail, Phone, FilePlus2, Tags, Search } from "lucide-react";
+import { Plus, Building2, Mail, Phone, FilePlus2, Tags } from "lucide-react";
 import { createClientAction, createProjectAction } from "@/lib/actions/projects";
 import type { Client, DeliverableType } from "@/lib/types";
 import { Modal, EmptyState } from "@/components/ui";
+import SmartTable, { type Column } from "@/components/SmartTable";
 
 interface Deliv {
   key: string;
@@ -42,14 +43,14 @@ function DeliverablesPicker({
   const total = selected.reduce((s, d) => s + d.quantity, 0);
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
         {types.map((t) => {
           const q = quantities[t.key] || 0;
           return (
-            <div key={t.key} className="rounded-xl border border-slate-200 p-3 bg-slate-50/50">
+            <div key={t.key} className="rounded-lg border border-slate-200 p-2 bg-slate-50/50">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-slate-700">{t.label}</p>
+                <p className="text-[11px] font-medium text-slate-700">{t.label}</p>
                 <input
                   type="number"
                   min={0}
@@ -60,12 +61,12 @@ function DeliverablesPicker({
                     setQuantities((prev) => ({ ...prev, [t.key]: v }));
                     onChange([...selected]);
                   }}
-                  className="input !w-16 !py-1 text-center text-sm"
+                  className="input !w-14 !py-0.5 text-center text-xs"
                   aria-label={`Quantity of ${t.label}`}
                 />
               </div>
               {q > 0 && (
-                <p className="text-[11px] text-brand-600 mt-1.5">
+                <p className="text-[10px] text-brand-600 mt-1">
                   {q} task{q === 1 ? "" : "s"} will be generated
                 </p>
               )}
@@ -74,47 +75,38 @@ function DeliverablesPicker({
         })}
       </div>
 
-      <div className="rounded-xl border border-dashed border-slate-300 p-3 space-y-2">
-        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+      <div className="rounded-lg border border-dashed border-slate-300 p-2 space-y-1.5">
+        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
           <input
             type="checkbox"
             checked={custom}
-            onChange={(e) => {
-              setCustom(e.target.checked);
-              onChange([...selected]);
-            }}
-            className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            onChange={(e) => { setCustom(e.target.checked); onChange([...selected]); }}
+            className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
           Custom Design Deliverables
         </label>
         {custom && (
           <input
             value={customLabel}
-            onChange={(e) => {
-              setCustomLabel(e.target.value);
-              onChange([...selected]);
-            }}
-            className="input !py-1.5 text-sm"
-            placeholder="e.g. Catalogue Covers, Packaging Mockups, Menu Design…"
+            onChange={(e) => { setCustomLabel(e.target.value); onChange([...selected]); }}
+            className="input !py-1 text-xs"
+            placeholder="e.g. Catalogue Covers, Packaging Mockups…"
           />
-        )}
-        {custom && customLabel.trim() && (
-          <p className="text-[11px] text-slate-400">One task per custom deliverable. Custom deliverables go straight to the Designer after approval.</p>
         )}
       </div>
 
-      <div className="rounded-xl bg-brand-50/60 border border-brand-100 p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Tags className="h-4 w-4 text-brand-700" />
-          <p className="text-sm font-semibold text-brand-800">Generated Tasks Preview</p>
+      <div className="rounded-lg bg-brand-50/60 border border-brand-100 p-3">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Tags className="h-3.5 w-3.5 text-brand-700" />
+          <p className="text-xs font-semibold text-brand-800">Generated Tasks Preview</p>
         </div>
         {total === 0 ? (
-          <p className="text-xs text-slate-400">Set quantities above — each individual task tag appears here in real time.</p>
+          <p className="text-[11px] text-slate-400">Set quantities above to preview tasks.</p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {selected.map((d) =>
               Array.from({ length: d.quantity }, (_, i) => (
-                <span key={`${d.key}-${i}`} className="badge bg-white text-brand-700 border border-brand-200">
+                <span key={`${d.key}-${i}`} className="badge bg-white text-brand-700 border border-brand-200 text-[10px]">
                   {d.label} {pad(i + 1)}
                 </span>
               ))
@@ -122,8 +114,8 @@ function DeliverablesPicker({
           </div>
         )}
         {total > 0 && (
-          <p className="text-[11px] text-brand-600 mt-2">
-            {total} content task{total === 1 ? "" : "s"} now · visual task{total === 1 ? "" : "s"} auto-spawn after copy is approved.
+          <p className="text-[10px] text-brand-600 mt-1.5">
+            {total} content task{total === 1 ? "" : "s"} now · visual tasks auto-spawn after approval.
           </p>
         )}
       </div>
@@ -135,10 +127,22 @@ export default function ClientsView({
   clients,
   canCreate,
   deliverableTypes,
+  page,
+  pageSize,
+  total,
+  totalPages,
+  search,
+  basePath,
 }: {
   clients: Client[];
   canCreate: boolean;
   deliverableTypes: DeliverableType[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  search: string;
+  basePath: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -147,17 +151,6 @@ export default function ClientsView({
   const [error, setError] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState("");
   const [deliv, setDeliv] = useState<Deliv[]>([]);
-  const [search, setSearch] = useState("");
-
-  const filtered = clients.filter((c) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) ||
-      (c.company && c.company.toLowerCase().includes(q)) ||
-      (c.email && c.email.toLowerCase().includes(q))
-    );
-  });
 
   function runWith(fn: (fd: FormData) => Promise<{ ok?: boolean; error?: string }>) {
     return async (fd: FormData) => {
@@ -174,104 +167,95 @@ export default function ClientsView({
     };
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">Clients &amp; Briefs</h1>
-          <p className="text-sm text-slate-500">Onboard clients and create initial project briefs for PM approval.</p>
-        </div>
-        {canCreate && (
-          <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => setBriefModal(true)}>
-              <FilePlus2 className="h-4 w-4" /> New Brief
-            </button>
-            <button className="btn-primary" onClick={() => setClientModal(true)}>
-              <Plus className="h-4 w-4" /> New Client
-            </button>
+  const columns: Column<Client>[] = [
+    {
+      key: "name",
+      label: "Client",
+      render: (c) => (
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-lg bg-brand-600/10 flex items-center justify-center shrink-0">
+            <Building2 className="h-3.5 w-3.5 text-brand-700" />
           </div>
-        )}
-      </div>
+          <p className="font-medium text-xs text-slate-800">{c.name}</p>
+        </div>
+      ),
+    },
+    {
+      key: "company",
+      label: "Company",
+      render: (c) => <span className="text-xs text-slate-500">{c.company || "—"}</span>,
+    },
+    {
+      key: "contact",
+      label: "Contact",
+      render: (c) => (
+        <div className="space-y-0.5">
+          {c.email && (
+            <p className="flex items-center gap-1 text-[11px] text-slate-500">
+              <Mail className="h-2.5 w-2.5" /> {c.email}
+            </p>
+          )}
+          {c.phone && (
+            <p className="flex items-center gap-1 text-[11px] text-slate-500">
+              <Phone className="h-2.5 w-2.5" /> {c.phone}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "actions",
+      label: "",
+      className: "w-[100px]",
+      render: (c) =>
+        canCreate ? (
+          <button
+            className="btn-secondary !py-1 !px-2 text-[11px]"
+            onClick={() => { setSelectedClient(c.id); setBriefModal(true); }}
+          >
+            <FilePlus2 className="h-3 w-3" /> Brief
+          </button>
+        ) : null,
+    },
+  ];
 
-      <div className="relative w-full sm:max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search clients…"
-          className="input !pl-9 !py-1.5 text-sm"
-        />
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {canCreate && (
+            <div className="flex gap-1.5">
+              <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={() => setBriefModal(true)}>
+                <FilePlus2 className="h-3.5 w-3.5" /> New Brief
+              </button>
+              <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => setClientModal(true)}>
+                <Plus className="h-3.5 w-3.5" /> New Client
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {clients.length === 0 ? (
         <EmptyState title="No clients yet" subtitle="Add your first client to start the onboarding flow." />
-      ) : filtered.length === 0 ? (
-        <div className="card p-10 text-center">
-          <p className="text-sm text-slate-500">No clients match your search.</p>
-        </div>
       ) : (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/60">
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Company</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
-                  <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-lg bg-brand-600/10 flex items-center justify-center shrink-0">
-                          <Building2 className="h-4 w-4 text-brand-700" />
-                        </div>
-                        <p className="font-medium text-slate-800">{c.name}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-xs text-slate-500">{c.company || "—"}</td>
-                    <td className="px-5 py-3">
-                      <div className="space-y-0.5">
-                        {c.email && (
-                          <p className="flex items-center gap-1.5 text-xs text-slate-500">
-                            <Mail className="h-3 w-3" /> {c.email}
-                          </p>
-                        )}
-                        {c.phone && (
-                          <p className="flex items-center gap-1.5 text-xs text-slate-500">
-                            <Phone className="h-3 w-3" /> {c.phone}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      {canCreate && (
-                        <button
-                          className="btn-secondary !py-1.5 text-xs"
-                          onClick={() => {
-                            setSelectedClient(c.id);
-                            setBriefModal(true);
-                          }}
-                        >
-                          <FilePlus2 className="h-3.5 w-3.5" /> New Brief
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <SmartTable
+          columns={columns}
+          data={clients}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          searchPlaceholder="Search clients…"
+          basePath={basePath}
+          emptyTitle="No clients found"
+          emptySubtitle="Try a different search term."
+        />
       )}
 
       <Modal open={clientModal} onClose={() => setClientModal(false)} title="New Client">
-        {error && <p className="mb-3 rounded-lg bg-rose-50 text-rose-700 text-sm px-3 py-2">{error}</p>}
-        <form action={runWith(createClientAction)} className="space-y-4">
+        {error && <p className="mb-2 rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</p>}
+        <form action={runWith(createClientAction)} className="space-y-3">
           <div>
             <label className="label">Client / Contact name</label>
             <input name="name" required className="input" placeholder="Lumina Cosmetics" />
@@ -297,17 +281,11 @@ export default function ClientsView({
       </Modal>
 
       <Modal open={briefModal} onClose={() => setBriefModal(false)} title="New Project Brief">
-        {error && <p className="mb-3 rounded-lg bg-rose-50 text-rose-700 text-sm px-3 py-2">{error}</p>}
-        <form action={runWith(createProjectAction)} className="space-y-4">
+        {error && <p className="mb-2 rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</p>}
+        <form action={runWith(createProjectAction)} className="space-y-3">
           <div>
             <label className="label">Client</label>
-            <select
-              name="client_id"
-              required
-              className="input"
-              value={selectedClient}
-              onChange={(e) => setSelectedClient(e.target.value)}
-            >
+            <select name="client_id" required className="input" value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)}>
               <option value="">Select client…</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -320,12 +298,7 @@ export default function ClientsView({
           </div>
           <div>
             <label className="label">Brief</label>
-            <textarea
-              name="brief"
-              rows={3}
-              className="input"
-              placeholder="Campaign goal, tone, audience, channels, key messages…"
-            />
+            <textarea name="brief" rows={2} className="input" placeholder="Campaign goal, tone, audience, channels…" />
           </div>
           <div>
             <label className="label">Deliverables</label>

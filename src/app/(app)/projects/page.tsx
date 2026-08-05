@@ -1,6 +1,6 @@
 ﻿import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { getBoard, getTeam } from "@/lib/data";
+import { getProjectsPaginated, getTeam } from "@/lib/data";
 import ProjectsBoard from "@/components/ProjectsBoard";
 
 export const metadata = { title: "Project Pipeline — Advrix CRM" };
@@ -17,44 +17,34 @@ export default async function ProjectsPage({
   const page = Number(params.page) || 1;
   const search = params.search || "";
   const status = params.status || "";
-  const pageSize = 20;
+  const pageSize = 25;
 
-  const [allProjects, team] = await Promise.all([getBoard(), getTeam()]);
+  const [result, team] = await Promise.all([
+    getProjectsPaginated({ page, pageSize, search, status }),
+    getTeam(),
+  ]);
 
-  let filtered = allProjects;
-  if (search) {
-    const q = search.toLowerCase();
-    filtered = filtered.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.client_name.toLowerCase().includes(q)
-    );
-  }
-  if (status) {
-    filtered = filtered.filter((p) => p.status === status);
-  }
-
-  const total = filtered.length;
-  const totalPages = Math.ceil(total / pageSize);
-  const projects = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const filterTabs = [
+    { key: "", label: "All", count: result.total },
+    { key: "pending_approval", label: "Awaiting Approval" },
+    { key: "in_progress", label: "In Production" },
+    { key: "completed", label: "Completed" },
+    { key: "rejected", label: "Rejected" },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold">Project Pipeline</h1>
-        <p className="text-sm text-slate-500">
-          Every campaign, its automated workflow groups, and live task status.
-        </p>
-      </div>
-      <ProjectsBoard
-        projects={projects}
-        team={team}
-        roleKey={session.role_key}
-        page={page}
-        pageSize={pageSize}
-        total={total}
-        totalPages={totalPages}
-        search={search}
-        statusFilter={status}
-      />
-    </div>
+    <ProjectsBoard
+      projects={result.items}
+      team={team}
+      roleKey={session.role_key}
+      page={result.page}
+      pageSize={result.pageSize}
+      total={result.total}
+      totalPages={result.totalPages}
+      search={search}
+      statusFilter={status}
+      filterTabs={filterTabs}
+      basePath="/projects"
+    />
   );
 }
