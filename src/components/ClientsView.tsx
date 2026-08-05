@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Building2, Mail, Phone, FilePlus2, Tags } from "lucide-react";
+import { Plus, Building2, Mail, Phone, FilePlus2, Tags, Search } from "lucide-react";
 import { createClientAction, createProjectAction } from "@/lib/actions/projects";
 import type { Client, DeliverableType } from "@/lib/types";
 import { Modal, EmptyState } from "@/components/ui";
@@ -147,6 +147,17 @@ export default function ClientsView({
   const [error, setError] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState("");
   const [deliv, setDeliv] = useState<Deliv[]>([]);
+  const [search, setSearch] = useState("");
+
+  const filtered = clients.filter((c) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.company && c.company.toLowerCase().includes(q)) ||
+      (c.email && c.email.toLowerCase().includes(q))
+    );
+  });
 
   function runWith(fn: (fd: FormData) => Promise<{ ok?: boolean; error?: string }>) {
     return async (fd: FormData) => {
@@ -182,46 +193,79 @@ export default function ClientsView({
         )}
       </div>
 
+      <div className="relative w-full sm:max-w-xs">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search clients…"
+          className="input !pl-9 !py-1.5 text-sm"
+        />
+      </div>
+
       {clients.length === 0 ? (
         <EmptyState title="No clients yet" subtitle="Add your first client to start the onboarding flow." />
+      ) : filtered.length === 0 ? (
+        <div className="card p-10 text-center">
+          <p className="text-sm text-slate-500">No clients match your search.</p>
+        </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clients.map((c) => (
-            <div key={c.id} className="card p-5 space-y-2">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-brand-600/10 flex items-center justify-center">
-                  <Building2 className="h-5 w-5 text-brand-700" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-semibold text-slate-800 truncate">{c.name}</p>
-                  {c.company && <p className="text-xs text-slate-400 truncate">{c.company}</p>}
-                </div>
-              </div>
-              <div className="space-y-1 pt-1">
-                {c.email && (
-                  <p className="flex items-center gap-2 text-xs text-slate-500">
-                    <Mail className="h-3 w-3" /> {c.email}
-                  </p>
-                )}
-                {c.phone && (
-                  <p className="flex items-center gap-2 text-xs text-slate-500">
-                    <Phone className="h-3 w-3" /> {c.phone}
-                  </p>
-                )}
-              </div>
-              {canCreate && (
-                <button
-                  className="btn-secondary w-full !py-1.5 text-xs"
-                  onClick={() => {
-                    setSelectedClient(c.id);
-                    setBriefModal(true);
-                  }}
-                >
-                  <FilePlus2 className="h-3.5 w-3.5" /> Create brief for this client
-                </button>
-              )}
-            </div>
-          ))}
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/60">
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Company</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-lg bg-brand-600/10 flex items-center justify-center shrink-0">
+                          <Building2 className="h-4 w-4 text-brand-700" />
+                        </div>
+                        <p className="font-medium text-slate-800">{c.name}</p>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-500">{c.company || "—"}</td>
+                    <td className="px-5 py-3">
+                      <div className="space-y-0.5">
+                        {c.email && (
+                          <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                            <Mail className="h-3 w-3" /> {c.email}
+                          </p>
+                        )}
+                        {c.phone && (
+                          <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                            <Phone className="h-3 w-3" /> {c.phone}
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      {canCreate && (
+                        <button
+                          className="btn-secondary !py-1.5 text-xs"
+                          onClick={() => {
+                            setSelectedClient(c.id);
+                            setBriefModal(true);
+                          }}
+                        >
+                          <FilePlus2 className="h-3.5 w-3.5" /> New Brief
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

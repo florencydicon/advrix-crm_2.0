@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, UserX, UserCheck, Shield } from "lucide-react";
+import { Plus, UserX, UserCheck, Shield, Search } from "lucide-react";
 import {
   createUserAction,
   toggleUserActiveAction,
@@ -29,6 +29,22 @@ export default function TeamView({ users, roles }: { users: UserRow[]; roles: { 
   const [error, setError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+
+  const filtered = users.filter((u) => {
+    if (roleFilter && u.role_key !== roleFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const roleCounts = roles.map((r) => ({
+    ...r,
+    count: users.filter((u) => u.role_key === r.key).length,
+  }));
 
   function run(fn: () => Promise<{ ok?: boolean; error?: string }>, onDone?: () => void) {
     start(async () => {
@@ -52,56 +68,120 @@ export default function TeamView({ users, roles }: { users: UserRow[]; roles: { 
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {roles.map((r) => (
+        {roleCounts.map((r) => (
           <div key={r.key} className="card p-4">
             <span className={`badge ${ROLE_STYLES[r.key] || "bg-slate-100 text-slate-600"}`}>{r.label}</span>
-            <p className="mt-2 text-2xl font-bold text-ink">
-              {users.filter((u) => u.role_key === r.key).length}
-            </p>
-            <p className="text-xs text-slate-400">member{suffix(users.filter((u) => u.role_key === r.key).length)}</p>
+            <p className="mt-2 text-2xl font-bold text-ink">{r.count}</p>
+            <p className="text-xs text-slate-400">member{r.count === 1 ? "" : "s"}</p>
           </div>
         ))}
       </div>
 
-      <div className="card divide-y divide-slate-100">
-        {users.map((u) => (
-          <div key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
-            <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-              {initials(u.full_name)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800 truncate">{u.full_name}</p>
-              <p className="text-xs text-slate-400 truncate">{u.email}</p>
-            </div>
-            <select
-              className="input !w-40 !py-1 text-xs"
-              value={u.role_key}
-              onChange={(e) => run(() => changeRoleAction(u.id, e.target.value))}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="relative flex-1 w-full sm:max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search members…"
+            className="input !pl-9 !py-1.5 text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          <button
+            onClick={() => setRoleFilter("")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              roleFilter === "" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            All ({users.length})
+          </button>
+          {roleCounts.map((r) => (
+            <button
+              key={r.key}
+              onClick={() => setRoleFilter(r.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                roleFilter === r.key ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
             >
-              {roles.map((r) => (
-                <option key={r.key} value={r.key}>{r.label}</option>
-              ))}
-            </select>
-            <span className={`badge ${u.is_active ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-              {u.is_active ? "Active" : "Suspended"}
-            </span>
-            <div className="flex gap-1">
-              <button
-                className="btn-ghost !px-2 !py-1 text-xs"
-                title="Reset password"
-                onClick={() => { setResetTarget(u); setNewPassword(""); }}
-              >
-                <Shield className="h-4 w-4" />
-              </button>
-              <button
-                className={`btn-ghost !px-2 !py-1 text-xs ${u.is_active ? "!text-rose-600" : "!text-emerald-600"}`}
-                onClick={() => run(() => toggleUserActiveAction(u.id, !u.is_active))}
-              >
-                {u.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-        ))}
+              {r.label} ({r.count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/60">
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Member</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-10 text-center text-sm text-slate-400">
+                    No members match your filter.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((u) => (
+                  <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
+                          {initials(u.full_name)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-800 truncate">{u.full_name}</p>
+                          <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <select
+                        className="input !w-40 !py-1 text-xs"
+                        value={u.role_key}
+                        onChange={(e) => run(() => changeRoleAction(u.id, e.target.value))}
+                      >
+                        {roles.map((r) => (
+                          <option key={r.key} value={r.key}>{r.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`badge ${u.is_active ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                        {u.is_active ? "Active" : "Suspended"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          className="btn-ghost !px-2 !py-1 text-xs"
+                          title="Reset password"
+                          onClick={() => { setResetTarget(u); setNewPassword(""); }}
+                        >
+                          <Shield className="h-4 w-4" />
+                        </button>
+                        <button
+                          className={`btn-ghost !px-2 !py-1 text-xs ${u.is_active ? "!text-rose-600" : "!text-emerald-600"}`}
+                          onClick={() => run(() => toggleUserActiveAction(u.id, !u.is_active))}
+                        >
+                          {u.is_active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <Modal open={modal} onClose={() => setModal(false)} title="Add Team Member">
@@ -169,8 +249,4 @@ function initials(name: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
-}
-
-function suffix(n: number) {
-  return n === 1 ? "" : "s";
 }

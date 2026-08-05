@@ -132,3 +132,27 @@ export interface UserRow {
   is_active: boolean;
   created_at: string;
 }
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ProjectRow {
+  id: string;
+  client_id: string;
+  client_name: string;
+  name: string;
+  status: ProjectStatus;
+  brief: string | null;
+  deliverables: string | null;
+  deadline: string | null;
+  created_by: string | null;
+  created_at: string;
+  approved_at: string | null;
+  total_tasks: number;
+  completed_tasks: number;
+}

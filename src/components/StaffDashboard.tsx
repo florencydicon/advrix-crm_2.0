@@ -2,10 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, ArrowRight, Save } from "lucide-react";
+import { ArrowRight, Save, FileText } from "lucide-react";
 import { updateTaskStatusAction, updateTaskContentAction } from "@/lib/actions/projects";
 import type { Task } from "@/lib/types";
-import { StatusBadge, PriorityBadge, EmptyState } from "@/components/ui";
+import { StatusBadge, PriorityBadge } from "@/components/ui";
+
+const STATUS_FILTERS = [
+  { key: "", label: "All" },
+  { key: "pending", label: "Pending" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "review", label: "Review" },
+  { key: "completed", label: "Completed" },
+];
 
 function ContentEditor({ task, roleKey }: { task: Task; roleKey: string }) {
   const router = useRouter();
@@ -49,7 +57,7 @@ function ContentEditor({ task, roleKey }: { task: Task; roleKey: string }) {
   );
 }
 
-function StatusFlow({ task, roleKey }: { task: Task; roleKey: string }) {
+function StatusFlow({ task }: { task: Task }) {
   const router = useRouter();
   const [pending, start] = useTransition();
 
@@ -71,88 +79,137 @@ function StatusFlow({ task, roleKey }: { task: Task; roleKey: string }) {
 
   if (task.status === "completed") {
     return (
-      <div className="flex items-center gap-2">
-        <StatusBadge status={task.status} />
-        <span className="text-xs text-slate-400">
-          {task.completed_at ? new Date(task.completed_at).toLocaleDateString() : ""}
-        </span>
-      </div>
+      <span className="text-xs text-slate-400">
+        {task.completed_at ? new Date(task.completed_at).toLocaleDateString() : ""}
+      </span>
     );
   }
 
   const action = actions[task.status];
   return (
-    <div className="flex items-center gap-2">
-      <button className={action.cls} onClick={go} disabled={pending}>
-        {action.label}
-        <ArrowRight className="h-3.5 w-3.5" />
-      </button>
-    </div>
+    <button className={action.cls} onClick={go} disabled={pending}>
+      {action.label}
+      <ArrowRight className="h-3.5 w-3.5" />
+    </button>
   );
 }
 
 export default function StaffDashboard({ tasks, roleKey }: { tasks: Task[]; roleKey: string }) {
-  const grouped: Record<string, { project_name: string; client_name: string; tasks: Task[] }> = {};
-  for (const t of tasks) {
-    if (!grouped[t.project_id]) {
-      grouped[t.project_id] = { project_name: t.project_name, client_name: t.client_name, tasks: [] };
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const filtered = tasks.filter((t) => {
+    if (statusFilter && t.status !== statusFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return t.title.toLowerCase().includes(q) || t.project_name.toLowerCase().includes(q);
     }
-    grouped[t.project_id].tasks.push(t);
-  }
+    return true;
+  });
 
   const pendingCount = tasks.filter((t) => t.status !== "completed").length;
+  const counts = STATUS_FILTERS.map((f) => ({
+    ...f,
+    count: f.key === "" ? tasks.length : tasks.filter((t) => t.status === f.key).length,
+  }));
 
   if (tasks.length === 0) {
-    return <EmptyState title="No assignments yet" subtitle="New tasks will appear here automatically as projects move through the pipeline." />;
+    return (
+      <div className="card flex flex-col items-center justify-center p-10 text-center">
+        <p className="font-medium text-slate-700">No assignments yet</p>
+        <p className="text-sm text-slate-400 mt-1">New tasks will appear here automatically as projects move through the pipeline.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {pendingCount} open task{pendingCount === 1 ? "" : "s"} · {tasks.length} total
-        </p>
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="relative flex-1 w-full sm:max-w-xs">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tasks…"
+            className="input !py-1.5 text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          {counts.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                statusFilter === f.key
+                  ? "bg-brand-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {f.label}
+              <span className="ml-1 opacity-70">({f.count})</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {Object.values(grouped).map((g) => (
-        <div key={g.project_name} className="card overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 bg-slate-50/60">
-            <div className="h-9 w-9 rounded-lg bg-brand-600/10 flex items-center justify-center">
-              <FileText className="h-4 w-4 text-brand-700" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800">{g.project_name}</p>
-              <p className="text-xs text-slate-400">{g.client_name}</p>
-            </div>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {g.tasks.map((t) => (
-              <div key={t.id} className="px-5 py-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-800">{t.title}</p>
-                      <PriorityBadge priority={t.priority} />
-                      {t.role_label && (
-                        <span className="badge bg-slate-100 text-slate-500">{t.role_label}</span>
-                      )}
-                    </div>
-                    {t.description && (
-                      <p className="text-sm text-slate-500 mt-1 line-clamp-2">{t.description}</p>
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/60">
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Task</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Project</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-400">
+                    No tasks match your filter.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((t) => (
+                  <>
+                    <tr key={t.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-slate-400 shrink-0" />
+                          <span className="font-medium text-slate-800">{t.title}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-xs text-slate-500">
+                        <p>{t.project_name}</p>
+                        <p className="text-slate-400">{t.client_name}</p>
+                      </td>
+                      <td className="px-5 py-3">
+                        {t.role_label && <span className="badge bg-slate-100 text-slate-500">{t.role_label}</span>}
+                      </td>
+                      <td className="px-5 py-3"><PriorityBadge priority={t.priority} /></td>
+                      <td className="px-5 py-3"><StatusBadge status={t.status} /></td>
+                      <td className="px-5 py-3 text-right">
+                        <StatusFlow task={t} />
+                      </td>
+                    </tr>
+                    {expandedId === t.id && (
+                      <tr key={`${t.id}-expanded`}>
+                        <td colSpan={6} className="px-5 py-3 bg-slate-50/30">
+                          <ContentEditor task={t} roleKey={roleKey} />
+                        </td>
+                      </tr>
                     )}
-                    {t.due_date && (
-                      <p className="text-xs text-slate-400 mt-1">Due {new Date(t.due_date).toLocaleDateString()}</p>
-                    )}
-                  </div>
-                  <StatusFlow task={t} roleKey={roleKey} />
-                </div>
-                <ContentEditor task={t} roleKey={roleKey} />
-              </div>
-            ))}
-          </div>
+                  </>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      ))}
+      </div>
     </div>
   );
 }
