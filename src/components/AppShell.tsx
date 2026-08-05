@@ -11,7 +11,6 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronLeft,
   Clock,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
@@ -53,7 +52,6 @@ export default function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
 
   const items = NAV.filter((n) => !n.roles || n.roles.includes(session.role_key));
   const initials = session.name
@@ -68,23 +66,19 @@ export default function AppShell({
     router.push("/login");
   }
 
-  const sidebarWidth = collapsed ? "w-16" : "w-64";
-
   const sidebar = (
     <div className="flex h-full flex-col bg-ink text-slate-300">
-      <div className={`flex items-center gap-3 px-4 py-5 ${collapsed ? "justify-center" : ""}`}>
-        <div className="h-9 w-9 rounded-lg bg-brand-600 flex items-center justify-center text-white font-black shrink-0">
+      <div className="flex items-center gap-3 px-5 py-5">
+        <div className="h-9 w-9 rounded-lg bg-brand-600 flex items-center justify-center text-white font-black">
           A
         </div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-white leading-none">Advrix CRM</p>
-            <p className="text-[11px] text-slate-400 mt-1">Creative Workflow</p>
-          </div>
-        )}
+        <div>
+          <p className="text-sm font-bold text-white leading-none">Advrix CRM</p>
+          <p className="text-[11px] text-slate-400 mt-1">Creative Workflow</p>
+        </div>
       </div>
 
-      <nav className="flex-1 px-2 space-y-1">
+      <nav className="flex-1 px-3 space-y-1">
         {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
@@ -94,44 +88,29 @@ export default function AppShell({
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                collapsed ? "justify-center" : ""
-              } ${active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5 hover:text-white"}`}
-              title={collapsed ? item.label : undefined}
+                active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5 hover:text-white"
+              }`}
             >
-              <Icon className="h-[18px] w-[18px] shrink-0" />
-              {!collapsed && item.label}
+              <Icon className="h-[18px] w-[18px]" />
+              {item.label}
             </Link>
           );
         })}
       </nav>
 
-      <div className="border-t border-white/10 p-3 space-y-2">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="hidden lg:flex items-center justify-center w-full p-2 rounded-lg text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          <ChevronLeft className={`h-4 w-4 transition-transform ${collapsed ? "rotate-180" : ""}`} />
-        </button>
-
-        <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
-          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${ROLE_STYLES[session.role_key] || "bg-slate-500"}`}>
+      <div className="border-t border-white/10 p-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold text-white ${ROLE_STYLES[session.role_key] || "bg-slate-500"}`}>
             {initials}
           </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{session.name}</p>
-              <p className="text-[11px] text-slate-400 truncate">{session.role_label}</p>
-            </div>
-          )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{session.name}</p>
+            <p className="text-[11px] text-slate-400 truncate">{session.role_label}</p>
+          </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className={`btn-ghost w-full !text-slate-300 hover:!bg-white/10 hover:!text-white ${collapsed ? "!justify-center !px-0" : "justify-start"}`}
-          title="Sign out"
-        >
+        <button onClick={handleLogout} className="btn-ghost w-full justify-start !text-slate-300 hover:!bg-white/10 hover:!text-white">
           <LogOut className="h-[18px] w-[18px]" />
-          {!collapsed && "Sign out"}
+          Sign out
         </button>
       </div>
     </div>
@@ -139,7 +118,7 @@ export default function AppShell({
 
   return (
     <div className="min-h-screen flex">
-      <aside className={`hidden lg:block ${sidebarWidth} fixed inset-y-0 left-0 z-30 transition-all duration-200`}>{sidebar}</aside>
+      <aside className="hidden lg:block w-64 fixed inset-y-0 left-0 z-30">{sidebar}</aside>
 
       <div className={`fixed inset-0 z-40 bg-black/50 lg:hidden transition-opacity ${mobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setMobileOpen(false)} />
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 lg:hidden transform transition-transform ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
@@ -149,7 +128,7 @@ export default function AppShell({
         </button>
       </aside>
 
-      <div className={`flex-1 lg:pl-${collapsed ? "16" : "64"} transition-all duration-200`}>
+      <div className="flex-1 lg:pl-64">
         <header className="sticky top-0 z-20 flex items-center justify-between bg-white/80 backdrop-blur border-b border-slate-200 px-4 sm:px-6 py-3">
           <div className="flex items-center gap-3">
             <button className="lg:hidden p-2 rounded-lg hover:bg-slate-100" onClick={() => setMobileOpen(true)}>

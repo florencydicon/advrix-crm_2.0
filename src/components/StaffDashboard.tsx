@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Save, FileText } from "lucide-react";
 import { updateTaskStatusAction, updateTaskContentAction } from "@/lib/actions/projects";
@@ -108,7 +108,6 @@ export default function StaffDashboard({ tasks, roleKey }: { tasks: Task[]; role
     return true;
   });
 
-  const pendingCount = tasks.filter((t) => t.status !== "completed").length;
   const counts = STATUS_FILTERS.map((f) => ({
     ...f,
     count: f.key === "" ? tasks.length : tasks.filter((t) => t.status === f.key).length,
@@ -175,8 +174,8 @@ export default function StaffDashboard({ tasks, roleKey }: { tasks: Task[]; role
                 </tr>
               ) : (
                 filtered.map((t) => (
-                  <>
-                    <tr key={t.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
+                  <Fragment key={t.id}>
+                    <tr className="hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)}>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-slate-400 shrink-0" />
@@ -197,13 +196,13 @@ export default function StaffDashboard({ tasks, roleKey }: { tasks: Task[]; role
                       </td>
                     </tr>
                     {expandedId === t.id && (
-                      <tr key={`${t.id}-expanded`}>
-                        <td colSpan={6} className="px-5 py-3 bg-slate-50/30">
+                      <tr className="bg-slate-50/30">
+                        <td colSpan={6} className="px-5 py-3">
                           <ContentEditor task={t} roleKey={roleKey} />
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </tbody>
