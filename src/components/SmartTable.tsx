@@ -78,7 +78,7 @@ export default function SmartTable<T>({
   );
 
   const handleFilter = (key: string) => {
-    navigate({ filterParam: key === activeFilter ? null : key });
+    navigate({ [filterParam]: key === activeFilter ? null : key });
   };
 
   const handleSearch = () => {
