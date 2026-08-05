@@ -9,7 +9,10 @@ import { dirname, join } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
 
-// Load .env.local (Node 20.12+)
+// Load .env.local (Node 20.12+). NOTE: process.loadEnvFile does NOT override
+// existing env vars, so the stale user-scope DATABASE_URL would shadow the
+// project one. Delete it first to guarantee we target the live database.
+delete process.env.DATABASE_URL;
 try {
   process.loadEnvFile(join(rootDir, ".env.local"));
 } catch (e) {
@@ -22,6 +25,8 @@ if (!connectionString) {
   console.error("DATABASE_URL not set in .env.local.");
   process.exit(1);
 }
+
+console.log("Target database host:", connectionString.split("@")[1]?.split("/")[0] || "unknown");
 
 const sql = neon(connectionString);
 
