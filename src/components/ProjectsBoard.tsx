@@ -158,7 +158,12 @@ export default function ProjectsBoard({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-bold tracking-tight">Project Pipeline</h1>
+        <p className="text-sm text-slate-500">From brief to delivery — approve, allocate, and track.</p>
+      </div>
+
       {expandedId && (() => {
         const p = projects.find((pr) => pr.id === expandedId);
         if (!p) return null;

@@ -216,3 +216,16 @@ export interface LeaveBalance {
   unpaid: number;
   emergency: number;
 }
+
+export type NotificationType = "task" | "project" | "leave" | "attendance" | "system";
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  link: string | null;
+  read: boolean;
+  created_at: string;
+}

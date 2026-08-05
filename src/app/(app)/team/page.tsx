@@ -3,7 +3,7 @@ import { getSession } from "@/lib/session";
 import { getTeamPaginated, getRoles } from "@/lib/data";
 import TeamView from "@/components/TeamView";
 
-export const metadata = { title: "Team — Advrix CRM" };
+export const metadata = { title: "Team — Advrix Media" };
 
 export default async function TeamPage({
   searchParams,
@@ -30,17 +30,24 @@ export default async function TeamPage({
   ];
 
   return (
-    <TeamView
-      users={result.items}
-      roles={roles}
-      page={result.page}
-      pageSize={result.pageSize}
-      total={result.total}
-      totalPages={result.totalPages}
-      search={search}
-      roleFilter={role}
-      filterTabs={filterTabs}
-      basePath="/team"
-    />
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-bold tracking-tight">Team</h1>
+        <p className="text-sm text-slate-500">Manage members, roles, and access.</p>
+      </div>
+
+      <TeamView
+        users={result.items}
+        roles={roles}
+        page={result.page}
+        pageSize={result.pageSize}
+        total={result.total}
+        totalPages={result.totalPages}
+        search={search}
+        roleFilter={role}
+        filterTabs={filterTabs}
+        basePath="/team"
+      />
+    </div>
   );
 }

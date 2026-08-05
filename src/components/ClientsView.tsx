@@ -220,20 +220,22 @@ export default function ClientsView({
   ];
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {canCreate && (
-            <div className="flex gap-1.5">
-              <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={() => setBriefModal(true)}>
-                <FilePlus2 className="h-3.5 w-3.5" /> New Brief
-              </button>
-              <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => setClientModal(true)}>
-                <Plus className="h-3.5 w-3.5" /> New Client
-              </button>
-            </div>
-          )}
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Clients</h1>
+          <p className="text-sm text-slate-500">Accounts and briefs flowing through the agency.</p>
         </div>
+        {canCreate && (
+          <div className="flex gap-1.5">
+            <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={() => setBriefModal(true)}>
+              <FilePlus2 className="h-3.5 w-3.5" /> New Brief
+            </button>
+            <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => setClientModal(true)}>
+              <Plus className="h-3.5 w-3.5" /> New Client
+            </button>
+          </div>
+        )}
       </div>
 
       {clients.length === 0 ? (

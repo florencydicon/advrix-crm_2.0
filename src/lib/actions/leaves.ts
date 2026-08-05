@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
+import { createNotification, notifyRoles } from "@/lib/notifications";
 import type { LeaveType } from "@/lib/types";
 
 export async function applyLeaveAction(formData: FormData) {
@@ -33,6 +34,13 @@ export async function applyLeaveAction(formData: FormData) {
     [session.sub, leaveType, startDate, endDate, days, reason.trim()]
   );
 
+  await notifyRoles(["SUPER_ADMIN"], {
+    type: "leave",
+    title: "New leave request",
+    body: `${session.name} requested ${days} day(s) of ${leaveType} leave from ${startDate} to ${endDate}.`,
+    link: "/attendance",
+  });
+
   revalidatePath("/attendance");
   revalidatePath("/leaves");
   return { ok: true };
@@ -43,10 +51,25 @@ export async function approveLeaveAction(leaveId: string) {
   if (!session) return { error: "Not authenticated" };
   if (session.role_key !== "SUPER_ADMIN") return { error: "Only Super Admin can approve leaves" };
 
+  const leave = await query<{ user_id: string; leave_type: string; start_date: string; end_date: string }>(
+    `SELECT user_id, leave_type, start_date, end_date FROM leaves WHERE id = $1`,
+    [leaveId]
+  );
+
   await query(
     `UPDATE leaves SET status = 'approved', approved_by = $1, approved_at = now() WHERE id = $2`,
     [session.sub, leaveId]
   );
+
+  if (leave[0]) {
+    await createNotification({
+      userId: leave[0].user_id,
+      type: "leave",
+      title: "Leave approved",
+      body: `Your ${leave[0].leave_type} leave (${leave[0].start_date} to ${leave[0].end_date}) was approved.`,
+      link: "/attendance",
+    });
+  }
 
   revalidatePath("/attendance");
   revalidatePath("/leaves");
@@ -62,10 +85,25 @@ export async function rejectLeaveAction(leaveId: string, rejectionReason: string
     return { error: "Please provide a reason for rejection" };
   }
 
+  const leave = await query<{ user_id: string; leave_type: string; start_date: string; end_date: string }>(
+    `SELECT user_id, leave_type, start_date, end_date FROM leaves WHERE id = $1`,
+    [leaveId]
+  );
+
   await query(
     `UPDATE leaves SET status = 'rejected', approved_by = $1, approved_at = now(), rejection_reason = $2 WHERE id = $3`,
     [session.sub, rejectionReason.trim(), leaveId]
   );
+
+  if (leave[0]) {
+    await createNotification({
+      userId: leave[0].user_id,
+      type: "leave",
+      title: "Leave rejected",
+      body: `Your ${leave[0].leave_type} leave (${leave[0].start_date} to ${leave[0].end_date}) was rejected.`,
+      link: "/attendance",
+    });
+  }
 
   revalidatePath("/attendance");
   revalidatePath("/leaves");

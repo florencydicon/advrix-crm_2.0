@@ -172,6 +172,20 @@ CREATE INDEX IF NOT EXISTS idx_leaves_user ON leaves(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_leaves_status ON leaves(status);
 CREATE INDEX IF NOT EXISTS idx_leaves_dates ON leaves(start_date, end_date);
 
+-- ---------- Notifications ----------
+CREATE TABLE IF NOT EXISTS notifications (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type          TEXT NOT NULL DEFAULT 'system', -- task | project | leave | attendance | system
+  title         TEXT NOT NULL,
+  body          TEXT NOT NULL DEFAULT '',
+  link          TEXT,
+  read          BOOLEAN NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
+
 -- ---------- Scalability indexes ----------
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id);

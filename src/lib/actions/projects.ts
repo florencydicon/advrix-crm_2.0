@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { runWorkflow, generateDeliverableTasks, handleDeliverableTaskCompleted, allocateProjectTeam } from "@/lib/workflow";
+import { createNotification, getProjectCreatorId, notifyRoles } from "@/lib/notifications";
 import {
   validateEmail,
   validatePhone,
@@ -130,6 +131,12 @@ export async function createProjectAction(formData: FormData) {
 
   revalidatePath("/projects");
   revalidatePath("/clients");
+  await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
+    type: "project",
+    title: "New project awaiting approval",
+    body: `${name} submitted by ${session.name}.`,
+    link: "/projects",
+  });
   return { ok: true, id: project[0].id };
 }
 
@@ -139,8 +146,8 @@ export async function approveProjectAction(projectId: string) {
     return { error: "Not authorized." };
   }
 
-  const project = await query<{ id: string }>(
-    `SELECT id FROM projects WHERE id = $1 AND status = 'pending_approval'`,
+  const project = await query<{ id: string; name: string }>(
+    `SELECT id, name FROM projects WHERE id = $1 AND status = 'pending_approval'`,
     [projectId]
   );
   if (!project[0]) return { error: "Project not found or already processed." };
@@ -155,6 +162,17 @@ export async function approveProjectAction(projectId: string) {
   await generateDeliverableTasks(projectId);
   await runWorkflow(projectId);
 
+  const creatorId = await getProjectCreatorId(projectId);
+  if (creatorId) {
+    await createNotification({
+      userId: creatorId,
+      type: "project",
+      title: "Project approved",
+      body: `"${project[0].name}" was approved and is now in production.`,
+      link: "/projects",
+    });
+  }
+
   revalidatePath("/projects");
   revalidatePath("/app");
   return { ok: true };
@@ -166,7 +184,21 @@ export async function rejectProjectAction(projectId: string) {
     return { error: "Not authorized." };
   }
 
+  const project = await query<{ id: string; name: string; created_by: string | null }>(
+    `SELECT id, name, created_by FROM projects WHERE id = $1`,
+    [projectId]
+  );
   await query(`UPDATE projects SET status = 'rejected' WHERE id = $1`, [projectId]);
+
+  if (project[0]?.created_by) {
+    await createNotification({
+      userId: project[0].created_by,
+      type: "project",
+      title: "Project rejected",
+      body: `"${project[0]?.name ?? "Project"}" was rejected. Contact your manager for details.`,
+      link: "/projects",
+    });
+  }
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -239,6 +271,15 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
     await runWorkflow(task.project_id);
   }
 
+  if (status === "review" || status === "completed") {
+    await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
+      type: "task",
+      title: status === "completed" ? "Task completed" : "Task ready for review",
+      body: `${session.name} moved a task to ${status}.`,
+      link: "/projects",
+    });
+  }
+
   revalidatePath("/app");
   revalidatePath("/projects");
   return { ok: true };
@@ -250,6 +291,18 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
     return { error: "Not authorized." };
   }
   await query(`UPDATE tasks SET assigned_to = $2 WHERE id = $1`, [taskId, assigneeId || null]);
+
+  if (assigneeId && assigneeId !== session.sub) {
+    const task = await query<{ title: string }>(`SELECT title FROM tasks WHERE id = $1`, [taskId]);
+    await createNotification({
+      userId: assigneeId,
+      type: "task",
+      title: "New task assigned to you",
+      body: task[0]?.title ?? "A new task was assigned to you.",
+      link: "/projects",
+    });
+  }
+
   revalidatePath("/app");
   revalidatePath("/projects");
   return { ok: true };
@@ -266,6 +319,20 @@ export async function assignProjectTeamAction(
 
   const clean = allocations.filter((a) => a.role_key && a.user_id);
   await allocateProjectTeam(projectId, clean);
+
+  const project = await query<{ name: string }>(`SELECT name FROM projects WHERE id = $1`, [projectId]);
+  const projectName = project[0]?.name ?? "Project";
+  for (const a of clean) {
+    if (a.user_id && a.user_id !== session.sub) {
+      await createNotification({
+        userId: a.user_id,
+        type: "project",
+        title: "You're on a new project team",
+        body: `You've been assigned to "${projectName}".`,
+        link: "/projects",
+      });
+    }
+  }
 
   revalidatePath("/projects");
   revalidatePath("/app");
