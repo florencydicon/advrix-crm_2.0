@@ -214,20 +214,22 @@ export async function updateTaskContentAction(taskId: string, content: string) {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
 
-  const text = String(content || "").trim();
-  if (text.length < 20) return { error: "Content must be at least 20 characters." };
-  if (text.length > 5000) return { error: "Content is too long (max 5000 characters)." };
-  const placeholderErr = validateText(text, "Content", 20, 5000);
-  if (placeholderErr) return { error: placeholderErr };
-
-  const task = await query<{ assigned_to: string | null }>(
-    `SELECT assigned_to FROM tasks WHERE id = $1`,
+  const task = await query<{ assigned_to: string | null; role_key: string; title: string }>(
+    `SELECT assigned_to, role_key, title FROM tasks WHERE id = $1`,
     [taskId]
   );
   if (!task[0]) return { error: "Task not found." };
   if (task[0].assigned_to !== session.sub && !CAN_MANAGE.includes(session.role_key)) {
     return { error: "Not authorized." };
   }
+
+  const isWriter = task[0].role_key === "WRITER";
+  const minLen = isWriter ? 20 : 5;
+  const text = String(content || "").trim();
+  if (text.length < minLen) return { error: `Content must be at least ${minLen} characters.` };
+  if (text.length > 5000) return { error: "Content is too long (max 5000 characters)." };
+  const placeholderErr = validateText(text, "Content", minLen, 5000);
+  if (placeholderErr) return { error: placeholderErr };
 
   await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
   revalidatePath("/app");
@@ -353,14 +355,20 @@ export async function submitTaskAction(taskId: string) {
     return { error: "Task is not in an editable state." };
   }
 
-  // Content tasks must have a draft saved before submitting.
-  if (task.role_key === "WRITER" && task.deliverable_id) {
+  // Producers must have entered their work before submitting.
+  if (["WRITER", "DESIGNER", "EDITOR"].includes(task.role_key)) {
+    const minLen = task.role_key === "WRITER" ? 20 : 5;
     const hasContent = await query<{ has: string }>(
-      `SELECT (content IS NOT NULL AND length(trim(content)) >= 20)::text AS has FROM tasks WHERE id = $1`,
-      [taskId]
+      `SELECT (content IS NOT NULL AND length(trim(content)) >= $2)::text AS has FROM tasks WHERE id = $1`,
+      [taskId, minLen]
     );
     if (hasContent[0]?.has !== "true") {
-      return { error: "Save the written copy (at least 20 characters) before submitting for review." };
+      return {
+        error:
+          task.role_key === "WRITER"
+            ? "Enter the written copy (at least 20 characters) before submitting for review."
+            : "Add the asset link / work notes (at least 5 characters) before submitting for review.",
+      };
     }
   }
 

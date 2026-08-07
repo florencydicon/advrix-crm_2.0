@@ -1,24 +1,11 @@
 "use client";
 
 import { useState, useMemo, Fragment } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, PlayCircle, Clock, CheckCircle2 } from "lucide-react";
 import type { Task } from "@/lib/types";
 import { StatusBadge, PriorityBadge, PlatformBadges } from "@/components/ui";
 import { ContentEditor, TaskActions } from "@/components/TaskWorkflow";
 import type { Column } from "@/components/SmartTable";
-
-const STATUS_FILTERS = [
-  { key: "", label: "All" },
-  { key: "pending", label: "Pending" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "submitted", label: "Awaiting Review" },
-  { key: "needs_improvement", label: "Needs Work" },
-  { key: "client_review", label: "Client Review" },
-  { key: "client_feedback", label: "Client Feedback" },
-  { key: "client_approved", label: "Approved" },
-  { key: "uploading", label: "Uploading" },
-  { key: "completed", label: "Completed" },
-];
 
 interface GroupedClient {
   client_name: string;
@@ -27,21 +14,28 @@ interface GroupedClient {
 }
 
 export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task[]; roleKey: string; userId: string }) {
-  const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [openClient, setOpenClient] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
+  const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading"];
+
+  const metrics = [
+    { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-600 bg-brand-50" },
+    { label: "Pending", value: tasks.filter((t) => t.status === "pending").length, Icon: Clock, cls: "text-amber-600 bg-amber-50" },
+    { label: "Done", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-600 bg-emerald-50" },
+  ];
+
   const filtered = useMemo(() => {
-    return tasks.filter((t) => {
-      if (statusFilter && t.status !== statusFilter) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return t.title.toLowerCase().includes(q) || t.project_name.toLowerCase().includes(q) || t.client_name.toLowerCase().includes(q);
-      }
-      return true;
-    });
-  }, [tasks, statusFilter, search]);
+    if (!search) return tasks;
+    const q = search.toLowerCase();
+    return tasks.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.project_name.toLowerCase().includes(q) ||
+        t.client_name.toLowerCase().includes(q)
+    );
+  }, [tasks, search]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, GroupedClient>();
@@ -64,11 +58,6 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
     }
     return [...map.values()];
   }, [filtered]);
-
-  const counts = STATUS_FILTERS.map((f) => ({
-    ...f,
-    count: f.key === "" ? tasks.length : tasks.filter((t) => t.status === f.key).length,
-  }));
 
   const columns: Column<Task>[] = [
     {
@@ -108,7 +97,14 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
     {
       key: "action",
       label: "",
-      render: (t) => <TaskActions task={t} roleKey={roleKey} userId={userId} />,
+      render: (t) => (
+        <TaskActions
+          task={t}
+          roleKey={roleKey}
+          userId={userId}
+          onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)}
+        />
+      ),
     },
   ];
 
@@ -123,28 +119,27 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+      <div className="grid grid-cols-3 gap-3">
+        {metrics.map((m) => (
+          <div key={m.label} className={`card flex items-center gap-3 px-4 py-3 ${m.cls}`}>
+            <m.Icon className="h-5 w-5" />
+            <div>
+              <p className="text-2xl font-bold leading-none">{m.value}</p>
+              <p className="text-[11px] font-medium mt-1 opacity-80">{m.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2">
         <div className="relative flex-1 w-full sm:max-w-xs">
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, projects, clients…" className="input !py-1.5 text-xs" />
-        </div>
-        <div className="flex items-center gap-1 flex-wrap">
-          {counts.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key === statusFilter ? "" : f.key)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
-                statusFilter === f.key ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {f.label} <span className="opacity-70">({f.count})</span>
-            </button>
-          ))}
         </div>
       </div>
 
       <div className="space-y-3">
         {grouped.length === 0 && (
-          <div className="card py-8 text-center text-xs text-slate-400">No tasks match your filter.</div>
+          <div className="card py-8 text-center text-xs text-slate-400">No tasks match your search.</div>
         )}
         {grouped.map((client) => {
           const isOpen = openClient === client.client_name;
@@ -197,7 +192,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                             {openTaskId === t.id && (
                               <tr className="bg-slate-50/30">
                                 <td colSpan={columns.length} className="px-4 py-2">
-                                  <ContentEditor task={t} roleKey={roleKey} />
+                                  <ContentEditor task={t} roleKey={roleKey} userId={userId} />
                                   {t.review_comment && (
                                     <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/60 p-2 text-xs">
                                       <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Review note</p>

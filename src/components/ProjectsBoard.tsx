@@ -230,7 +230,12 @@ export default function ProjectsBoard({
                                         <td className="px-3 py-2"><StatusBadge status={t.status} /></td>
                                         <td className="px-3 py-2"><PlatformBadges platforms={t.platforms} /></td>
                                         <td className="px-3 py-2">
-                                          <TaskActions task={t} roleKey={roleKey} userId={userId} />
+                                          <TaskActions
+                                            task={t}
+                                            roleKey={roleKey}
+                                            userId={userId}
+                                            onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)}
+                                          />
                                         </td>
                                       </tr>
                                     ))}
@@ -245,7 +250,7 @@ export default function ProjectsBoard({
                               return (
                                 <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
                                   <p className="text-xs font-semibold text-slate-700">{task.title}</p>
-                                  <ContentEditor task={task} roleKey={roleKey} />
+                                  <ContentEditor task={task} roleKey={roleKey} userId={userId} />
                                   {task.status === "submitted" && canManage && <ReviewPanel task={task} />}
                                   {task.review_comment && (
                                     <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-2 text-xs">

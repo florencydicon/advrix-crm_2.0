@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Save, CheckCircle2, Undo2, Upload, Users, MessageSquare } from "lucide-react";
+import { ArrowRight, Save, CheckCircle2, Undo2, Upload, Users, MessageSquare, PenLine } from "lucide-react";
 import {
   startTaskAction,
   submitTaskAction,
@@ -16,19 +16,32 @@ import {
 import type { Task } from "@/lib/types";
 import { PLATFORMS } from "@/components/ui";
 
-export function ContentEditor({ task, roleKey }: { task: Task; roleKey: string }) {
+const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
+
+/**
+ * Content input for the assignee. Shown once a task is in an editable state
+ * (in_progress / needs_improvement / client_feedback). The "Submit for Review"
+ * button stays disabled until enough work has been entered.
+ */
+export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: string; userId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [draft, setDraft] = useState(task.content || "");
   const [saved, setSaved] = useState(false);
 
-  const isWriter = roleKey === "WRITER" || roleKey === "SUPER_ADMIN";
-  const canEdit =
-    task.role_key === "WRITER" &&
-    task.deliverable_id &&
-    ["in_progress", "needs_improvement"].includes(task.status);
+  const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR";
+  const canManage = roleKey === "SUPER_ADMIN" || roleKey === "PROJECT_MANAGER";
+  const isAssignee = task.assigned_to === userId;
+  const editable =
+    isProducer &&
+    (isAssignee || canManage) &&
+    EDITABLE_STATUSES.includes(task.status);
 
-  if (!isWriter || !canEdit) return null;
+  if (!editable) return null;
+
+  const isWriter = task.role_key === "WRITER";
+  const minLen = isWriter ? 20 : 5;
+  const ready = draft.trim().length >= minLen;
 
   function save() {
     start(async () => {
@@ -38,16 +51,47 @@ export function ContentEditor({ task, roleKey }: { task: Task; roleKey: string }
     });
   }
 
+  function submit() {
+    start(async () => {
+      const res = await submitTaskAction(task.id);
+      if (res.error) alert(res.error);
+      router.refresh();
+    });
+  }
+
   return (
-    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
-      <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Copy & Script Draft</p>
+    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+          {isWriter ? "Copy & Script Draft" : "Work / Asset Notes"}
+        </p>
         {saved && <span className="text-[10px] text-emerald-600">Saved</span>}
       </div>
-      <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="input text-xs" placeholder="Draft the captions, copy and script…" />
-      <button className="btn-secondary !py-1 text-[11px] mt-1.5" onClick={save} disabled={pending}>
-        <Save className="h-3 w-3" /> {pending ? "Saving…" : "Save draft"}
-      </button>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={3}
+        className="input text-xs"
+        placeholder={isWriter ? "Draft the captions, copy and script…" : "Paste the asset link / describe the delivered work…"}
+      />
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending}>
+          <Save className="h-3 w-3" /> {pending ? "Saving…" : "Save draft"}
+        </button>
+        <button
+          className="btn-primary !py-1 text-[11px]"
+          onClick={submit}
+          disabled={pending || !ready}
+          title={ready ? undefined : `Add at least ${minLen} characters before submitting.`}
+        >
+          <ArrowRight className="h-3 w-3" /> Submit for Review
+        </button>
+      </div>
+      {!ready && (
+        <p className="text-[10px] text-slate-400">
+          Add at least {minLen} characters of work, then you can submit for review.
+        </p>
+      )}
     </div>
   );
 }
@@ -159,19 +203,37 @@ export function PublishPanel({ task }: { task: Task }) {
   );
 }
 
-/** Role/status-aware action buttons for a task. */
-export function TaskActions({ task, roleKey, userId }: { task: Task; roleKey: string; userId: string }) {
+/**
+ * Role/status-aware action buttons for a task.
+ * - Assignee on a pending task: "Start" → opens the content editor inline.
+ * - Assignee on an editable task: "Draft & Submit" → opens the content editor inline.
+ * - Reviewer on a submitted task: ReviewPanel.
+ * - SMM: client review / upload / publish panels.
+ */
+export function TaskActions({
+  task,
+  roleKey,
+  userId,
+  onExpand,
+}: {
+  task: Task;
+  roleKey: string;
+  userId: string;
+  onExpand?: (taskId: string) => void;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
 
   const isReviewer = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const isSmm = roleKey === "SMM";
   const isAssignee = task.assigned_to === userId;
+  const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR";
 
-  function run(fn: () => Promise<{ ok?: boolean; error?: string }>) {
+  function run(fn: () => Promise<{ ok?: boolean; error?: string }>, expand = false) {
     start(async () => {
       const res = await fn();
       if (res.error) alert(res.error);
+      else if (expand) onExpand?.(task.id);
       router.refresh();
     });
   }
@@ -198,18 +260,18 @@ export function TaskActions({ task, roleKey, userId }: { task: Task; roleKey: st
     }
   }
 
-  // Assignee actions.
-  if (isAssignee && task.status === "pending") {
+  // Assignee: start or continue work — opens the content editor inline.
+  if (isAssignee && isProducer && (task.status === "pending" || EDITABLE_STATUSES.includes(task.status))) {
+    if (task.status === "pending") {
+      return (
+        <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => startTaskAction(task.id), true)} disabled={pending}>
+          Start <ArrowRight className="h-3 w-3" />
+        </button>
+      );
+    }
     return (
-      <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => startTaskAction(task.id))} disabled={pending}>
-        Start <ArrowRight className="h-3 w-3" />
-      </button>
-    );
-  }
-  if (isAssignee && ["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) {
-    return (
-      <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => run(() => submitTaskAction(task.id))} disabled={pending}>
-        <ArrowRight className="h-3 w-3" /> Submit for Review
+      <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => onExpand?.(task.id)} disabled={pending}>
+        <PenLine className="h-3 w-3" /> Draft & Submit
       </button>
     );
   }
