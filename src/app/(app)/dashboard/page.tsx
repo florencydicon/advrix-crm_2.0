@@ -35,7 +35,7 @@ export default async function DashboardPage() {
               : "All clear — no open tasks assigned to you."}
           </p>
         </div>
-        <StaffDashboard tasks={tasks} roleKey={session.role_key} />
+        <StaffDashboard tasks={tasks} roleKey={session.role_key} userId={session.sub} />
       </div>
     );
   }

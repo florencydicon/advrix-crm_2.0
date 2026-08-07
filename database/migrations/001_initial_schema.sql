@@ -109,10 +109,17 @@ CREATE TABLE IF NOT EXISTS tasks (
   title         TEXT NOT NULL,
   description   TEXT,
   content       TEXT,
-  status        TEXT NOT NULL DEFAULT 'pending', -- pending | in_progress | review | completed
+  status        TEXT NOT NULL DEFAULT 'pending',
+  -- Status: pending | in_progress | submitted | needs_improvement | client_review
+  --         | client_feedback | client_approved | uploading | completed
   priority      TEXT NOT NULL DEFAULT 'medium',
   assigned_to   UUID REFERENCES users(id) ON DELETE SET NULL,
   created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+  review_comment  TEXT,
+  client_feedback TEXT,
+  platforms     TEXT[] NOT NULL DEFAULT '{}',
+  reviewed_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at   TIMESTAMPTZ,
   due_date      DATE,
   completed_at  TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()

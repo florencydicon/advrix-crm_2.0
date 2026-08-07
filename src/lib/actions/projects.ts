@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { runWorkflow, generateDeliverableTasks, handleDeliverableTaskCompleted, allocateProjectTeam } from "@/lib/workflow";
+import {
+  runWorkflow,
+  generateDeliverableTasks,
+  handleDeliverableTaskCompleted,
+  allocateProjectTeam,
+  handoffVisualTaskToSmm,
+  routeVisualTaskToProducer,
+} from "@/lib/workflow";
 import { createNotification, getProjectCreatorId, notifyRoles } from "@/lib/notifications";
 import {
   validateEmail,
@@ -232,7 +239,7 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
 
-  const allowed = ["pending", "in_progress", "review", "completed"];
+  const allowed = ["pending", "in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading", "completed"];
   if (!allowed.includes(status)) return { error: "Invalid status." };
 
   const taskRows = await query<{ project_id: string; deliverable_id: string | null; content: string | null; status: string }>(
@@ -271,11 +278,298 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
     await runWorkflow(task.project_id);
   }
 
-  if (status === "review" || status === "completed") {
+  if (status === "submitted" || status === "completed") {
     await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
       type: "task",
       title: status === "completed" ? "Task completed" : "Task ready for review",
-      body: `${session.name} moved a task to ${status}.`,
+      body: `${session.name} submitted a task for review.`,
+      link: "/projects",
+    });
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+// ---------- Multi-stage review / approval workflow ----------
+
+interface TaskWorkflowRow {
+  id: string;
+  project_id: string;
+  role_key: string;
+  sequence: number;
+  deliverable_id: string | null;
+  title: string;
+  status: string;
+  assigned_to: string | null;
+  content: string | null;
+}
+
+const CAN_REVIEW = ["PROJECT_MANAGER", "SUPER_ADMIN"];
+
+async function getTaskWorkflowRow(taskId: string): Promise<TaskWorkflowRow | null> {
+  const rows = await query<TaskWorkflowRow>(
+    `SELECT id, project_id, role_key, sequence, deliverable_id, title, status, assigned_to, content
+     FROM tasks WHERE id = $1`,
+    [taskId]
+  );
+  return rows[0] || null;
+}
+
+function isVisualTask(t: TaskWorkflowRow) {
+  return t.sequence === 2 && (t.role_key === "DESIGNER" || t.role_key === "EDITOR");
+}
+
+/** Assignee starts work: pending -> in_progress */
+export async function startTaskAction(taskId: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authorized." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (task.assigned_to !== session.sub && !CAN_REVIEW.includes(session.role_key)) {
+    return { error: "Only the assignee can start this task." };
+  }
+  if (task.status !== "pending") return { error: "Task has already started." };
+
+  await query(`UPDATE tasks SET status = 'in_progress' WHERE id = $1`, [taskId]);
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** Assignee submits work for review: in_progress -> submitted */
+export async function submitTaskAction(taskId: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authorized." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (task.assigned_to !== session.sub && !CAN_REVIEW.includes(session.role_key)) {
+    return { error: "Only the assignee can submit this task." };
+  }
+  if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) {
+    return { error: "Task is not in an editable state." };
+  }
+
+  // Content tasks must have a draft saved before submitting.
+  if (task.role_key === "WRITER" && task.deliverable_id) {
+    const hasContent = await query<{ has: string }>(
+      `SELECT (content IS NOT NULL AND length(trim(content)) >= 20)::text AS has FROM tasks WHERE id = $1`,
+      [taskId]
+    );
+    if (hasContent[0]?.has !== "true") {
+      return { error: "Save the written copy (at least 20 characters) before submitting for review." };
+    }
+  }
+
+  await query(`UPDATE tasks SET status = 'submitted', reviewed_at = now() WHERE id = $1`, [taskId]);
+
+  await notifyRoles(CAN_REVIEW, {
+    type: "task",
+    title: "Task ready for review",
+    body: `${session.name} submitted "${task.title}" for review.`,
+    link: "/projects",
+  });
+
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/**
+ * Reviewer decision on a submitted task.
+ * - Content task (WRITER): 'needs_improvement' | 'final' (completes, auto-creates visual)
+ * - Visual task (DESIGNER/EDITOR): 'needs_improvement' | 'approve' (hands off to SMM)
+ */
+export async function reviewTaskAction(taskId: string, decision: "needs_improvement" | "final" | "approve", comment?: string) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (task.status !== "submitted") return { error: "Task is not awaiting review." };
+  if (decision === "needs_improvement" && (!comment || comment.trim().length < 5)) {
+    return { error: "Please provide specific feedback for the improvement." };
+  }
+
+  const commentText = comment?.trim() || null;
+
+  if (decision === "needs_improvement") {
+    await query(
+      `UPDATE tasks SET status = 'needs_improvement', review_comment = $2, reviewed_by = $3, reviewed_at = now()
+       WHERE id = $1`,
+      [taskId, commentText, session.sub]
+    );
+    if (task.assigned_to) {
+      await createNotification({
+        userId: task.assigned_to,
+        type: "task",
+        title: "Task needs improvement",
+        body: `"${task.title}" — ${commentText}`,
+        link: "/projects",
+      });
+    }
+  } else if (task.role_key === "WRITER" && decision === "final") {
+    // Final approval: complete content task and auto-create the visual task.
+    await query(
+      `UPDATE tasks SET status = 'completed', review_comment = $2, reviewed_by = $3, reviewed_at = now(), completed_at = now()
+       WHERE id = $1`,
+      [taskId, commentText, session.sub]
+    );
+    if (task.assigned_to) {
+      await createNotification({
+        userId: task.assigned_to,
+        type: "task",
+        title: "Content approved",
+        body: `Your copy for "${task.title}" was approved.`,
+        link: "/projects",
+      });
+    }
+    await handleDeliverableTaskCompleted(task.project_id, taskId);
+  } else if (isVisualTask(task) && decision === "approve") {
+    // Internal approval: hand off to SMM for client approval.
+    const smmId = await handoffVisualTaskToSmm(task.project_id, taskId);
+    await query(
+      `UPDATE tasks SET review_comment = $2, reviewed_by = $3 WHERE id = $1`,
+      [taskId, commentText, session.sub]
+    );
+    if (smmId) {
+      await createNotification({
+        userId: smmId,
+        type: "task",
+        title: "Design approved — take to client",
+        body: `"${task.title}" passed internal review. Get client approval to proceed.`,
+        link: "/projects",
+      });
+    } else {
+      await notifyRoles(["SMM"], {
+        type: "task",
+        title: "Design approved — take to client",
+        body: `"${task.title}" passed internal review and needs client approval.`,
+        link: "/projects",
+      });
+    }
+  } else {
+    return { error: "Invalid review decision for this task." };
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** SMM routes client feedback back to the designer / editor. */
+export async function clientFeedbackAction(taskId: string, feedback: string) {
+  const session = await getSession();
+  if (!session || session.role_key !== "SMM") return { error: "Not authorized." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (task.status !== "client_review") return { error: "Task is not in client review." };
+  if (!feedback || feedback.trim().length < 5) {
+    return { error: "Please capture the client's feedback notes." };
+  }
+
+  const producerId = await routeVisualTaskToProducer(task.project_id, taskId, task.role_key);
+  await query(
+    `UPDATE tasks SET client_feedback = $2 WHERE id = $1`,
+    [taskId, feedback.trim()]
+  );
+
+  const who = producerId
+    ? (await query<{ full_name: string }>(`SELECT full_name FROM users WHERE id = $1`, [producerId]))[0]?.full_name
+    : "the design team";
+  await notifyRoles(CAN_REVIEW, {
+    type: "task",
+    title: "Client feedback received",
+    body: `Client gave feedback on "${task.title}" — routed back to ${who}.`,
+    link: "/projects",
+  });
+
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** SMM marks client-approved: client_review -> client_approved */
+export async function approveClientAction(taskId: string) {
+  const session = await getSession();
+  if (!session || session.role_key !== "SMM") return { error: "Not authorized." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (task.status !== "client_review") return { error: "Task is not in client review." };
+
+  await query(`UPDATE tasks SET status = 'client_approved', reviewed_at = now() WHERE id = $1`, [taskId]);
+
+  const creatorId = await getProjectCreatorId(task.project_id);
+  if (creatorId) {
+    await createNotification({
+      userId: creatorId,
+      type: "task",
+      title: "Client approved",
+      body: `Client approved "${task.title}".`,
+      link: "/projects",
+    });
+  }
+  await notifyRoles(CAN_REVIEW, {
+    type: "task",
+    title: "Client approved",
+    body: `Client approved "${task.title}".`,
+    link: "/projects",
+  });
+
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** SMM starts uploading: client_approved -> uploading */
+export async function startUploadTaskAction(taskId: string) {
+  const session = await getSession();
+  if (!session || session.role_key !== "SMM") return { error: "Not authorized." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (task.status !== "client_approved") return { error: "Client approval is required first." };
+
+  await query(`UPDATE tasks SET status = 'uploading' WHERE id = $1`, [taskId]);
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** SMM completes the task with the publishing platforms. */
+export async function completeTaskWithPlatformsAction(taskId: string, platforms: string[]) {
+  const session = await getSession();
+  if (!session || session.role_key !== "SMM") return { error: "Not authorized." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (task.status !== "uploading") return { error: "Mark the task as uploading first." };
+
+  const clean = platforms.filter((p) => p && ["instagram", "facebook", "youtube", "twitter"].includes(p));
+  if (clean.length === 0) {
+    return { error: "Select at least one publishing platform before marking the task done." };
+  }
+
+  await query(
+    `UPDATE tasks SET status = 'completed', platforms = $2, completed_at = now() WHERE id = $1`,
+    [taskId, clean]
+  );
+  await handleDeliverableTaskCompleted(task.project_id, taskId);
+
+  const creatorId = await getProjectCreatorId(task.project_id);
+  if (creatorId) {
+    await createNotification({
+      userId: creatorId,
+      type: "task",
+      title: "Deliverable published",
+      body: `"${task.title}" was published to ${clean.join(", ")}.`,
       link: "/projects",
     });
   }

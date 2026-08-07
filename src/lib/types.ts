@@ -85,7 +85,28 @@ export interface Assignment {
   role_label: string;
 }
 
-export type TaskStatus = "pending" | "in_progress" | "review" | "completed";
+export type TaskStatus =
+  | "pending"
+  | "in_progress"
+  | "submitted"
+  | "needs_improvement"
+  | "client_review"
+  | "client_feedback"
+  | "client_approved"
+  | "uploading"
+  | "completed";
+
+export const TASK_STATUS_FLOW: TaskStatus[] = [
+  "pending",
+  "in_progress",
+  "submitted",
+  "needs_improvement",
+  "client_review",
+  "client_feedback",
+  "client_approved",
+  "uploading",
+  "completed",
+];
 
 export interface Task {
   id: string;
@@ -105,6 +126,11 @@ export interface Task {
   priority: string;
   assigned_to: string | null;
   assignee_name: string | null;
+  review_comment: string | null;
+  client_feedback: string | null;
+  platforms: string[];
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   due_date: string | null;
   created_at: string;
   completed_at: string | null;

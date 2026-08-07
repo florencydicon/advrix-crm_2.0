@@ -218,6 +218,42 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
 }
 
 /**
+ * Auto-routes an approved visual task to the project's Social Media Manager so
+ * they can take it to the client for approval. Falls back to notifying SMMs if
+ * no SMM is allocated on the project.
+ */
+export async function handoffVisualTaskToSmm(projectId: string, taskId: string): Promise<string | null> {
+  const alloc = await query<{ user_id: string }>(
+    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = 'SMM' LIMIT 1`,
+    [projectId]
+  );
+  const smmId = alloc[0]?.user_id ?? null;
+  await query(
+    `UPDATE tasks SET assigned_to = $2, status = 'client_review', reviewed_at = now()
+     WHERE id = $1`,
+    [taskId, smmId]
+  );
+  return smmId;
+}
+
+/**
+ * Routes a visual task back to the Design / Edit team after client feedback.
+ */
+export async function routeVisualTaskToProducer(projectId: string, taskId: string, visualRole: string): Promise<string | null> {
+  const alloc = await query<{ user_id: string }>(
+    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
+    [projectId, visualRole]
+  );
+  const userId = alloc[0]?.user_id ?? null;
+  await query(
+    `UPDATE tasks SET assigned_to = $2, status = 'client_feedback', reviewed_at = now()
+     WHERE id = $1`,
+    [taskId, userId]
+  );
+  return userId;
+}
+
+/**
  * Allocates the project team. A single member may be assigned multiple roles on
  * the same project (multi-role). Re-assigns open tasks of each role to the
  * allocated member automatically.

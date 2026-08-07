@@ -1,11 +1,28 @@
-import { X, CircleCheck, Clock, PauseCircle } from "lucide-react";
+import { X, CircleCheck, Clock, PauseCircle, Send, Undo2, Users, Upload, Sparkles } from "lucide-react";
 
 export const STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
   pending: { label: "Pending", cls: "bg-slate-100 text-slate-600", Icon: PauseCircle },
   in_progress: { label: "In Progress", cls: "bg-amber-100 text-amber-700", Icon: Clock },
-  review: { label: "In Review", cls: "bg-violet-100 text-violet-700", Icon: Clock },
+  submitted: { label: "Awaiting Review", cls: "bg-violet-100 text-violet-700", Icon: Send },
+  needs_improvement: { label: "Needs Improvement", cls: "bg-rose-100 text-rose-700", Icon: Undo2 },
+  client_review: { label: "Client Review", cls: "bg-sky-100 text-sky-700", Icon: Users },
+  client_feedback: { label: "Client Feedback", cls: "bg-rose-100 text-rose-700", Icon: Undo2 },
+  client_approved: { label: "Client Approved", cls: "bg-emerald-100 text-emerald-700", Icon: CircleCheck },
+  uploading: { label: "Uploading", cls: "bg-brand-100 text-brand-700", Icon: Upload },
   completed: { label: "Completed", cls: "bg-emerald-100 text-emerald-700", Icon: CircleCheck },
 };
+
+export const STATUS_ORDER = [
+  "pending",
+  "in_progress",
+  "submitted",
+  "needs_improvement",
+  "client_review",
+  "client_feedback",
+  "client_approved",
+  "uploading",
+  "completed",
+];
 
 export function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status] || STATUS_META.pending;
@@ -15,6 +32,41 @@ export function StatusBadge({ status }: { status: string }) {
       <Icon className="h-3 w-3" />
       {meta.label}
     </span>
+  );
+}
+
+export const PLATFORMS = [
+  { key: "instagram", label: "Instagram", icon: "📸" },
+  { key: "facebook", label: "Facebook", icon: "📘" },
+  { key: "youtube", label: "YouTube", icon: "🎬" },
+  { key: "twitter", label: "Twitter / X", icon: "🐦" },
+];
+
+export function PlatformBadges({ platforms }: { platforms: string[] }) {
+  if (!platforms || platforms.length === 0) return null;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {PLATFORMS.filter((p) => platforms.includes(p.key)).map((p) => (
+        <span key={p.key} className="badge bg-slate-100 text-slate-500">
+          {p.icon} {p.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function TaskProgress({ done, total }: { done: number; total: number }) {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  return (
+    <div className="w-24">
+      <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
+        <span>{done}/{total}</span>
+        <span>{pct}%</span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   );
 }
 
