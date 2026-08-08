@@ -531,21 +531,6 @@ export async function approveClientAction(taskId: string) {
   return { ok: true };
 }
 
-/** SMM starts uploading: client_approved -> uploading */
-export async function startUploadTaskAction(taskId: string) {
-  const session = await getSession();
-  if (!session || session.role_key !== "SMM") return { error: "Not authorized." };
-
-  const task = await getTaskWorkflowRow(taskId);
-  if (!task) return { error: "Task not found." };
-  if (task.status !== "client_approved") return { error: "Client approval is required first." };
-
-  await query(`UPDATE tasks SET status = 'uploading' WHERE id = $1`, [taskId]);
-  revalidatePath("/app");
-  revalidatePath("/projects");
-  return { ok: true };
-}
-
 /** SMM completes the task with the publishing platforms. */
 export async function completeTaskWithPlatformsAction(taskId: string, platforms: string[]) {
   const session = await getSession();
