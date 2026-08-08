@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   sequence      INT NOT NULL DEFAULT 1,
   title         TEXT NOT NULL,
   description   TEXT,
+  brief_copy    TEXT,
   content       TEXT,
   status        TEXT NOT NULL DEFAULT 'pending',
   -- Status: pending | in_progress | submitted | needs_improvement | client_review

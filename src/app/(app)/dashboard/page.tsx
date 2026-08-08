@@ -1,8 +1,9 @@
 ﻿import Link from "next/link";
 import { AlertTriangle, FolderKanban, Users, CheckCircle2, Sparkles } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { getMyTasks, getBottlenecks, getProjects, getTeam } from "@/lib/data";
+import { getMyTasks, getBottlenecks, getProjects, getTeam, getSubmittedTasks } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
+import ApprovalQueue from "@/components/ApprovalQueue";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 
 const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM"];
@@ -85,6 +86,7 @@ export default async function DashboardPage() {
   const projects = await getProjects();
   const bottlenecks = await getBottlenecks();
   const team = await getTeam();
+  const submittedTasks = await getSubmittedTasks();
   const pending = projects.filter((p) => p.status === "pending_approval");
   const active = projects.filter((p) => p.status === "in_progress");
 
@@ -129,29 +131,32 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        <div className="card overflow-hidden">
-          <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            <h2 className="font-semibold">Awaiting your approval</h2>
-          </div>
-          {pending.length === 0 ? (
-            <p className="px-5 py-6 text-sm text-slate-400">No briefs waiting for approval.</p>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {pending.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{p.name}</p>
-                    <p className="text-xs text-slate-400 truncate">{p.client_name}</p>
-                  </div>
-                  <Link href="/projects" className="btn-secondary !py-1.5 text-xs shrink-0">
-                    Review
-                  </Link>
-                </div>
-              ))}
-            </div>
-          )}
+        <ApprovalQueue initialTasks={submittedTasks} />
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          <h2 className="font-semibold">Briefs awaiting approval</h2>
+          <span className="badge bg-amber-100 text-amber-700 ml-auto">{pending.length}</span>
         </div>
+        {pending.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-slate-400">No briefs waiting for approval.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {pending.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50/60 transition-colors">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{p.name}</p>
+                  <p className="text-xs text-slate-400 truncate">{p.client_name}</p>
+                </div>
+                <Link href="/projects" className="btn-secondary !py-1.5 text-xs shrink-0">
+                  Review
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <Link href="/projects" className="btn-secondary">

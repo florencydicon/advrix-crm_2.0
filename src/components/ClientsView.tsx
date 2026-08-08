@@ -7,6 +7,8 @@ import { createClientAction, createProjectAction } from "@/lib/actions/projects"
 import type { Client, DeliverableType } from "@/lib/types";
 import { Modal, EmptyState } from "@/components/ui";
 import SmartTable, { type Column } from "@/components/SmartTable";
+import { SearchableSelect } from "@/components/SearchableSelect";
+import { DatePicker } from "@/components/DatePicker";
 
 interface Deliv {
   key: string;
@@ -287,12 +289,17 @@ export default function ClientsView({
         <form action={runWith(createProjectAction)} className="space-y-3">
           <div>
             <label className="label">Client</label>
-            <select name="client_id" required className="input" value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)}>
-              <option value="">Select client…</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              name="client_id"
+              options={clients.map((c) => ({
+                value: c.id,
+                label: c.name,
+                search: `${c.name} ${c.company || ""} ${c.email || ""}`,
+              }))}
+              value={selectedClient}
+              onChange={setSelectedClient}
+              placeholder="Search client…"
+            />
           </div>
           <div>
             <label className="label">Project name</label>
@@ -308,7 +315,7 @@ export default function ClientsView({
           </div>
           <div>
             <label className="label">Deadline</label>
-            <input name="deadline" type="date" className="input" />
+            <DatePicker name="deadline" placeholder="Select deadline…" />
           </div>
           <button type="submit" className="btn-primary w-full" disabled={pending}>
             {pending ? "Creating…" : "Submit for PM approval"}

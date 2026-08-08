@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Clock,
@@ -13,6 +13,7 @@ import {
   Users,
   TrendingUp,
   Plus,
+  Search,
 } from "lucide-react";
 import { punchInAction, punchOutAction } from "@/lib/actions/attendance";
 import type { Attendance, AttendanceStats, LeaveWithUser } from "@/lib/types";
@@ -68,6 +69,7 @@ export default function AttendanceView({
   myLeaves,
   leaveBalance,
   pendingLeaves,
+  allLeaves,
 }: {
   todayRecord: Attendance | null;
   history: Attendance[];
@@ -76,12 +78,38 @@ export default function AttendanceView({
   myLeaves: LeaveWithUser[];
   leaveBalance: Record<string, { used: number; total: number }>;
   pendingLeaves: LeaveWithUser[];
+  allLeaves: LeaveWithUser[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [now, setNow] = useState(new Date());
   const [activeTab, setActiveTab] = useState("attendance");
   const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveSearch, setLeaveSearch] = useState("");
+  const [leaveName, setLeaveName] = useState("");
+  const [leaveRole, setLeaveRole] = useState("");
+  const [leaveStatus, setLeaveStatus] = useState("");
+
+  const leaveNames = useMemo(
+    () => [...new Set(allLeaves.map((l) => l.full_name))].sort(),
+    [allLeaves]
+  );
+  const leaveRoles = useMemo(
+    () => [...new Set(allLeaves.map((l) => l.role_label))].sort(),
+    [allLeaves]
+  );
+
+  const filteredLeaves = useMemo(() => {
+    if (!isAdmin) return myLeaves;
+    const q = leaveSearch.trim().toLowerCase();
+    return allLeaves.filter((l) => {
+      if (leaveName && l.full_name !== leaveName) return false;
+      if (leaveRole && l.role_label !== leaveRole) return false;
+      if (leaveStatus && l.status !== leaveStatus) return false;
+      if (q && !`${l.full_name} ${l.leave_type} ${l.reason} ${l.role_label}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [isAdmin, allLeaves, myLeaves, leaveSearch, leaveName, leaveRole, leaveStatus]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -362,28 +390,68 @@ export default function AttendanceView({
 
           <div className="card">
             <div className="px-4 py-3 border-b border-slate-100">
-              <h2 className="font-semibold text-sm">My Leave History</h2>
+              <h2 className="font-semibold text-sm">{isAdmin ? "Leave History" : "My Leave History"}</h2>
             </div>
-            {myLeaves.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-slate-400">No leave records yet.</p>
+
+            {isAdmin && (
+              <div className="px-4 py-3 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    value={leaveSearch}
+                    onChange={(e) => setLeaveSearch(e.target.value)}
+                    placeholder="Search name, type, reason…"
+                    className="input !py-1.5 !pl-8 text-xs"
+                  />
+                </div>
+                <select value={leaveName} onChange={(e) => setLeaveName(e.target.value)} className="input !py-1.5 text-xs">
+                  <option value="">All employees</option>
+                  {leaveNames.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <select value={leaveRole} onChange={(e) => setLeaveRole(e.target.value)} className="input !py-1.5 text-xs">
+                  <option value="">All roles</option>
+                  {leaveRoles.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+                <select value={leaveStatus} onChange={(e) => setLeaveStatus(e.target.value)} className="input !py-1.5 text-xs">
+                  <option value="">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+            )}
+
+            {filteredLeaves.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-slate-400">No leave records match.</p>
             ) : (
               <div className="divide-y divide-slate-100">
-                {myLeaves.map((l) => {
+                {filteredLeaves.map((l) => {
                   const statusMeta = LEAVE_STATUS_META[l.status];
                   const StatusIcon = statusMeta?.icon || AlertCircle;
                   return (
-                    <div key={l.id} className="flex items-center justify-between px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`badge ${LEAVE_TYPE_META[l.leave_type]?.cls || "bg-slate-100 text-slate-600"}`}>
+                    <div key={l.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isAdmin && (
+                          <p className="text-xs font-medium text-slate-700 shrink-0 w-28 truncate">{l.full_name}</p>
+                        )}
+                        <span className={`badge shrink-0 ${LEAVE_TYPE_META[l.leave_type]?.cls || "bg-slate-100 text-slate-600"}`}>
                           {LEAVE_TYPE_META[l.leave_type]?.label}
                         </span>
-                        <div>
-                          <p className="text-xs text-slate-700">
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-700 truncate">
                             {formatDate(l.start_date)} — {formatDate(l.end_date)} · {l.days}d
+                            {isAdmin && l.role_label && <span className="text-slate-400"> · {l.role_label}</span>}
                           </p>
+                          {l.rejection_reason && (
+                            <p className="text-[11px] text-rose-500 truncate">Rejected: {l.rejection_reason}</p>
+                          )}
                         </div>
                       </div>
-                      <span className={`badge ${statusMeta?.cls || "bg-slate-100 text-slate-500"}`}>
+                      <span className={`badge shrink-0 ${statusMeta?.cls || "bg-slate-100 text-slate-500"}`}>
                         <StatusIcon className="h-3 w-3" />
                         {statusMeta?.label}
                       </span>

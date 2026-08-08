@@ -152,8 +152,8 @@ export async function generateDeliverableTasks(projectId: string) {
  */
 export async function handleDeliverableTaskCompleted(projectId: string, taskId: string) {
   const task = (
-    await query<{ id: string; deliverable_id: string; group_key: string; title: string; step_key: string; sequence: number }>(
-      `SELECT id, deliverable_id, group_key, title, step_key, sequence FROM tasks WHERE id = $1 AND deliverable_id IS NOT NULL`,
+    await query<{ id: string; deliverable_id: string; group_key: string; title: string; step_key: string; sequence: number; content: string | null }>(
+      `SELECT id, deliverable_id, group_key, title, step_key, sequence, content FROM tasks WHERE id = $1 AND deliverable_id IS NOT NULL`,
       [taskId]
     )
   )[0];
@@ -191,14 +191,14 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
       `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
       [projectId, visualStepKey]
     );
-    if (exists.length === 0) {
+if (exists.length === 0) {
       const alloc = await query<{ user_id: string }>(
         `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
         [projectId, visualRole]
       );
       await query(
-        `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-         VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, 'pending', 'medium', $9, NULL)`,
+        `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, content, status, priority, assigned_to, created_by)
+         VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, $9, 'pending', 'medium', $10, NULL)`,
         [
           projectId,
           visualStepKey,
@@ -206,7 +206,8 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
           visualRole,
           task.deliverable_id,
           `${task.title.replace(/— Content & Copy\s*$/, "").trim()} — Visual`,
-          `Visual production for "${task.title}". Use the approved copy and content brief as reference.`,
+          `Visual production for "${task.title}". Use the approved copy as reference.`,
+          task.content,
           task.title,
           alloc[0]?.user_id ?? null,
         ]

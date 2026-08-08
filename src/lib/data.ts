@@ -256,6 +256,15 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
   );
 }
 
+/** Tasks awaiting admin/PM review (submitted by producers). */
+export async function getSubmittedTasks(): Promise<Task[]> {
+  return query<Task>(
+    `${TASK_SELECT}
+     WHERE t.status = 'submitted'
+     ORDER BY t.reviewed_at DESC NULLS LAST, t.created_at ASC`
+  );
+}
+
 export async function getBoard(): Promise<ProjectDetail[]> {
   const projects = await query<Project>(
     `SELECT p.*, c.name AS client_name
@@ -537,9 +546,28 @@ export async function getMyLeaves(userId: string): Promise<LeaveWithUser[]> {
   );
 }
 
-export async function getAllLeaves(status?: string): Promise<LeaveWithUser[]> {
-  const where = status ? `WHERE l.status = $1` : "";
-  const args: string[] = status ? [status] : [];
+export async function getAllLeaves(params?: {
+  status?: string;
+  search?: string;
+  roleKey?: string;
+}): Promise<LeaveWithUser[]> {
+  const conditions: string[] = [];
+  const args: unknown[] = [];
+
+  if (params?.status) {
+    args.push(params.status);
+    conditions.push(`l.status = $${args.length}`);
+  }
+  if (params?.search) {
+    args.push(`%${params.search}%`);
+    conditions.push(`(u.full_name ILIKE $${args.length} OR l.leave_type ILIKE $${args.length} OR l.reason ILIKE $${args.length})`);
+  }
+  if (params?.roleKey) {
+    args.push(params.roleKey);
+    conditions.push(`r.key = $${args.length}`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   return query<LeaveWithUser>(
     `SELECT l.*, u.full_name, r.label AS role_label, au.full_name AS approver_name
      FROM leaves l

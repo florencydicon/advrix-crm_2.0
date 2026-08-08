@@ -4,7 +4,7 @@ import { useState, useMemo, Fragment } from "react";
 import { ArrowRight, PlayCircle, Clock, CheckCircle2 } from "lucide-react";
 import type { Task } from "@/lib/types";
 import { StatusBadge, PriorityBadge, PlatformBadges } from "@/components/ui";
-import { ContentEditor, TaskActions } from "@/components/TaskWorkflow";
+import { ContentEditor, TaskActions, TaskContent } from "@/components/TaskWorkflow";
 import type { Column } from "@/components/SmartTable";
 
 interface GroupedClient {
@@ -192,19 +192,30 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                             {openTaskId === t.id && (
                               <tr className="bg-slate-50/30">
                                 <td colSpan={columns.length} className="px-4 py-2">
-                                  <ContentEditor task={t} roleKey={roleKey} userId={userId} />
-                                  {t.review_comment && (
-                                    <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/60 p-2 text-xs">
-                                      <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Review note</p>
-                                      <p className="text-slate-600 mt-0.5">{t.review_comment}</p>
-                                    </div>
-                                  )}
-                                  {t.client_feedback && (
-                                    <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50/60 p-2 text-xs">
-                                      <p className="text-[10px] font-semibold text-sky-700 uppercase tracking-wide">Client feedback</p>
-                                      <p className="text-slate-600 mt-0.5">{t.client_feedback}</p>
-                                    </div>
-                                  )}
+                                  <div className="space-y-2">
+                                    <ContentEditor task={t} roleKey={roleKey} userId={userId} />
+                                    {t.brief_copy && (t.role_key === "DESIGNER" || t.role_key === "EDITOR") && t.content === null && (
+                                      <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
+                                        <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide mb-1">Approved copy — design reference</p>
+                                        <p className="text-xs text-slate-600 whitespace-pre-wrap">{t.brief_copy}</p>
+                                      </div>
+                                    )}
+                                    {(t.status === "completed" || (!["in_progress", "needs_improvement", "client_feedback"].includes(t.status))) && t.content && (
+                                      <TaskContent task={t} />
+                                    )}
+                                    {t.review_comment && (
+                                      <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/60 p-2 text-xs">
+                                        <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Review note</p>
+                                        <p className="text-slate-600 mt-0.5">{t.review_comment}</p>
+                                      </div>
+                                    )}
+                                    {t.client_feedback && (
+                                      <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50/60 p-2 text-xs">
+                                        <p className="text-[10px] font-semibold text-sky-700 uppercase tracking-wide">Client feedback</p>
+                                        <p className="text-slate-600 mt-0.5">{t.client_feedback}</p>
+                                      </div>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             )}

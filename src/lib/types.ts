@@ -121,6 +121,7 @@ export interface Task {
   sequence: number;
   title: string;
   description: string | null;
+  brief_copy: string | null;
   content: string | null;
   status: TaskStatus;
   priority: string;

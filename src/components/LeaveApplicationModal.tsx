@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { applyLeaveAction } from "@/lib/actions/leaves";
+import { DatePicker } from "@/components/DatePicker";
 
 const LEAVE_TYPES = [
   { value: "sick", label: "Sick Leave" },
@@ -57,11 +58,11 @@ export default function LeaveApplicationModal({ onClose }: { onClose: () => void
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">Start Date</label>
-                <input name="start_date" type="date" required className="input" />
+                <DatePicker name="start_date" required placeholder="Start date…" />
               </div>
               <div>
                 <label className="label">End Date</label>
-                <input name="end_date" type="date" required className="input" />
+                <DatePicker name="end_date" required placeholder="End date…" />
               </div>
             </div>
             <div>

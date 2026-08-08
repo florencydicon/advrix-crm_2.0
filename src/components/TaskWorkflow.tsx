@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Save, CheckCircle2, Undo2, Upload, Users, MessageSquare, PenLine } from "lucide-react";
+import { ArrowRight, Save, CheckCircle2, Undo2, Upload, Users, MessageSquare, PenLine, Eye, ClipboardList, FileText, Loader2 } from "lucide-react";
 import {
   startTaskAction,
   submitTaskAction,
@@ -19,9 +19,28 @@ import { PLATFORMS } from "@/components/ui";
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
 
 /**
+ * Read-only content preview. Shown for completed tasks, and inside review /
+ * pipeline views so the actual copy/notes are never hidden.
+ */
+export function TaskContent({ task, className = "" }: { task: Task; className?: string }) {
+  const isWriter = task.role_key === "WRITER";
+  const label = isWriter ? "Final copy & script" : "Delivered work / asset notes";
+  return (
+    <div className={`rounded-xl border border-slate-200 bg-white p-3 ${className}`}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Eye className="h-3.5 w-3.5 text-slate-400" />
+        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
+      </div>
+      <p className="text-sm text-slate-700 whitespace-pre-wrap">{task.content || "—"}</p>
+    </div>
+  );
+}
+
+/**
  * Content input for the assignee. Shown once a task is in an editable state
- * (in_progress / needs_improvement / client_feedback). The "Submit for Review"
- * button stays disabled until enough work has been entered.
+ * (in_progress / needs_improvement / client_feedback). Clicking "Submit for
+ * Review" saves the draft AND submits in a single action — no separate Save
+ * click required.
  */
 export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: string; userId: string }) {
   const router = useRouter();
@@ -40,8 +59,8 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   if (!editable) return null;
 
   const isWriter = task.role_key === "WRITER";
-  const minLen = isWriter ? 20 : 5;
-  const ready = draft.trim().length >= minLen;
+  const isVisual = task.role_key === "DESIGNER" || task.role_key === "EDITOR";
+  const hasDraft = draft.trim().length > 0;
 
   function save() {
     start(async () => {
@@ -53,45 +72,62 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
 
   function submit() {
     start(async () => {
-      const res = await submitTaskAction(task.id);
+      // Single action: persist the draft and move to submitted.
+      const res = await submitTaskAction(task.id, draft);
       if (res.error) alert(res.error);
       router.refresh();
     });
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2 space-y-1.5">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
-          {isWriter ? "Copy & Script Draft" : "Work / Asset Notes"}
-        </p>
-        {saved && <span className="text-[10px] text-emerald-600">Saved</span>}
-      </div>
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        rows={3}
-        className="input text-xs"
-        placeholder={isWriter ? "Draft the captions, copy and script…" : "Paste the asset link / describe the delivered work…"}
-      />
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending}>
-          <Save className="h-3 w-3" /> {pending ? "Saving…" : "Save draft"}
-        </button>
-        <button
-          className="btn-primary !py-1 text-[11px]"
-          onClick={submit}
-          disabled={pending || !ready}
-          title={ready ? undefined : `Add at least ${minLen} characters before submitting.`}
-        >
-          <ArrowRight className="h-3 w-3" /> Submit for Review
-        </button>
-      </div>
-      {!ready && (
-        <p className="text-[10px] text-slate-400">
-          Add at least {minLen} characters of work, then you can submit for review.
-        </p>
+    <div className="space-y-2">
+      {/* Approved copy reference for the design/editing team */}
+      {isVisual && !isWriter && task.brief_copy && (
+        <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <FileText className="h-3.5 w-3.5 text-brand-700" />
+            <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Approved copy — reference for design</p>
+          </div>
+          <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.brief_copy}</p>
+        </div>
       )}
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+            {isWriter ? "Copy & Script Draft" : "Asset Remarks / Links"}
+          </p>
+          {saved && <span className="text-[10px] text-emerald-600">Saved</span>}
+        </div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={4}
+          className="input text-xs"
+          placeholder={
+            isWriter
+              ? "Draft the captions, copy and script…"
+              : "Add your remarks, asset notes, or paste the design / video file link…"
+          }
+        />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending}>
+            <Save className="h-3 w-3" /> {pending ? "Saving…" : "Save draft"}
+          </button>
+          <button
+            className="btn-primary !py-1 text-[11px]"
+            onClick={submit}
+            disabled={pending || !hasDraft}
+            title={hasDraft ? undefined : "Add your work before submitting."}
+          >
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+            {pending ? "Submitting…" : "Submit for Review"}
+          </button>
+        </div>
+        {!hasDraft && (
+          <p className="text-[10px] text-slate-400">Add your work, then submit — it is saved automatically.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -101,34 +137,64 @@ export function ReviewPanel({ task }: { task: Task }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [comment, setComment] = useState("");
+  const [decision, setDecision] = useState<"needs_improvement" | "final" | "approve" | null>(null);
 
   const isVisual = task.sequence === 2 && (task.role_key === "DESIGNER" || task.role_key === "EDITOR");
+  const isWriter = task.role_key === "WRITER";
 
-  function run(decision: "needs_improvement" | "final" | "approve") {
+  function decide(choice: "needs_improvement" | "final" | "approve") {
+    if (choice === "needs_improvement" && comment.trim().length < 5) {
+      alert("Please provide specific feedback for the improvement.");
+      return;
+    }
+    setDecision(choice);
     start(async () => {
-      const res = await reviewTaskAction(task.id, decision, comment);
+      const res = await reviewTaskAction(task.id, choice, comment);
       if (res.error) alert(res.error);
       router.refresh();
     });
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
-      <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Review</p>
-      <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} className="input text-xs" placeholder="Feedback for the assignee (required for Needs Improvement)…" />
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <button className="btn-secondary !py-1 text-[11px]" onClick={() => run("needs_improvement")} disabled={pending}>
-          <Undo2 className="h-3 w-3" /> Needs Improvement
-        </button>
-        {isVisual ? (
-          <button className="btn-primary !py-1 text-[11px]" onClick={() => run("approve")} disabled={pending}>
-            <Users className="h-3 w-3" /> Approve → Client
+    <div className="rounded-xl border border-violet-200 bg-white overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-violet-50/60 border-b border-violet-100">
+        <CheckCircle2 className="h-3.5 w-3.5 text-violet-600" />
+        <p className="text-[11px] font-semibold text-violet-700 uppercase tracking-wide">Review submitted work</p>
+      </div>
+
+      <div className="p-3 space-y-2">
+        <TaskContent task={task} />
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2 space-y-1.5">
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+            <MessageSquare className="h-3 w-3" /> Feedback / comment
+          </label>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={3}
+            className="input text-xs"
+            placeholder="Comments for the assignee (required for Needs Improvement)…"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button className="btn-secondary !py-1 text-[11px]" onClick={() => decide("needs_improvement")} disabled={pending}>
+            {pending && decision === "needs_improvement" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+            {pending && decision === "needs_improvement" ? "Sending…" : "Needs Improvement"}
           </button>
-        ) : (
-          <button className="btn-primary !py-1 text-[11px]" onClick={() => run("final")} disabled={pending}>
-            <CheckCircle2 className="h-3 w-3" /> Final
-          </button>
-        )}
+          {isVisual ? (
+            <button className="btn-primary !py-1 text-[11px]" onClick={() => decide("approve")} disabled={pending}>
+              {pending && decision === "approve" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Users className="h-3 w-3" />}
+              {pending && decision === "approve" ? "Sending…" : "Approve → Client"}
+            </button>
+          ) : (
+            <button className="btn-primary !py-1 text-[11px]" onClick={() => decide("final")} disabled={pending}>
+              {pending && decision === "final" ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+              {pending && decision === "final" ? "Sending…" : "Approve / Final"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -148,23 +214,48 @@ export function ClientFeedbackPanel({ task }: { task: Task }) {
     });
   }
 
+  function approve() {
+    start(async () => {
+      const res = await approveClientAction(task.id);
+      if (res.error) alert(res.error);
+      router.refresh();
+    });
+  }
+
   return (
-    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
-      <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Client Review</p>
-      <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={2} className="input text-xs" placeholder="Client's feedback / requested changes…" />
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <button className="btn-secondary !py-1 text-[11px]" onClick={send} disabled={pending}>
-          <MessageSquare className="h-3 w-3" /> Send Feedback to Designer
-        </button>
-        <button className="btn-primary !py-1 text-[11px]" onClick={() => { start(async () => { const res = await approveClientAction(task.id); if (res.error) alert(res.error); router.refresh(); }); }} disabled={pending}>
-          <CheckCircle2 className="h-3 w-3" /> Client Approved
-        </button>
+    <div className="rounded-xl border border-sky-200 bg-white overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-sky-50/60 border-b border-sky-100">
+        <Users className="h-3.5 w-3.5 text-sky-600" />
+        <p className="text-[11px] font-semibold text-sky-700 uppercase tracking-wide">Client review</p>
+      </div>
+      <div className="p-3 space-y-2">
+        <TaskContent task={task} />
+        <p className="text-xs text-slate-500">
+          Take this deliverable to the client. If they approve it, the task moves to <b>Uploading</b> automatically.
+        </p>
+        <textarea
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          rows={2}
+          className="input text-xs"
+          placeholder="Client's feedback / requested changes (required to send back)…"
+        />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button className="btn-secondary !py-1 text-[11px]" onClick={send} disabled={pending || !feedback.trim()}>
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
+            Send Feedback to Designer
+          </button>
+          <button className="btn-primary !py-1 text-[11px]" onClick={approve} disabled={pending}>
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+            Client Approved → Upload
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-/** SMM publishing: complete with platform selection. */
+/** SMM publishing: auto-shifted to uploading after client approval. */
 export function PublishPanel({ task }: { task: Task }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -183,22 +274,35 @@ export function PublishPanel({ task }: { task: Task }) {
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
-      <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">Publish</p>
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {PLATFORMS.map((p) => (
-          <button
-            key={p.key}
-            onClick={() => toggle(p.key)}
-            className={`badge cursor-pointer transition-colors ${selected.includes(p.key) ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}
-          >
-            {p.icon} {p.label}
-          </button>
-        ))}
+    <div className="rounded-xl border border-brand-300 bg-white overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-brand-50/70 border-b border-brand-200">
+        <Upload className="h-3.5 w-3.5 text-brand-700" />
+        <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Uploading</p>
+        <span className="badge bg-brand-100 text-brand-700 ml-auto">Client approved</span>
       </div>
-      <button className="btn-primary !py-1 text-[11px]" onClick={complete} disabled={pending || selected.length === 0}>
-        <Upload className="h-3 w-3" /> {pending ? "Publishing…" : "Mark Published"}
-      </button>
+      <div className="p-3 space-y-2">
+        <TaskContent task={task} />
+        <div>
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
+            <ClipboardList className="h-3 w-3" /> Publish to platforms
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {PLATFORMS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => toggle(p.key)}
+                className={`badge cursor-pointer transition-colors ${selected.includes(p.key) ? "bg-brand-100 text-brand-700 border border-brand-200" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+              >
+                {p.icon} {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button className="btn-primary !py-1.5 text-[11px] w-full" onClick={complete} disabled={pending || selected.length === 0}>
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+          {pending ? "Publishing…" : "Mark Published → Upload Done"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -208,7 +312,7 @@ export function PublishPanel({ task }: { task: Task }) {
  * - Assignee on a pending task: "Start" → opens the content editor inline.
  * - Assignee on an editable task: "Draft & Submit" → opens the content editor inline.
  * - Reviewer on a submitted task: ReviewPanel.
- * - SMM: client review / upload / publish panels.
+ * - SMM: client review → auto-uploading → publish/complete.
  */
 export function TaskActions({
   task,
@@ -243,20 +347,30 @@ export function TaskActions({
     return <ReviewPanel task={task} />;
   }
 
-  // SMM stage: client review -> approve or route feedback; client_approved -> uploading; uploading -> publish.
+  // Completed tasks: read-only view is opened via the row.
+  if (task.status === "completed") {
+    return (
+      <button className="btn-ghost !py-1 !px-2 text-[11px] !text-brand-600" onClick={() => onExpand?.(task.id)} disabled={pending}>
+        <Eye className="h-3 w-3" /> View
+      </button>
+    );
+  }
+
+  // SMM stage: client review -> uploading (auto after client approval) -> publish.
   if (isSmm) {
     if (task.status === "client_review") {
       return <ClientFeedbackPanel task={task} />;
     }
-    if (task.status === "client_approved") {
-      return (
-        <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => run(() => startUploadTaskAction(task.id))} disabled={pending}>
-          <Upload className="h-3 w-3" /> Start Upload
-        </button>
-      );
-    }
     if (task.status === "uploading") {
       return <PublishPanel task={task} />;
+    }
+    if (task.status === "client_approved") {
+      // Legacy rows caught mid-flow: auto-shift them to uploading.
+      return (
+        <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => run(() => approveClientAction(task.id))} disabled={pending}>
+          <Upload className="h-3 w-3" /> Shift to Uploading
+        </button>
+      );
     }
   }
 

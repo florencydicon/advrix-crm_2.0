@@ -223,13 +223,9 @@ export async function updateTaskContentAction(taskId: string, content: string) {
     return { error: "Not authorized." };
   }
 
-  const isWriter = task[0].role_key === "WRITER";
-  const minLen = isWriter ? 20 : 5;
   const text = String(content || "").trim();
-  if (text.length < minLen) return { error: `Content must be at least ${minLen} characters.` };
+  if (!text) return { error: "Add your work before continuing (copy, notes or asset links)." };
   if (text.length > 5000) return { error: "Content is too long (max 5000 characters)." };
-  const placeholderErr = validateText(text, "Content", minLen, 5000);
-  if (placeholderErr) return { error: placeholderErr };
 
   await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
   revalidatePath("/app");
@@ -341,8 +337,12 @@ export async function startTaskAction(taskId: string) {
   return { ok: true };
 }
 
-/** Assignee submits work for review: in_progress -> submitted */
-export async function submitTaskAction(taskId: string) {
+/**
+ * Assignee submits work for review: in_progress -> submitted.
+ * Accepts the content text so "Submit for Review" saves + submits in one step —
+ * no separate "Save draft" click required.
+ */
+export async function submitTaskAction(taskId: string, content?: string | null) {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
 
@@ -355,20 +355,15 @@ export async function submitTaskAction(taskId: string) {
     return { error: "Task is not in an editable state." };
   }
 
-  // Producers must have entered their work before submitting.
+  // Producers may submit with content passed through directly.
   if (["WRITER", "DESIGNER", "EDITOR"].includes(task.role_key)) {
-    const minLen = task.role_key === "WRITER" ? 20 : 5;
-    const hasContent = await query<{ has: string }>(
-      `SELECT (content IS NOT NULL AND length(trim(content)) >= $2)::text AS has FROM tasks WHERE id = $1`,
-      [taskId, minLen]
-    );
-    if (hasContent[0]?.has !== "true") {
-      return {
-        error:
-          task.role_key === "WRITER"
-            ? "Enter the written copy (at least 20 characters) before submitting for review."
-            : "Add the asset link / work notes (at least 5 characters) before submitting for review.",
-      };
+    const text = content != null ? String(content).trim() : task.content?.trim() || "";
+    if (!text) {
+      return { error: "Add your work (copy, notes or asset links) before submitting." };
+    }
+    if (text.length > 5000) return { error: "Content is too long (max 5000 characters)." };
+    if (content != null && text !== task.content) {
+      await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
     }
   }
 
@@ -503,7 +498,7 @@ export async function clientFeedbackAction(taskId: string, feedback: string) {
   return { ok: true };
 }
 
-/** SMM marks client-approved: client_review -> client_approved */
+/** SMM marks client-approved: client_review -> uploading (auto-shift once approved). */
 export async function approveClientAction(taskId: string) {
   const session = await getSession();
   if (!session || session.role_key !== "SMM") return { error: "Not authorized." };
@@ -512,7 +507,7 @@ export async function approveClientAction(taskId: string) {
   if (!task) return { error: "Task not found." };
   if (task.status !== "client_review") return { error: "Task is not in client review." };
 
-  await query(`UPDATE tasks SET status = 'client_approved', reviewed_at = now() WHERE id = $1`, [taskId]);
+  await query(`UPDATE tasks SET status = 'uploading', reviewed_at = now() WHERE id = $1`, [taskId]);
 
   const creatorId = await getProjectCreatorId(task.project_id);
   if (creatorId) {

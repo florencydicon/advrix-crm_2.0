@@ -12,7 +12,7 @@ import {
 import type { PipelineClient, PipelineProject } from "@/lib/data";
 import type { UserRow } from "@/lib/types";
 import { ProjectStatusBadge, StatusBadge, PlatformBadges } from "@/components/ui";
-import { TaskActions, ReviewPanel, ContentEditor } from "@/components/TaskWorkflow";
+import { TaskActions, ReviewPanel, ContentEditor, TaskContent } from "@/components/TaskWorkflow";
 import QuickAssignFullTeam from "@/components/QuickAssignFullTeam";
 
 export default function ProjectsBoard({
@@ -252,6 +252,15 @@ export default function ProjectsBoard({
                                   <p className="text-xs font-semibold text-slate-700">{task.title}</p>
                                   <ContentEditor task={task} roleKey={roleKey} userId={userId} />
                                   {task.status === "submitted" && canManage && <ReviewPanel task={task} />}
+                                  {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR") && task.content === null && (
+                                    <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
+                                      <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide mb-1">Approved copy — design reference</p>
+                                      <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.brief_copy}</p>
+                                    </div>
+                                  )}
+                                  {task.content && task.status !== "submitted" && (
+                                    <TaskContent task={task} />
+                                  )}
                                   {task.review_comment && (
                                     <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-2 text-xs">
                                       <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Review note</p>
