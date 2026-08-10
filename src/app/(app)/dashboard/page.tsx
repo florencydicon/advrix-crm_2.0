@@ -3,6 +3,7 @@ import { AlertTriangle, FolderKanban, Users, CheckCircle2, Sparkles } from "luci
 import { getSession } from "@/lib/session";
 import { getMyTasks, getBottlenecks, getProjects, getTeam, getSubmittedTasks } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
+import SmmDashboard from "@/components/SmmDashboard";
 import ApprovalQueue from "@/components/ApprovalQueue";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 
@@ -36,7 +37,11 @@ export default async function DashboardPage() {
               : "All clear — no open tasks assigned to you."}
           </p>
         </div>
-        <StaffDashboard tasks={tasks} roleKey={session.role_key} userId={session.sub} />
+        {session.role_key === "SMM" ? (
+          <SmmDashboard tasks={tasks} userId={session.sub} />
+        ) : (
+          <StaffDashboard tasks={tasks} roleKey={session.role_key} userId={session.sub} />
+        )}
       </div>
     );
   }

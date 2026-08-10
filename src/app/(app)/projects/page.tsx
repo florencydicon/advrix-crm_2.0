@@ -5,9 +5,15 @@ import ProjectsBoard from "@/components/ProjectsBoard";
 
 export const metadata = { title: "Project Pipeline — Advrix CRM" };
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ client?: string }>;
+}) {
   const session = (await getSession())!;
   if (!["PROJECT_MANAGER", "SUPER_ADMIN"].includes(session.role_key)) redirect("/dashboard");
+
+  const params = await searchParams;
 
   const [pipeline, team] = await Promise.all([getPipelineByClient(), getTeam()]);
 
@@ -17,6 +23,7 @@ export default async function ProjectsPage() {
       team={team}
       roleKey={session.role_key}
       userId={session.sub}
+      initialClientId={params.client || undefined}
     />
   );
 }

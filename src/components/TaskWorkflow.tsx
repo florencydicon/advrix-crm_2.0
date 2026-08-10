@@ -35,6 +35,59 @@ export function TaskContent({ task, className = "" }: { task: Task; className?: 
   );
 }
 
+const REVIEWER_ROLES = ["PROJECT_MANAGER", "SUPER_ADMIN"];
+
+/**
+ * Standardized accordion body used by every task row across the app (staff
+ * dashboards, project pipeline, SMM workspace). Includes the inline editor,
+ * approved-copy reference, delivered work, review notes and client feedback,
+ * plus the reviewer panel for submitted work.
+ */
+export function TaskDetails({
+  task,
+  roleKey,
+  userId,
+}: {
+  task: Task;
+  roleKey: string;
+  userId: string;
+}) {
+  const reviewable = task.status === "submitted" && REVIEWER_ROLES.includes(roleKey);
+  const showContent =
+    task.content &&
+    !EDITABLE_STATUSES.includes(task.status) &&
+    !(reviewable && task.status === "submitted");
+
+  return (
+    <div className="space-y-2">
+      <ContentEditor task={task} roleKey={roleKey} userId={userId} />
+      {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR") && task.content === null && (
+        <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <FileText className="h-3.5 w-3.5 text-brand-700" />
+            <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Approved copy — design reference</p>
+          </div>
+          <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.brief_copy}</p>
+        </div>
+      )}
+      {showContent && <TaskContent task={task} />}
+      {reviewable && <ReviewPanel task={task} />}
+      {task.review_comment && (
+        <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-2 text-xs">
+          <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Review note</p>
+          <p className="text-slate-600 mt-0.5">{task.review_comment}</p>
+        </div>
+      )}
+      {task.client_feedback && (
+        <div className="rounded-lg border border-sky-100 bg-sky-50/60 p-2 text-xs">
+          <p className="text-[10px] font-semibold text-sky-700 uppercase tracking-wide">Client feedback</p>
+          <p className="text-slate-600 mt-0.5">{task.client_feedback}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Content input for the assignee. Shown once a task is in an editable state
  * (in_progress / needs_improvement / client_feedback). Clicking "Submit for
@@ -346,13 +399,9 @@ export function TaskActions({
     return <ReviewPanel task={task} />;
   }
 
-  // Completed tasks: read-only view is opened via the row.
+  // // Completed tasks: read-only view is opened via the row accordion.
   if (task.status === "completed") {
-    return (
-      <button className="btn-ghost !py-1 !px-2 text-[11px] !text-brand-600" onClick={() => onExpand?.(task.id)} disabled={pending}>
-        <Eye className="h-3 w-3" /> View
-      </button>
-    );
+    return null;
   }
 
   // SMM stage: client review -> uploading (auto after client approval) -> publish.

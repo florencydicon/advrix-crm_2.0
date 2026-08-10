@@ -1,6 +1,6 @@
 ﻿import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { getClientsPaginated, getDeliverableTypes } from "@/lib/data";
+import { getClientCards, getDeliverableTypes } from "@/lib/data";
 import ClientsView from "@/components/ClientsView";
 
 export const metadata = { title: "Clients — Advrix CRM" };
@@ -16,10 +16,10 @@ export default async function ClientsPage({
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const search = params.search || "";
-  const pageSize = 25;
+  const pageSize = 24;
 
   const [result, deliverableTypes] = await Promise.all([
-    getClientsPaginated({ page, pageSize, search }),
+    getClientCards({ page, pageSize, search }),
     getDeliverableTypes(),
   ]);
   const canCreate = session.role_key === "SALES" || session.role_key === "SUPER_ADMIN";

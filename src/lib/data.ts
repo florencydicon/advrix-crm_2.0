@@ -48,6 +48,33 @@ export async function getClientsPaginated(params: PaginatedParams = {}): Promise
   return paginate(items, Number(countRes[0]?.total || 0), page, pageSize);
 }
 
+export interface ClientCard extends Client {
+  total_projects: number;
+  active_projects: number;
+}
+
+export async function getClientCards(params: PaginatedParams = {}): Promise<PaginatedResult<ClientCard>> {
+  const { page = 1, pageSize = 24, search = "" } = params;
+  const offset = (page - 1) * pageSize;
+  const where = search ? `WHERE c.name ILIKE $1 OR c.company ILIKE $1 OR c.email ILIKE $1` : "";
+  const args = search ? [`%${search}%`] : [];
+
+  const [countRes, items] = await Promise.all([
+    query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM clients c ${where}`, args),
+    query<ClientCard>(
+      `SELECT c.*,
+              (SELECT COUNT(*)::int FROM projects p WHERE p.client_id = c.id) AS total_projects,
+              (SELECT COUNT(*)::int FROM projects p WHERE p.client_id = c.id AND p.status = 'in_progress') AS active_projects
+       FROM clients c ${where}
+       ORDER BY c.created_at DESC
+       LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
+      [...args, pageSize, offset]
+    ),
+  ]);
+
+  return paginate(items, Number(countRes[0]?.total || 0), page, pageSize);
+}
+
 export async function getProjects(): Promise<Project[]> {
   return query<Project>(
     `SELECT p.*, c.name AS client_name

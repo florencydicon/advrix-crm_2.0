@@ -1,12 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Plus, Building2, Mail, Phone, FilePlus2, Tags } from "lucide-react";
+import { useState, useTransition, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Plus,
+  Mail,
+  Phone,
+  FilePlus2,
+  Tags,
+  ChevronRight,
+  Search,
+  ChevronLeft,
+} from "lucide-react";
 import { createClientAction, createProjectAction } from "@/lib/actions/projects";
-import type { Client, DeliverableType } from "@/lib/types";
+import type { ClientCard } from "@/lib/data";
+import type { DeliverableType } from "@/lib/types";
 import { Modal, EmptyState } from "@/components/ui";
-import SmartTable, { type Column } from "@/components/SmartTable";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
 
@@ -20,6 +29,15 @@ interface Deliv {
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() || "")
+    .join("");
 }
 
 function DeliverablesPicker({
@@ -136,7 +154,7 @@ export default function ClientsView({
   search,
   basePath,
 }: {
-  clients: Client[];
+  clients: ClientCard[];
   canCreate: boolean;
   deliverableTypes: DeliverableType[];
   page: number;
@@ -147,12 +165,31 @@ export default function ClientsView({
   basePath: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, start] = useTransition();
   const [clientModal, setClientModal] = useState(false);
   const [briefModal, setBriefModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState("");
   const [deliv, setDeliv] = useState<Deliv[]>([]);
+  const [searchDraft, setSearchDraft] = useState(search);
+
+  const navigate = useCallback(
+    (params: Record<string, string | null>) => {
+      const newParams = new URLSearchParams(searchParams);
+      for (const [key, value] of Object.entries(params)) {
+        if (value === null || value === "") {
+          newParams.delete(key);
+        } else {
+          newParams.set(key, value);
+        }
+      }
+      if (!params.page) newParams.delete("page");
+      router.push(`${basePath}?${newParams.toString()}`);
+    },
+    [router, searchParams, basePath]
+  );
+
 
   function runWith(fn: (fd: FormData) => Promise<{ ok?: boolean; error?: string }>) {
     return async (fd: FormData) => {
@@ -168,58 +205,6 @@ export default function ClientsView({
       }
     };
   }
-
-  const columns: Column<Client>[] = [
-    {
-      key: "name",
-      label: "Client",
-      render: (c) => (
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-brand-600/10 flex items-center justify-center shrink-0">
-            <Building2 className="h-3.5 w-3.5 text-brand-700" />
-          </div>
-          <p className="font-medium text-xs text-slate-800">{c.name}</p>
-        </div>
-      ),
-    },
-    {
-      key: "company",
-      label: "Company",
-      render: (c) => <span className="text-xs text-slate-500">{c.company || "—"}</span>,
-    },
-    {
-      key: "contact",
-      label: "Contact",
-      render: (c) => (
-        <div className="space-y-0.5">
-          {c.email && (
-            <p className="flex items-center gap-1 text-[11px] text-slate-500">
-              <Mail className="h-2.5 w-2.5" /> {c.email}
-            </p>
-          )}
-          {c.phone && (
-            <p className="flex items-center gap-1 text-[11px] text-slate-500">
-              <Phone className="h-2.5 w-2.5" /> {c.phone}
-            </p>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: "actions",
-      label: "",
-      className: "w-[100px]",
-      render: (c) =>
-        canCreate ? (
-          <button
-            className="btn-secondary !py-1 !px-2 text-[11px]"
-            onClick={() => { setSelectedClient(c.id); setBriefModal(true); }}
-          >
-            <FilePlus2 className="h-3 w-3" /> Brief
-          </button>
-        ) : null,
-    },
-  ];
 
   return (
     <div className="space-y-4">
@@ -240,21 +225,118 @@ export default function ClientsView({
         )}
       </div>
 
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+        <div className="relative flex-1 w-full sm:max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <input
+            type="text"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && navigate({ search: searchDraft || null })}
+            placeholder="Search clients…"
+            className="input !pl-8 !py-1.5 text-xs"
+          />
+        </div>
+        {total > 0 && (
+          <span className="badge bg-slate-100 text-slate-600">{total} client{total === 1 ? "" : "s"}</span>
+        )}
+      </div>
+
       {clients.length === 0 ? (
-        <EmptyState title="No clients yet" subtitle="Add your first client to start the onboarding flow." />
+        search ? (
+          <EmptyState title="No clients found" subtitle="Try a different search term." />
+        ) : (
+          <EmptyState title="No clients yet" subtitle="Add your first client to start the onboarding flow." />
+        )
       ) : (
-        <SmartTable
-          columns={columns}
-          data={clients}
-          total={total}
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          searchPlaceholder="Search clients…"
-          basePath={basePath}
-          emptyTitle="No clients found"
-          emptySubtitle="Try a different search term."
-        />
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {clients.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => router.push(`/projects?client=${c.id}`)}
+                className="card card-hover p-4 text-left overflow-hidden flex flex-col gap-2"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-brand-600/10 flex items-center justify-center shrink-0 text-brand-700 font-bold text-sm">
+                    {initials(c.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm text-slate-800 truncate">{c.name}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{c.company || "—"}</p>
+                  </div>
+                  {canCreate && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSelectedClient(c.id); setBriefModal(true); }}
+                      className="btn-secondary !py-1 !px-2 text-[11px] shrink-0"
+                      title="New brief for this client"
+                    >
+                      <FilePlus2 className="h-3 w-3" /> Brief
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 mt-auto pt-2 border-t border-slate-100">
+                  {(c.email || c.phone) && (
+                    <span className="text-slate-400 truncate max-w-[180px]">
+                      {c.email || c.phone}
+                    </span>
+                  )}
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <span className={`badge ${c.active_projects > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                      {c.active_projects} active
+                    </span>
+                    <span className="badge bg-emerald-100 text-emerald-700">{c.total_projects} projects</span>
+                    <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-2 border border-slate-200 rounded-xl bg-white">
+              <p className="text-[11px] text-slate-500">
+                {total} clients · Page {page}/{totalPages}
+              </p>
+              <div className="flex items-center gap-0.5">
+                <button
+                  className="p-1 rounded text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                  disabled={page <= 1}
+                  onClick={() => navigate({ page: String(page - 1) })}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) pageNum = i + 1;
+                  else if (page <= 3) pageNum = i + 1;
+                  else if (page >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = page - 2 + i;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => navigate({ page: String(pageNum) })}
+                      className={`w-7 h-7 rounded text-[11px] font-medium transition-colors ${
+                        page === pageNum
+                          ? "bg-brand-600 text-white"
+                          : "text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  className="p-1 rounded text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                  disabled={page >= totalPages}
+                  onClick={() => navigate({ page: String(page + 1) })}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <Modal open={clientModal} onClose={() => setClientModal(false)} title="New Client">
