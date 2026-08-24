@@ -11,6 +11,8 @@ import {
   Users,
   CalendarDays,
   Coffee,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import {
   approveProjectAction,
@@ -26,7 +28,7 @@ import { StatusBadge, PlatformBadges } from "@/components/ui";
 import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
 import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
-import QuickAssignFullTeam from "@/components/QuickAssignFullTeam";
+import { DynamicTeamAllotment, type TeamAllocationRow } from "@/components/DynamicTeamAllotment";
 
 /** Postgres DATE columns may arrive as Date objects — normalize to YYYY-MM-DD. */
 function isoDate(v: string | Date | null | undefined): string {
@@ -87,6 +89,8 @@ export default function ProjectDetailView({
   const [pending, start] = useTransition();
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [leaveTarget, setLeaveTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [allotmentRows, setAllotmentRows] = useState<TeamAllocationRow[]>([]);
 
   const canManage = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const canDelete = roleKey === "SUPER_ADMIN";
@@ -96,6 +100,20 @@ export default function ProjectDetailView({
       await fn();
       router.refresh();
     });
+  }
+
+  function handleAllotmentRowAdd(projectId: string, row: TeamAllocationRow) {
+    if (!row.role_key || !row.user_id) return;
+    setAllotmentRows((prev) => {
+      const exists = prev.some((r) => r.role_key === row.role_key);
+      if (exists) return prev;
+      return [...prev, row];
+    });
+    run(() => assignProjectTeamAction(projectId, [{ role_key: row.role_key, user_id: row.user_id! }]));
+  }
+
+  function handleAllotmentRowRemove(roleKey: string) {
+    setAllotmentRows((prev) => prev.filter((r) => r.role_key !== roleKey));
   }
 
   const totalTasks = client.projects.reduce((n, p) => n + p.total_tasks, 0);
@@ -238,145 +256,156 @@ export default function ProjectDetailView({
             {/* Team allocation */}
             {canManage && p.status === "in_progress" && (
               <div className="px-4 pt-3">
-                <QuickAssignFullTeam
-                  project={p as unknown as Parameters<typeof QuickAssignFullTeam>[0]["project"]}
+                <DynamicTeamAllotment
+                  project={p as unknown as Parameters<typeof DynamicTeamAllotment>[0]["project"]}
                   team={team}
-                  initial={Object.fromEntries(
-                    p.assignments.filter((a) => !a.on_leave).map((a) => [a.role_key, a.user_id])
-                  )}
-                  onAssignAll={(assignments) => run(() => assignProjectTeamAction(p.id, assignments))}
-                  pending={pending}
+                  initialAllocations={allotmentRows}
+                  onRowAdd={(row) => handleAllotmentRowAdd(p.id, row)}
+                  onRowRemove={handleAllotmentRowRemove}
                 />
               </div>
             )}
 
-            {/* Tasks */}
-            <div className="p-4">
+            {/* Tasks — Accordion View */}
+            <div className="p-4 space-y-3">
               {p.tasks.length === 0 ? (
-                <p className="text-xs text-slate-500 py-3">
+                <p className="text-xs text-slate-500 py-3 text-center">
                   {p.status === "pending_approval"
                     ? "Tasks will be generated automatically once approved."
                     : "No tasks yet."}
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-white/10 bg-night-850">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-white/10 bg-white/[0.03]">
-                        <th className="px-3.5 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Task</th>
-                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[100px]">Role</th>
-                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[140px]">Assignee</th>
-                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[250px]">Due</th>
-                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[115px]">Status</th>
-                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[120px]">Published</th>
-                        <th className="px-3 py-2.5 w-[150px]"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/[0.06]">
-                      {p.tasks.map((t) => {
-                        const open = openTaskId === t.id;
-                        const overdue =
-                          t.due_date && t.status !== "completed" &&
-                          new Date(isoDate(t.due_date) + "T23:59:59") < new Date();
-                        return (
-                          <Fragment key={t.id}>
-                            <tr
-                              className={`cursor-pointer transition-colors align-top ${open ? "bg-brand-300/[0.07]" : "hover:bg-white/[0.04]"}`}
-                              onClick={() => setOpenTaskId(open ? null : t.id)}
-                            >
-                              <td className="px-3.5 py-2.5">
-                                <div className="min-w-0">
-                                  <p className="font-medium text-white">{t.title}</p>
-                                  {t.description && (
-                                    <p className="text-[10px] text-slate-500 line-clamp-1">{t.description}</p>
-                                  )}
-                                  {t.on_leave_note && (
-                                    <p className="text-[10px] text-amber-300 mt-0.5">☕ {t.on_leave_note}</p>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5">
-                                {t.role_label && (
-                                  <span className={`badge ${ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400"}`}>
-                                    {t.role_label}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5">
-                                {t.assignee_name ? (
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-bold text-slate-300 shrink-0">
-                                      {initials(t.assignee_name)}
-                                    </span>
-                                    <span className="text-slate-300 truncate">{t.assignee_name}</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-600">Unassigned</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                                {canManage && t.status !== "completed" ? (
-                                  <div
-                                    className="flex items-center gap-1"
-                                    title="Extend deadline (Sundays skipped)"
-                                  >
-                                    <div className="w-[124px] shrink-0">
-                                      <DatePicker
-                                        value={isoDate(t.due_date) || undefined}
-                                        placeholder="Set date…"
-                                        onChange={(v) => {
-                                          if (v && v !== isoDate(t.due_date)) {
-                                            run(() => updateTaskDueDateAction(t.id, v));
-                                          }
-                                        }}
-                                      />
-                                    </div>
-                                    {[1, 3, 7].map((n) => (
-                                      <button
-                                        key={n}
-                                        disabled={pending}
-                                        onClick={() =>
-                                          run(() =>
-                                            updateTaskDueDateAction(t.id, extendIso(isoDate(t.due_date), n))
-                                          )
-                                        }
-                                        className="px-1.5 py-1 rounded-md text-[10px] font-medium bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200 transition-colors disabled:opacity-40 shrink-0"
-                                      >
-                                        +{n}d
-                                      </button>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className={overdue ? "text-rose-300 font-medium" : "text-slate-300"}>
-                                    {fmtDate(t.due_date)}
-                                    {overdue && " · overdue"}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5"><StatusBadge status={t.status} /></td>
-                              <td className="px-3 py-2.5"><PlatformBadges platforms={t.platforms} /></td>
-                              <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                                <TaskActions
-                                  task={t}
-                                  roleKey={roleKey}
-                                  userId={userId}
-                                  onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)}
-                                />
-                              </td>
-                            </tr>
-                            {open && (
-                              <tr className="bg-white/[0.03]">
-                                <td colSpan={7} className="px-3 py-2">
-                                  <TaskDetails task={t} roleKey={roleKey} userId={userId} />
-                                </td>
-                              </tr>
+                p.tasks.map((t) => {
+                  const isExpanded = expandedTaskId === t.id;
+                  const overdue =
+                    t.due_date && t.status !== "completed" &&
+                    new Date(isoDate(t.due_date) + "T23:59:59") < new Date();
+                  return (
+                    <div
+                      key={t.id}
+                      className="card overflow-hidden bg-night-850/80"
+                    >
+                      {/* Accordion Header */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedTaskId(isExpanded ? null : t.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.03] transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-white truncate">{t.title}</p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-500">
+                            {t.role_label && (
+                              <span className={`badge ${ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400"}`}>
+                                {t.role_label}
+                              </span>
                             )}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            {t.assignee_name ? (
+                              <span className="flex items-center gap-1.5">
+                                <span className="h-5 w-5 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-bold text-slate-300 shrink-0">
+                                  {initials(t.assignee_name)}
+                                </span>
+                                <span className="truncate max-w-[120px]">{t.assignee_name}</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">Unassigned</span>
+                            )}
+                            <span className={overdue ? "text-rose-300 font-medium" : "text-slate-400"}>
+                              <CalendarDays className="h-3 w-3 inline-block mr-1" />
+                              {fmtDate(t.due_date)}{overdue && " · overdue"}
+                            </span>
+                            <StatusBadge status={t.status} />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <PlatformBadges platforms={t.platforms} />
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-slate-400" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-slate-400" />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Accordion Content */}
+                      {isExpanded && (
+                        <div className="border-t border-white/10 bg-white/[0.02] px-4 pb-4 animate-slide-down">
+                          <div className="space-y-4 pt-3">
+                            {/* Description */}
+                            {t.description && (
+                              <div className="rounded-lg bg-white/5 p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Description</p>
+                                <p className="text-sm text-slate-300 whitespace-pre-wrap">{t.description}</p>
+                              </div>
+                            )}
+
+                            {/* On Leave Note */}
+                            {t.on_leave_note && (
+                              <div className="rounded-lg bg-amber-400/10 border border-amber-400/30 p-3">
+                                <p className="text-xs text-amber-300 flex items-center gap-1">
+                                  <Coffee className="h-3 w-3" /> {t.on_leave_note}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Deadline Management */}
+                            {canManage && t.status !== "completed" && (
+                              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                  <CalendarDays className="h-3 w-3" /> Deadline Management
+                                </p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="w-[140px] shrink-0">
+                                    <DatePicker
+                                      value={isoDate(t.due_date) || undefined}
+                                      placeholder="Set date…"
+                                      onChange={(v) => {
+                                        if (v && v !== isoDate(t.due_date)) {
+                                          run(() => updateTaskDueDateAction(t.id, v));
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="text-[9px] uppercase tracking-wider text-slate-500">Extend (Sun skipped):</span>
+                                  {[1, 3, 7].map((n) => (
+                                    <button
+                                      key={n}
+                                      disabled={pending}
+                                      onClick={() =>
+                                        run(() =>
+                                          updateTaskDueDateAction(t.id, extendIso(isoDate(t.due_date), n))
+                                        )
+                                      }
+                                      className="px-2 py-1 rounded-md text-[10px] font-medium bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200 transition-colors disabled:opacity-40 shrink-0"
+                                    >
+                                      +{n}d
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Task Workflow Actions */}
+                            <div className="pt-2 border-t border-white/10">
+                              <TaskActions
+                                task={t}
+                                roleKey={roleKey}
+                                userId={userId}
+                                onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)}
+                              />
+                            </div>
+
+                            {/* Expanded Task Details (comments, history, etc.) */}
+                            {openTaskId === t.id && (
+                              <div className="rounded-lg bg-white/5 p-3 animate-fade-in">
+                                <TaskDetails task={t} roleKey={roleKey} userId={userId} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
