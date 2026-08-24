@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -12,6 +12,8 @@ import {
   Trophy,
   CalendarClock,
   Target,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import {
   createLeadAction,
@@ -32,6 +34,15 @@ const STATUS_STYLES: Record<string, string> = {
   proposal: "bg-indigo-400/10 text-indigo-300",
   won: "bg-emerald-400/10 text-emerald-300",
   lost: "bg-rose-400/10 text-rose-300",
+};
+
+const STAGE_DOTS: Record<string, string> = {
+  new: "bg-sky-400",
+  contacted: "bg-violet-400",
+  follow_up: "bg-amber-400",
+  proposal: "bg-indigo-400",
+  won: "bg-emerald-400",
+  lost: "bg-rose-400",
 };
 
 const SOURCE_LABELS = Object.fromEntries(LEAD_SOURCES.map((s) => [s.key, s.label]));
@@ -275,18 +286,11 @@ export default function LeadsView({
                     </td>
                     <td className="px-3 py-2.5 text-slate-400">{SOURCE_LABELS[l.source] || l.source}</td>
                     <td className="px-3 py-2.5">
-                      <select
-                        value={l.status}
+                      <StageSelect
+                        lead={l}
                         disabled={pending}
-                        onChange={(e) => run(() => updateLeadStatusAction(l.id, e.target.value))}
-                        className={`badge cursor-pointer border-0 appearance-none pr-4 ${STATUS_STYLES[l.status] || "bg-white/10 text-slate-300"}`}
-                        aria-label={`Change stage for ${l.name}`}
-                        style={{ colorScheme: "dark" }}
-                      >
-                        {LEAD_STATUSES.map((s) => (
-                          <option key={s.key} value={s.key}>{s.label}</option>
-                        ))}
-                      </select>
+                        onSelect={(status) => run(() => updateLeadStatusAction(l.id, status))}
+                      />
                     </td>
                     <td className="px-3 py-2.5 text-right font-medium text-slate-200">{fmtMoney(l.deal_value)}</td>
                     <td className="px-3 py-2.5">
@@ -357,6 +361,100 @@ export default function LeadsView({
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Themed stage picker — replaces the native <select> whose popup can't be
+ * styled. Renders a fixed-position dark menu (escapes the table's
+ * overflow clipping) with per-stage color dots and a brand highlight.
+ */
+function StageSelect({
+  lead,
+  disabled,
+  onSelect,
+}: {
+  lead: Lead;
+  disabled?: boolean;
+  onSelect: (status: LeadStatus) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const current = LEAD_STATUSES.find((s) => s.key === lead.status);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setCoords({
+      top: Math.min(r.bottom + 4, window.innerHeight - 260),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 190)),
+    });
+    setOpen(true);
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        disabled={disabled}
+        onClick={toggle}
+        aria-label={`Change stage for ${lead.name}`}
+        className={`badge cursor-pointer inline-flex items-center gap-1 transition-transform ${STATUS_STYLES[lead.status] || "bg-white/10 text-slate-300"} ${open ? "ring-1 ring-brand-300/40" : ""}`}
+      >
+        {current?.label || lead.status}
+        <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && coords && (
+        <div
+          className="fixed z-50 min-w-[176px] rounded-xl border border-white/10 bg-night-900/95 backdrop-blur p-1 shadow-2xl shadow-black/50"
+          style={{ top: coords.top, left: coords.left }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {LEAD_STATUSES.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                setOpen(false);
+                if (s.key !== lead.status) onSelect(s.key);
+              }}
+              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                s.key === lead.status
+                  ? "text-brand-300 bg-brand-300/10 font-medium"
+                  : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full shrink-0 ${STAGE_DOTS[s.key] || "bg-slate-500"}`} />
+              <span className="flex-1 text-left">{s.label}</span>
+              {s.key === lead.status && <Check className="h-3 w-3 shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 function LeadFormModal({
