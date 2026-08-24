@@ -5,13 +5,15 @@ import { X, CircleCheck, Clock, PauseCircle, Send, Undo2, Users, Upload } from "
 
 export const STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
   pending: { label: "Pending", cls: "bg-white/10 text-slate-300", Icon: PauseCircle },
-  in_progress: { label: "In Progress", cls: "bg-amber-400/10 text-amber-300", Icon: Clock },
+  pending_approval: { label: "Pending Approval", cls: "bg-amber-400/10 text-amber-300", Icon: Clock },
+  in_progress: { label: "In Process", cls: "bg-brand-300/10 text-brand-300", Icon: Clock },
   submitted: { label: "Awaiting Review", cls: "bg-violet-400/10 text-violet-300", Icon: Send },
   needs_improvement: { label: "Needs Improvement", cls: "bg-rose-400/10 text-rose-300", Icon: Undo2 },
   client_review: { label: "Client Review", cls: "bg-sky-400/10 text-sky-300", Icon: Users },
   client_feedback: { label: "Client Feedback", cls: "bg-rose-400/10 text-rose-300", Icon: Undo2 },
   client_approved: { label: "Client Approved", cls: "bg-emerald-400/10 text-emerald-300", Icon: CircleCheck },
   uploading: { label: "Uploading", cls: "bg-brand-300/10 text-brand-300", Icon: Upload },
+  upload_done: { label: "Upload Done", cls: "bg-sky-400/10 text-sky-300", Icon: Upload },
   completed: { label: "Completed", cls: "bg-emerald-400/10 text-emerald-300", Icon: CircleCheck },
 };
 

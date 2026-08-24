@@ -4,7 +4,7 @@ import { getSession } from "@/lib/session";
 import { getMyTasks, getProjects, getLeadStats, getTaskStatusCounts } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
-import { Stat, ProjectStatusBadge, EmptyState, STATUS_META } from "@/components/ui";
+import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 import { LEAD_STATUSES } from "@/lib/types";
 
 const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM"];
@@ -149,17 +149,19 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
               <h2 className="text-sm font-semibold text-white">All Tasks</h2>
               <span className="ml-auto text-xs text-slate-500">{totalTasks} total</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {Object.entries(STATUS_META).map(([key, meta]) => {
-                const count = taskCounts[key] || 0;
-                const Icon = meta.Icon;
-                return (
-                  <div key={key} className={`rounded-lg border p-2.5 flex flex-col gap-1 ${meta.cls} bg-opacity-10 border-white/10`}>
-                    <span className="flex items-center gap-1 text-[10px] leading-none opacity-80"><Icon className="h-3 w-3" />{meta.label}</span>
-                    <span className="text-lg font-bold leading-none">{count}</span>
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-center gap-4">
+              {[
+                { key: "pending", label: "Pending", cls: "bg-white/[0.04] border-white/10 text-slate-300" },
+                { key: "pending_approval", label: "Pending Approval", cls: "bg-amber-400/10 border-amber-400/20 text-amber-300" },
+                { key: "in_progress", label: "In Process", cls: "bg-brand-300/10 border-brand-300/20 text-brand-300" },
+                { key: "completed", label: "Completed", cls: "bg-emerald-400/10 border-emerald-400/20 text-emerald-300" },
+                { key: "upload_done", label: "Upload Done", cls: "bg-sky-400/10 border-sky-400/20 text-sky-300" },
+              ].map((s) => (
+                <div key={s.key} className={`rounded-lg border p-3 flex-1 min-w-[120px] text-center ${s.cls}`}>
+                  <p className="text-[11px] opacity-80">{s.label}</p>
+                  <p className="text-xl font-bold text-white mt-0.5">{taskCounts[s.key] || 0}</p>
+                </div>
+              ))}
             </div>
           </div>
 
