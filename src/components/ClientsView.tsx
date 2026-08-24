@@ -68,9 +68,9 @@ function DeliverablesPicker({
         {types.map((t) => {
           const q = quantities[t.key] || 0;
           return (
-            <div key={t.key} className="rounded-lg border border-slate-200 p-2 bg-slate-50/50">
+            <div key={t.key} className="rounded-lg border border-white/10 p-2 bg-white/[0.03]">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-medium text-slate-700">{t.label}</p>
+                <p className="text-[11px] font-medium text-slate-200">{t.label}</p>
                 <input
                   type="number"
                   min={0}
@@ -86,7 +86,7 @@ function DeliverablesPicker({
                 />
               </div>
               {q > 0 && (
-                <p className="text-[10px] text-brand-600 mt-1">
+                <p className="text-[10px] text-brand-300 mt-1">
                   {q} task{q === 1 ? "" : "s"} will be generated
                 </p>
               )}
@@ -95,13 +95,13 @@ function DeliverablesPicker({
         })}
       </div>
 
-      <div className="rounded-lg border border-dashed border-slate-300 p-2 space-y-1.5">
-        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+      <div className="rounded-lg border border-dashed border-white/10 p-2 space-y-1.5">
+        <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
           <input
             type="checkbox"
             checked={custom}
             onChange={(e) => { setCustom(e.target.checked); onChange([...selected]); }}
-            className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-brand-300 focus:ring-brand-300/25"
           />
           Custom Design Deliverables
         </label>
@@ -115,18 +115,18 @@ function DeliverablesPicker({
         )}
       </div>
 
-      <div className="rounded-lg bg-brand-50/60 border border-brand-100 p-3">
+      <div className="rounded-lg bg-brand-300/10 border border-brand-300/20 p-3">
         <div className="flex items-center gap-1.5 mb-1.5">
-          <Tags className="h-3.5 w-3.5 text-brand-700" />
-          <p className="text-xs font-semibold text-brand-800">Generated Tasks Preview</p>
+          <Tags className="h-3.5 w-3.5 text-brand-300" />
+          <p className="text-xs font-semibold text-brand-200">Generated Tasks Preview</p>
         </div>
         {total === 0 ? (
-          <p className="text-[11px] text-slate-400">Set quantities above to preview tasks.</p>
+          <p className="text-[11px] text-slate-500">Set quantities above to preview tasks.</p>
         ) : (
           <div className="flex flex-wrap gap-1">
             {selected.map((d) =>
               Array.from({ length: d.quantity }, (_, i) => (
-                <span key={`${d.key}-${i}`} className="badge bg-white text-brand-700 border border-brand-200 text-[10px]">
+                <span key={`${d.key}-${i}`} className="badge bg-brand-300/10 text-brand-300 border border-brand-300/20 text-[10px]">
                   {d.label} {pad(i + 1)}
                 </span>
               ))
@@ -134,7 +134,7 @@ function DeliverablesPicker({
           </div>
         )}
         {total > 0 && (
-          <p className="text-[10px] text-brand-600 mt-1.5">
+          <p className="text-[10px] text-brand-300 mt-1.5">
             {total} content task{total === 1 ? "" : "s"} now · visual tasks auto-spawn after approval.
           </p>
         )}
@@ -227,7 +227,7 @@ export default function ClientsView({
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
         <div className="relative flex-1 w-full sm:max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
           <input
             type="text"
             value={searchDraft}
@@ -238,7 +238,7 @@ export default function ClientsView({
           />
         </div>
         {total > 0 && (
-          <span className="badge bg-slate-100 text-slate-600">{total} client{total === 1 ? "" : "s"}</span>
+          <span className="badge bg-white/10 text-slate-300">{total} client{total === 1 ? "" : "s"}</span>
         )}
       </div>
 
@@ -258,12 +258,12 @@ export default function ClientsView({
                 className="card card-hover p-4 text-left overflow-hidden flex flex-col gap-2"
               >
                 <div className="flex items-start gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-brand-600/10 flex items-center justify-center shrink-0 text-brand-700 font-bold text-sm">
+                  <div className="h-9 w-9 rounded-xl bg-brand-300/10 flex items-center justify-center shrink-0 text-brand-300 font-bold text-sm">
                     {initials(c.name)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-slate-800 truncate">{c.name}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{c.company || "—"}</p>
+                    <p className="font-semibold text-sm text-white truncate">{c.name}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{c.company || "—"}</p>
                   </div>
                   {canCreate && (
                     <button
@@ -275,17 +275,17 @@ export default function ClientsView({
                     </button>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 mt-auto pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 mt-auto pt-2 border-t border-white/10">
                   {(c.email || c.phone) && (
-                    <span className="text-slate-400 truncate max-w-[180px]">
+                    <span className="text-slate-500 truncate max-w-[180px]">
                       {c.email || c.phone}
                     </span>
                   )}
                   <span className="ml-auto flex items-center gap-1.5">
-                    <span className={`badge ${c.active_projects > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                    <span className={`badge ${c.active_projects > 0 ? "bg-amber-400/10 text-amber-300" : "bg-white/10 text-slate-500"}`}>
                       {c.active_projects} active
                     </span>
-                    <span className="badge bg-emerald-100 text-emerald-700">{c.total_projects} projects</span>
+                    <span className="badge bg-emerald-400/10 text-emerald-300">{c.total_projects} projects</span>
                     <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
                   </span>
                 </div>
@@ -294,13 +294,13 @@ export default function ClientsView({
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-2 border border-slate-200 rounded-xl bg-white">
+            <div className="flex items-center justify-between px-4 py-2 border border-white/10 rounded-xl bg-night-850">
               <p className="text-[11px] text-slate-500">
                 {total} clients · Page {page}/{totalPages}
               </p>
               <div className="flex items-center gap-0.5">
                 <button
-                  className="p-1 rounded text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-1 rounded text-slate-500 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
                   disabled={page <= 1}
                   onClick={() => navigate({ page: String(page - 1) })}
                 >
@@ -318,8 +318,8 @@ export default function ClientsView({
                       onClick={() => navigate({ page: String(pageNum) })}
                       className={`w-7 h-7 rounded text-[11px] font-medium transition-colors ${
                         page === pageNum
-                          ? "bg-brand-600 text-white"
-                          : "text-slate-600 hover:bg-slate-200"
+                          ? "bg-brand-300 text-night-950"
+                          : "text-slate-300 hover:bg-white/15"
                       }`}
                     >
                       {pageNum}
@@ -327,7 +327,7 @@ export default function ClientsView({
                   );
                 })}
                 <button
-                  className="p-1 rounded text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-1 rounded text-slate-500 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
                   disabled={page >= totalPages}
                   onClick={() => navigate({ page: String(page + 1) })}
                 >
@@ -340,7 +340,7 @@ export default function ClientsView({
       )}
 
       <Modal open={clientModal} onClose={() => setClientModal(false)} title="New Client">
-        {error && <p className="mb-2 rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</p>}
+        {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
         <form action={runWith(createClientAction)} className="space-y-3">
           <div>
             <label className="label">Client / Contact name</label>
@@ -367,7 +367,7 @@ export default function ClientsView({
       </Modal>
 
       <Modal open={briefModal} onClose={() => setBriefModal(false)} title="New Project Brief">
-        {error && <p className="mb-2 rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</p>}
+        {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
         <form action={runWith(createProjectAction)} className="space-y-3">
           <div>
             <label className="label">Client</label>

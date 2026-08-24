@@ -30,9 +30,9 @@ export default function SmmDashboard({
   const [openId, setOpenId] = useState<string | null>(null);
 
   const metrics = [
-    { label: "Client Review", value: tasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-600 bg-sky-50" },
-    { label: "Uploading", value: tasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-brand-600 bg-brand-50" },
-    { label: "Completed", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-600 bg-emerald-50" },
+    { label: "Client Review", value: tasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
+    { label: "Uploading", value: tasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-brand-300 bg-brand-300/[0.07]" },
+    { label: "Completed", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
   const filtered = useMemo(() => {
@@ -58,8 +58,8 @@ export default function SmmDashboard({
   if (tasks.length === 0) {
     return (
       <div className="card flex flex-col items-center justify-center py-8 text-center">
-        <p className="text-sm font-medium text-slate-600">No tasks assigned yet</p>
-        <p className="text-xs text-slate-400 mt-1">SMM tasks will appear here once projects are approved.</p>
+        <p className="text-sm font-medium text-slate-300">No tasks assigned yet</p>
+        <p className="text-xs text-slate-500 mt-1">SMM tasks will appear here once projects are approved.</p>
       </div>
     );
   }
@@ -80,7 +80,7 @@ export default function SmmDashboard({
 
       <div className="space-y-2">
         <div className="relative flex-1 w-full sm:max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
           <input
             type="text"
             value={query}
@@ -96,13 +96,13 @@ export default function SmmDashboard({
               onClick={() => setStatusFilter(statusFilter === tab.key ? "" : tab.key)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                 statusFilter === tab.key
-                  ? "bg-brand-600 text-white shadow-sm"
-                  : "bg-white border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-600"
+                  ? "bg-brand-300 text-night-950 shadow-sm"
+                  : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
               }`}
             >
               {tab.label}
               <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
-                statusFilter === tab.key ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-500"
+                statusFilter === tab.key ? "bg-brand-300/20 text-brand-300" : "bg-white/10 text-slate-400"
               }`}>
                 {tab.count}
               </span>
@@ -113,24 +113,24 @@ export default function SmmDashboard({
 
       <div className="space-y-2">
         {filtered.length === 0 && (
-          <div className="card py-8 text-center text-xs text-slate-400">
+          <div className="card py-8 text-center text-xs text-slate-500">
             No tasks match your filters.
           </div>
         )}
         {filtered.map((t) => {
           const open = openId === t.id;
           return (
-            <div key={t.id} className={`card overflow-hidden transition-colors ${open ? "ring-1 ring-brand-200" : ""}`}>
+            <div key={t.id} className={`card overflow-hidden transition-colors ${open ? "ring-1 ring-brand-300/30" : ""}`}>
               <button
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50/50 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors"
                 onClick={() => setOpenId(open ? null : t.id)}
               >
                 <span className={`text-slate-300 transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
                   <ChevronRight className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-xs text-slate-800 truncate">{t.title}</p>
-                  <p className="text-[11px] text-slate-400 truncate">
+                  <p className="font-medium text-xs text-white truncate">{t.title}</p>
+                  <p className="text-[11px] text-slate-500 truncate">
                     {t.client_name} · {t.project_name}
                     {t.due_date ? ` · Due ${new Date(t.due_date).toLocaleDateString()}` : ""}
                   </p>
@@ -141,7 +141,7 @@ export default function SmmDashboard({
                 <StatusBadge status={t.status} />
               </button>
               {open && (
-                <div className="px-4 pb-4 pt-3 border-t border-slate-100 space-y-3">
+                <div className="px-4 pb-4 pt-3 border-t border-white/[0.06] space-y-3">
                   {t.status === "client_review" && <ClientFeedbackPanel task={t} />}
                   {t.status === "uploading" && <PublishPanel task={t} />}
                   {t.status !== "client_review" && t.status !== "uploading" && (

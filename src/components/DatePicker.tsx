@@ -72,11 +72,11 @@ export function DatePicker({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className={`input text-left cursor-pointer ${internal ? "" : "text-slate-400"}`}
+          className={`input text-left cursor-pointer ${internal ? "" : "text-slate-500"}`}
         >
           {formatted || placeholder}
         </button>
-        <Calendar className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Calendar className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
         {internal && (
           <button
             type="button"
@@ -86,7 +86,7 @@ export function DatePicker({
               onChange?.("");
               setOpen(false);
             }}
-            className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-100 text-slate-400"
+            className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-white/10 text-slate-500"
             title="Clear date"
           >
             <X className="h-3 w-3" />
@@ -95,22 +95,22 @@ export function DatePicker({
       </div>
 
       {open && (
-        <div className="absolute z-30 mt-1.5 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg shadow-slate-900/10">
+        <div className="absolute z-30 mt-1.5 w-72 rounded-2xl border border-white/10 bg-night-850 p-3 shadow-lg shadow-black/40">
           <div className="flex items-center justify-between mb-2">
-            <button type="button" onClick={prev} className="p-1 rounded-lg hover:bg-slate-100 text-slate-500">
+            <button type="button" onClick={prev} className="p-1 rounded-lg hover:bg-white/10 text-slate-500">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <p className="text-sm font-semibold text-slate-800">
+            <p className="text-sm font-semibold text-white">
               {new Date(view.y, view.m, 1).toLocaleDateString([], { month: "long", year: "numeric" })}
             </p>
-            <button type="button" onClick={next} className="p-1 rounded-lg hover:bg-slate-100 text-slate-500">
+            <button type="button" onClick={next} className="p-1 rounded-lg hover:bg-white/10 text-slate-500">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
           <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
             {WEEKDAYS.map((d) => (
-              <span key={d} className="text-[10px] font-medium text-slate-400 py-1">
+              <span key={d} className="text-[10px] font-medium text-slate-500 py-1">
                 {d}
               </span>
             ))}
@@ -132,10 +132,10 @@ export function DatePicker({
                   onClick={() => pick(day)}
                   className={`h-8 w-8 mx-auto rounded-lg text-xs font-medium transition-colors ${
                     isSelected
-                      ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+                      ? "bg-brand-300 text-night-950 shadow-sm shadow-brand-300/25"
                       : isToday
-                      ? "bg-brand-50 text-brand-700"
-                      : "text-slate-700 hover:bg-slate-100"
+                      ? "bg-brand-300/10 text-brand-300"
+                      : "text-slate-200 hover:bg-white/10"
                   }`}
                 >
                   {day}
@@ -144,8 +144,8 @@ export function DatePicker({
             })}
           </div>
 
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-            <span className="text-[10px] text-slate-400">
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/10">
+            <span className="text-[10px] text-slate-500">
               {required && !internal ? "Required" : internal ? "Selected" : "Pick a date"}
             </span>
             {internal && (
@@ -153,7 +153,7 @@ export function DatePicker({
                 type="button"
                 onClick={() => pick(Math.min(dayOf(internal), daysInMonth))}
                 disabled={!internal}
-                className="text-[10px] font-semibold text-brand-600 hover:text-brand-700"
+                className="text-[10px] font-semibold text-brand-300 hover:text-brand-200"
               >
                 OK
               </button>

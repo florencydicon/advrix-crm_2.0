@@ -47,14 +47,14 @@ export default function SettingsView({
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Settings</h1>
-        <p className="text-sm text-slate-500">Manage your account, team members, and permissions.</p>
+        <p className="text-sm text-slate-400">Manage your account, team members, and permissions.</p>
       </div>
 
       <div className="flex gap-2">
         <button
           onClick={() => { setTab("users"); router.push("/settings"); }}
           className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-            tab === "users" ? "bg-ink text-white" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+            tab === "users" ? "bg-brand-300 text-night-950" : "bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
           }`}
         >
           <Users className="h-4 w-4" /> Users & Roles
@@ -62,7 +62,7 @@ export default function SettingsView({
         <button
           onClick={() => setTab("general")}
           className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-            tab === "general" ? "bg-ink text-white" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+            tab === "general" ? "bg-brand-300 text-night-950" : "bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
           }`}
         >
           <UserCog className="h-4 w-4" /> General
@@ -88,19 +88,19 @@ export default function SettingsView({
         <div className="grid lg:grid-cols-2 gap-6">
           <div className="card p-6 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold">
+              <div className="h-12 w-12 rounded-full bg-brand-300 flex items-center justify-center text-night-950 font-bold">
                 {initials}
               </div>
               <div>
-                <p className="font-semibold text-slate-800">{sessionName}</p>
-                <p className="text-xs text-slate-500">{sessionRole}</p>
+                <p className="font-semibold text-white">{sessionName}</p>
+                <p className="text-xs text-slate-400">{sessionRole}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 rounded-xl bg-brand-50 text-brand-700 px-4 py-3 text-sm">
+            <div className="flex items-center gap-2 rounded-xl bg-brand-300/[0.07] text-brand-300 px-4 py-3 text-sm">
               <ShieldCheck className="h-4 w-4 shrink-0" />
               You are signed in with Super Admin privileges.
             </div>
-            <div className="flex items-center gap-2 rounded-xl bg-slate-50 text-slate-600 px-4 py-3 text-sm">
+            <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] text-slate-300 px-4 py-3 text-sm">
               <KeyRound className="h-4 w-4 shrink-0" />
               Use the Users &amp; Roles tab to create team members and manage passwords.
             </div>
@@ -117,7 +117,7 @@ export default function SettingsView({
                 <label className="label">Workspace</label>
                 <input className="input" defaultValue="advrix-crm" disabled />
               </div>
-              <p className="text-xs text-slate-400 pt-1">
+              <p className="text-xs text-slate-500 pt-1">
                 These fields are read-only. Contact your developer to change agency branding.
               </p>
             </div>

@@ -94,7 +94,7 @@ export default function SmartTable<T>({
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
         {searchPlaceholder && (
           <div className="relative flex-1 w-full sm:max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
             <input
               type="text"
               value={searchDraft}
@@ -113,14 +113,14 @@ export default function SmartTable<T>({
                 onClick={() => handleFilter(tab.key)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                   activeFilter === tab.key
-                    ? "bg-brand-600 text-white shadow-sm"
-                    : "bg-white border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-600"
+                    ? "bg-brand-300 text-night-950 shadow-sm"
+                    : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-300"
                 }`}
               >
                 {tab.label}
                 {tab.count !== undefined && (
                   <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
-                    activeFilter === tab.key ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-500"
+                    activeFilter === tab.key ? "bg-brand-300 text-night-950" : "bg-white/10 text-slate-400"
                   }`}>
                     {tab.count}
                   </span>
@@ -135,19 +135,19 @@ export default function SmartTable<T>({
       <div className="card overflow-hidden">
         {data.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <p className="text-sm font-medium text-slate-600">{emptyTitle}</p>
-            {emptySubtitle && <p className="text-xs text-slate-400 mt-0.5">{emptySubtitle}</p>}
+            <p className="text-sm font-medium text-slate-300">{emptyTitle}</p>
+            {emptySubtitle && <p className="text-xs text-slate-500 mt-0.5">{emptySubtitle}</p>}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/60">
+                <tr className="border-b border-white/10 bg-white/[0.03]">
                   {columns.map((col) => (
                     <th
                       key={col.key}
                       className={`px-4 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider ${
-                        col.sortable ? "cursor-pointer hover:text-slate-700 select-none" : ""
+                        col.sortable ? "cursor-pointer hover:text-slate-200 select-none" : ""
                       } ${col.className || ""}`}
                     >
                       {col.label}
@@ -155,9 +155,9 @@ export default function SmartTable<T>({
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-white/[0.06]">
                 {data.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={idx} className="hover:bg-white/[0.04] transition-colors">
                     {columns.map((col) => (
                       <td key={col.key} className={`px-4 py-2 ${col.className || ""}`}>
                         {col.render(item)}
@@ -171,13 +171,13 @@ export default function SmartTable<T>({
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-2 border-t border-slate-200 bg-slate-50/30">
+          <div className="flex items-center justify-between px-4 py-2 border-t border-white/10 bg-white/[0.02]">
             <p className="text-[11px] text-slate-500">
               {total} items · Page {page}/{totalPages}
             </p>
             <div className="flex items-center gap-0.5">
               <button
-                className="p-1 rounded text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-1 rounded text-slate-500 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
                 disabled={page <= 1}
                 onClick={() => handlePage(page - 1)}
               >
@@ -195,8 +195,8 @@ export default function SmartTable<T>({
                     onClick={() => handlePage(pageNum)}
                     className={`w-7 h-7 rounded text-[11px] font-medium transition-colors ${
                       page === pageNum
-                        ? "bg-brand-600 text-white"
-                        : "text-slate-600 hover:bg-slate-200"
+                        ? "bg-brand-300 text-night-950"
+                        : "text-slate-300 hover:bg-white/15"
                     }`}
                   >
                     {pageNum}
@@ -204,7 +204,7 @@ export default function SmartTable<T>({
                 );
               })}
               <button
-                className="p-1 rounded text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-1 rounded text-slate-500 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
                 disabled={page >= totalPages}
                 onClick={() => handlePage(page + 1)}
               >

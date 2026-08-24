@@ -21,9 +21,9 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
   const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading"];
 
   const metrics = [
-    { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-600 bg-brand-50" },
-    { label: "Pending", value: tasks.filter((t) => t.status === "pending").length, Icon: Clock, cls: "text-amber-600 bg-amber-50" },
-    { label: "Done", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-600 bg-emerald-50" },
+    { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
+    { label: "Pending", value: tasks.filter((t) => t.status === "pending").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
+    { label: "Done", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
   const filtered = useMemo(() => {
@@ -65,8 +65,8 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
       label: "Task",
       render: (t) => (
         <div>
-          <p className="font-medium text-xs text-slate-800">{t.title}</p>
-          <p className="text-[11px] text-slate-400">{t.project_name} · {t.client_name}</p>
+          <p className="font-medium text-xs text-white">{t.title}</p>
+          <p className="text-[11px] text-slate-500">{t.project_name} · {t.client_name}</p>
         </div>
       ),
     },
@@ -74,7 +74,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
       key: "role",
       label: "Role",
       className: "w-[80px]",
-      render: (t) => t.role_label ? <span className="badge bg-slate-100 text-slate-500">{t.role_label}</span> : null,
+      render: (t) => t.role_label ? <span className="badge bg-white/10 text-slate-400">{t.role_label}</span> : null,
     },
     {
       key: "priority",
@@ -111,8 +111,8 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
   if (tasks.length === 0) {
     return (
       <div className="card flex flex-col items-center justify-center py-8 text-center">
-        <p className="text-sm font-medium text-slate-600">No assignments yet</p>
-        <p className="text-xs text-slate-400 mt-1">New tasks will appear here automatically.</p>
+        <p className="text-sm font-medium text-slate-300">No assignments yet</p>
+        <p className="text-xs text-slate-500 mt-1">New tasks will appear here automatically.</p>
       </div>
     );
   }
@@ -139,7 +139,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
 
       <div className="space-y-3">
         {grouped.length === 0 && (
-          <div className="card py-8 text-center text-xs text-slate-400">No tasks match your search.</div>
+          <div className="card py-8 text-center text-xs text-slate-500">No tasks match your search.</div>
         )}
         {grouped.map((client) => {
           const isOpen = openClient === client.client_name;
@@ -148,41 +148,41 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
           return (
             <div key={client.client_name} className="card overflow-hidden">
               <button
-                className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50/50 transition-colors text-left"
+                className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left"
                 onClick={() => { setOpenClient(isOpen ? null : client.client_name); setOpenTaskId(null); }}
               >
                 <div className="flex items-center gap-3">
-                  <span className={`text-slate-400 transition-transform ${isOpen ? "rotate-90" : ""}`}>
+                  <span className={`text-slate-500 transition-transform ${isOpen ? "rotate-90" : ""}`}>
                     <ArrowRight className="h-4 w-4" />
                   </span>
                   <div>
-                    <p className="font-semibold text-sm text-slate-800">{client.client_name}</p>
-                    <p className="text-[11px] text-slate-400">{client.projects.length} project{client.projects.length === 1 ? "" : "s"}</p>
+                    <p className="font-semibold text-sm text-white">{client.client_name}</p>
+                    <p className="text-[11px] text-slate-500">{client.projects.length} project{client.projects.length === 1 ? "" : "s"}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="badge bg-emerald-100 text-emerald-700">{done} done</span>
-                  <span className={`badge ${active > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>{active} active</span>
+                  <span className="badge bg-emerald-400/10 text-emerald-300">{done} done</span>
+                  <span className={`badge ${active > 0 ? "bg-amber-400/10 text-amber-300" : "bg-white/10 text-slate-400"}`}>{active} active</span>
                 </div>
               </button>
 
               {isOpen && (
-                <div className="border-t border-slate-100">
+                <div className="border-t border-white/[0.06]">
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50/60">
+                        <tr className="border-b border-white/10 bg-white/[0.03]">
                           {columns.map((col) => (
-                            <th key={col.key} className={`px-4 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider ${col.className || ""}`}>
+                            <th key={col.key} className={`px-4 py-2 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider ${col.className || ""}`}>
                               {col.label}
                             </th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-white/[0.06]">
                         {client.tasks.map((t) => (
                           <Fragment key={t.id}>
-                            <tr className="hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}>
+                            <tr className="hover:bg-white/[0.04] transition-colors cursor-pointer" onClick={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}>
                               {columns.map((col) => (
                                 <td key={col.key} className={`px-4 py-2 ${col.className || ""}`} onClick={(e) => e.stopPropagation()}>
                                   {col.render(t)}
@@ -190,7 +190,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                               ))}
                             </tr>
                             {openTaskId === t.id && (
-                              <tr className="bg-slate-50/30">
+                              <tr className="bg-white/[0.03]">
                                 <td colSpan={columns.length} className="px-4 py-2">
                                   <TaskDetails task={t} roleKey={roleKey} userId={userId} />
                                 </td>

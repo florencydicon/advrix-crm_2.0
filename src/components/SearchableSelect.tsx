@@ -57,16 +57,16 @@ export function SearchableSelect({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`input text-left cursor-pointer ${value ? "" : "text-slate-400"}`}
+        className={`input text-left cursor-pointer ${value ? "" : "text-slate-500"}`}
       >
         {selected ? selected.label : placeholder}
       </button>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
 
       {open && (
-        <div className="absolute z-30 mt-1.5 w-full rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/10 overflow-hidden">
-          <div className="relative border-b border-slate-100">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+        <div className="absolute z-30 mt-1.5 w-full rounded-2xl border border-white/10 bg-night-850 shadow-lg shadow-black/40 overflow-hidden">
+          <div className="relative border-b border-white/10">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
             <input
               autoFocus
               value={query}
@@ -77,7 +77,7 @@ export function SearchableSelect({
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <p className="px-3 py-3 text-xs text-slate-400">No matches found.</p>
+              <p className="px-3 py-3 text-xs text-slate-500">No matches found.</p>
             ) : (
               filtered.map((o) => (
                 <button
@@ -85,7 +85,7 @@ export function SearchableSelect({
                   type="button"
                   onClick={() => pick(o.value)}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                    o.value === value ? "text-brand-700 bg-brand-50" : "text-slate-700 hover:bg-slate-50"
+                    o.value === value ? "text-brand-300 bg-brand-300/10" : "text-slate-200 hover:bg-white/[0.06]"
                   }`}
                 >
                   <span className="truncate">{o.label}</span>

@@ -41,15 +41,15 @@ export default function QuickAssignFullTeam({
   const hasAnySelection = applicableRoles.some((r) => quickDraft[r.key]);
 
   return (
-    <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-3 space-y-2">
+    <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3 space-y-2">
       <div className="flex items-center gap-2">
-        <UserPlus className="h-3.5 w-3.5 text-brand-700" />
-        <p className="text-xs font-semibold text-brand-800">Quick Assign Full Team</p>
+        <UserPlus className="h-3.5 w-3.5 text-brand-300" />
+        <p className="text-xs font-semibold text-brand-200">Quick Assign Full Team</p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {applicableRoles.map((qr) => (
           <div key={qr.key} className="space-y-0.5">
-            <label className="text-[11px] font-medium text-slate-600 flex items-center gap-1">
+            <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1">
               <span>{qr.icon}</span>
               {qr.label}
             </label>

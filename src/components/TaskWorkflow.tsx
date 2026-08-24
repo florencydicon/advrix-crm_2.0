@@ -25,12 +25,12 @@ export function TaskContent({ task, className = "" }: { task: Task; className?: 
   const isWriter = task.role_key === "WRITER";
   const label = isWriter ? "Final copy & script" : "Delivered work / asset notes";
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white p-3 ${className}`}>
+    <div className={`rounded-xl border border-white/10 bg-night-850 p-3 ${className}`}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Eye className="h-3.5 w-3.5 text-slate-400" />
-        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
+        <Eye className="h-3.5 w-3.5 text-slate-500" />
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{label}</p>
       </div>
-      <p className="text-sm text-slate-700 whitespace-pre-wrap">{task.content || "—"}</p>
+      <p className="text-sm text-slate-200 whitespace-pre-wrap">{task.content || "—"}</p>
     </div>
   );
 }
@@ -62,26 +62,26 @@ export function TaskDetails({
     <div className="space-y-2">
       <ContentEditor task={task} roleKey={roleKey} userId={userId} />
       {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR") && task.content === null && (
-        <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
+        <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <FileText className="h-3.5 w-3.5 text-brand-700" />
-            <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Approved copy — design reference</p>
+            <FileText className="h-3.5 w-3.5 text-brand-300" />
+            <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">Approved copy — design reference</p>
           </div>
-          <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.brief_copy}</p>
+          <p className="text-xs text-slate-300 whitespace-pre-wrap">{task.brief_copy}</p>
         </div>
       )}
       {showContent && <TaskContent task={task} />}
       {reviewable && <ReviewPanel task={task} />}
       {task.review_comment && (
-        <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-2 text-xs">
-          <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Review note</p>
-          <p className="text-slate-600 mt-0.5">{task.review_comment}</p>
+        <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs">
+          <p className="text-[10px] font-semibold text-amber-300 uppercase tracking-wide">Review note</p>
+          <p className="text-slate-300 mt-0.5">{task.review_comment}</p>
         </div>
       )}
       {task.client_feedback && (
-        <div className="rounded-lg border border-sky-100 bg-sky-50/60 p-2 text-xs">
-          <p className="text-[10px] font-semibold text-sky-700 uppercase tracking-wide">Client feedback</p>
-          <p className="text-slate-600 mt-0.5">{task.client_feedback}</p>
+        <div className="rounded-lg border border-sky-400/20 bg-sky-400/[0.06] p-2 text-xs">
+          <p className="text-[10px] font-semibold text-sky-300 uppercase tracking-wide">Client feedback</p>
+          <p className="text-slate-300 mt-0.5">{task.client_feedback}</p>
         </div>
       )}
     </div>
@@ -135,21 +135,21 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
     <div className="space-y-2">
       {/* Approved copy reference for the design/editing team */}
       {isVisual && !isWriter && task.brief_copy && (
-        <div className="rounded-lg border border-brand-100 bg-brand-50/50 p-3">
+        <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <FileText className="h-3.5 w-3.5 text-brand-700" />
-            <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Approved copy — reference for design</p>
+            <FileText className="h-3.5 w-3.5 text-brand-300" />
+            <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">Approved copy — reference for design</p>
           </div>
-          <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.brief_copy}</p>
+          <p className="text-xs text-slate-300 whitespace-pre-wrap">{task.brief_copy}</p>
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2 space-y-1.5">
+      <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2 space-y-1.5">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+          <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">
             {isWriter ? "Copy & Script Draft" : "Asset Remarks / Links"}
           </p>
-          {saved && <span className="text-[10px] text-emerald-600">Saved</span>}
+          {saved && <span className="text-[10px] text-emerald-400">Saved</span>}
         </div>
         <textarea
           value={draft}
@@ -177,7 +177,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
           </button>
         </div>
         {!hasDraft && (
-          <p className="text-[10px] text-slate-400">Add your work, then submit — it is saved automatically.</p>
+          <p className="text-[10px] text-slate-500">Add your work, then submit — it is saved automatically.</p>
         )}
       </div>
     </div>
@@ -208,17 +208,17 @@ export function ReviewPanel({ task }: { task: Task }) {
   }
 
   return (
-    <div className="rounded-xl border border-violet-200 bg-white overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-violet-50/60 border-b border-violet-100">
-        <CheckCircle2 className="h-3.5 w-3.5 text-violet-600" />
-        <p className="text-[11px] font-semibold text-violet-700 uppercase tracking-wide">Review submitted work</p>
+    <div className="rounded-xl border border-violet-400/20 bg-night-850 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-violet-400/[0.06] border-b border-violet-400/20">
+        <CheckCircle2 className="h-3.5 w-3.5 text-violet-300" />
+        <p className="text-[11px] font-semibold text-violet-300 uppercase tracking-wide">Review submitted work</p>
       </div>
 
       <div className="p-3 space-y-2">
         <TaskContent task={task} />
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2 space-y-1.5">
-          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 space-y-1.5">
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300 uppercase tracking-wide">
             <MessageSquare className="h-3 w-3" /> Feedback / comment
           </label>
           <textarea
@@ -275,14 +275,14 @@ export function ClientFeedbackPanel({ task }: { task: Task }) {
   }
 
   return (
-    <div className="rounded-xl border border-sky-200 bg-white overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-sky-50/60 border-b border-sky-100">
-        <Users className="h-3.5 w-3.5 text-sky-600" />
-        <p className="text-[11px] font-semibold text-sky-700 uppercase tracking-wide">Client review</p>
+    <div className="rounded-xl border border-sky-400/20 bg-night-850 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-sky-400/[0.06] border-b border-sky-400/20">
+        <Users className="h-3.5 w-3.5 text-sky-300" />
+        <p className="text-[11px] font-semibold text-sky-300 uppercase tracking-wide">Client review</p>
       </div>
       <div className="p-3 space-y-2">
         <TaskContent task={task} />
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-400">
           Take this deliverable to the client. If they approve it, the task moves to <b>Uploading</b> automatically.
         </p>
         <textarea
@@ -326,16 +326,16 @@ export function PublishPanel({ task }: { task: Task }) {
   }
 
   return (
-    <div className="rounded-xl border border-brand-300 bg-white overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-brand-50/70 border-b border-brand-200">
-        <Upload className="h-3.5 w-3.5 text-brand-700" />
-        <p className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Uploading</p>
-        <span className="badge bg-brand-100 text-brand-700 ml-auto">Client approved</span>
+    <div className="rounded-xl border border-brand-300/30 bg-night-850 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-brand-300/[0.07] border-b border-brand-300/30">
+        <Upload className="h-3.5 w-3.5 text-brand-300" />
+        <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">Uploading</p>
+        <span className="badge bg-brand-300/10 text-brand-300 ml-auto">Client approved</span>
       </div>
       <div className="p-3 space-y-2">
         <TaskContent task={task} />
         <div>
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300 uppercase tracking-wide mb-1.5">
             <ClipboardList className="h-3 w-3" /> Publish to platforms
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -343,7 +343,7 @@ export function PublishPanel({ task }: { task: Task }) {
               <button
                 key={p.key}
                 onClick={() => toggle(p.key)}
-                className={`badge cursor-pointer transition-colors ${selected.includes(p.key) ? "bg-brand-100 text-brand-700 border border-brand-200" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+                className={`badge cursor-pointer transition-colors ${selected.includes(p.key) ? "bg-brand-300/10 text-brand-300 border border-brand-300/30" : "bg-white/10 text-slate-400 hover:bg-white/15"}`}
               >
                 {p.icon} {p.label}
               </button>

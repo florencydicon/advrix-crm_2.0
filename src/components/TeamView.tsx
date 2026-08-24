@@ -14,13 +14,13 @@ import { Modal } from "@/components/ui";
 import SmartTable, { type Column, type FilterTab } from "@/components/SmartTable";
 
 const ROLE_STYLES: Record<string, string> = {
-  SUPER_ADMIN: "bg-brand-100 text-brand-700",
-  PROJECT_MANAGER: "bg-violet-100 text-violet-700",
-  SALES: "bg-emerald-100 text-emerald-700",
-  WRITER: "bg-amber-100 text-amber-700",
-  DESIGNER: "bg-pink-100 text-pink-700",
-  EDITOR: "bg-cyan-100 text-cyan-700",
-  SMM: "bg-indigo-100 text-indigo-700",
+  SUPER_ADMIN: "bg-brand-300/10 text-brand-300",
+  PROJECT_MANAGER: "bg-violet-400/10 text-violet-300",
+  SALES: "bg-emerald-400/10 text-emerald-300",
+  WRITER: "bg-amber-400/10 text-amber-300",
+  DESIGNER: "bg-pink-400/10 text-pink-300",
+  EDITOR: "bg-cyan-400/10 text-cyan-300",
+  SMM: "bg-indigo-400/10 text-indigo-300",
 };
 
 function initials(name: string) {
@@ -76,12 +76,12 @@ export default function TeamView({
       label: "Member",
       render: (u) => (
         <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">
+          <div className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-slate-300 shrink-0">
             {initials(u.full_name)}
           </div>
           <div className="min-w-0">
-            <p className="font-medium text-xs text-slate-800 truncate">{u.full_name}</p>
-            <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
+            <p className="font-medium text-xs text-white truncate">{u.full_name}</p>
+            <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
           </div>
         </div>
       ),
@@ -107,7 +107,7 @@ export default function TeamView({
       label: "Status",
       className: "w-[90px]",
       render: (u) => (
-        <span className={`badge ${u.is_active ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+        <span className={`badge ${u.is_active ? "bg-emerald-400/10 text-emerald-300" : "bg-rose-400/10 text-rose-300"}`}>
           {u.is_active ? "Active" : "Suspended"}
         </span>
       ),
@@ -126,7 +126,7 @@ export default function TeamView({
             <Shield className="h-3.5 w-3.5" />
           </button>
           <button
-            className={`btn-ghost !px-1.5 !py-0.5 text-[11px] ${u.is_active ? "!text-rose-600" : "!text-emerald-600"}`}
+            className={`btn-ghost !px-1.5 !py-0.5 text-[11px] ${u.is_active ? "!text-rose-400" : "!text-emerald-400"}`}
             onClick={() => run(() => toggleUserActiveAction(u.id, !u.is_active))}
           >
             {u.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
@@ -140,7 +140,7 @@ export default function TeamView({
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold tracking-tight">{title}</h1>
-        <p className="text-sm text-slate-500">{subtitle}</p>
+        <p className="text-sm text-slate-400">{subtitle}</p>
       </div>
 
       <SmartTable
@@ -165,7 +165,7 @@ export default function TeamView({
       />
 
       <Modal open={modal} onClose={() => setModal(false)} title="Add Team Member">
-        {error && <p className="mb-2 rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</p>}
+        {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
         <form className="space-y-3" action={(fd) => run(() => createUserAction(fd), () => setModal(false))}>
           <div>
             <label className="label">Full name</label>
@@ -192,7 +192,7 @@ export default function TeamView({
       </Modal>
 
       <Modal open={!!resetTarget} onClose={() => setResetTarget(null)} title={`Reset password — ${resetTarget?.full_name || ""}`}>
-        {error && <p className="mb-2 rounded-lg bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</p>}
+        {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
         <div className="space-y-3">
           <div>
             <label className="label">New password</label>

@@ -83,7 +83,7 @@ export default function DataTable<T>({
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           {onSearch && (
             <div className="relative flex-1 w-full sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
                 type="text"
                 value={searchDraft}
@@ -102,8 +102,8 @@ export default function DataTable<T>({
                   onClick={() => onFilterChange?.(tab.key)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     activeFilter === tab.key
-                      ? "bg-brand-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      ? "bg-brand-300 text-night-950"
+                      : "bg-white/10 text-slate-300 hover:bg-white/15"
                   }`}
                 >
                   {tab.label}
@@ -120,33 +120,33 @@ export default function DataTable<T>({
 
       <div className="card overflow-hidden">
         {loading ? (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-white/[0.06]">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="px-5 py-4 animate-pulse">
                 <div className="flex items-center gap-4">
-                  <div className="h-4 bg-slate-200 rounded w-1/4" />
-                  <div className="h-4 bg-slate-200 rounded w-1/6" />
-                  <div className="h-4 bg-slate-200 rounded w-1/6" />
-                  <div className="h-4 bg-slate-200 rounded w-1/6 ml-auto" />
+                  <div className="h-4 bg-white/10 rounded w-1/4" />
+                  <div className="h-4 bg-white/10 rounded w-1/6" />
+                  <div className="h-4 bg-white/10 rounded w-1/6" />
+                  <div className="h-4 bg-white/10 rounded w-1/6 ml-auto" />
                 </div>
               </div>
             ))}
           </div>
         ) : data.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-10 text-center">
-            <p className="font-medium text-slate-700">{emptyTitle}</p>
-            {emptySubtitle && <p className="text-sm text-slate-400 mt-1">{emptySubtitle}</p>}
+            <p className="font-medium text-slate-200">{emptyTitle}</p>
+            {emptySubtitle && <p className="text-sm text-slate-500 mt-1">{emptySubtitle}</p>}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/60">
+                <tr className="border-b border-white/10 bg-white/[0.03]">
                   {columns.map((col) => (
                     <th
                       key={col.key}
                       className={`px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider ${
-                        col.sortable ? "cursor-pointer hover:text-slate-700 select-none" : ""
+                        col.sortable ? "cursor-pointer hover:text-slate-200 select-none" : ""
                       } ${col.className || ""}`}
                       onClick={() => col.sortable && handleSort(col.key)}
                     >
@@ -160,9 +160,9 @@ export default function DataTable<T>({
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-white/[0.06]">
                 {data.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={idx} className="hover:bg-white/[0.04] transition-colors">
                     {columns.map((col) => (
                       <td key={col.key} className={`px-5 py-3 ${col.className || ""}`}>
                         {col.render(item)}
@@ -176,13 +176,13 @@ export default function DataTable<T>({
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 bg-slate-50/30">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-white/10 bg-white/[0.02]">
             <p className="text-xs text-slate-500">
               {total} result{total === 1 ? "" : "s"} · Page {page} of {totalPages}
             </p>
             <div className="flex items-center gap-1">
               <button
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
                 disabled={page <= 1}
                 onClick={() => onPageChange?.(page - 1)}
               >
@@ -205,8 +205,8 @@ export default function DataTable<T>({
                     onClick={() => onPageChange?.(pageNum)}
                     className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
                       page === pageNum
-                        ? "bg-brand-600 text-white"
-                        : "text-slate-600 hover:bg-slate-200"
+                        ? "bg-brand-300 text-night-950"
+                        : "text-slate-300 hover:bg-white/15"
                     }`}
                   >
                     {pageNum}
@@ -214,7 +214,7 @@ export default function DataTable<T>({
                 );
               })}
               <button
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed"
                 disabled={page >= totalPages}
                 onClick={() => onPageChange?.(page + 1)}
               >

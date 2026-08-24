@@ -7,11 +7,11 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from "@/li
 import type { Notification } from "@/lib/types";
 
 const NOTIF_STYLES: Record<string, string> = {
-  task: "bg-brand-100 text-brand-700",
-  project: "bg-violet-100 text-violet-700",
-  leave: "bg-amber-100 text-amber-700",
-  attendance: "bg-emerald-100 text-emerald-700",
-  system: "bg-slate-100 text-slate-600",
+  task: "bg-brand-300/10 text-brand-300",
+  project: "bg-violet-400/10 text-violet-300",
+  leave: "bg-amber-400/10 text-amber-300",
+  attendance: "bg-emerald-400/10 text-emerald-300",
+  system: "bg-white/10 text-slate-300",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -75,7 +75,7 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">Updates</h1>
-          <p className="text-sm text-slate-500">Activity, tasks, projects, and approvals.</p>
+          <p className="text-sm text-slate-400">Activity, tasks, projects, and approvals.</p>
         </div>
         {unreadCount > 0 && (
           <button onClick={handleMarkAll} className="btn-secondary !py-2 text-xs">
@@ -90,7 +90,7 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
             key={t.key}
             onClick={() => setFilter(t.key)}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              filter === t.key ? "bg-ink text-white" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              filter === t.key ? "bg-brand-300 text-night-950" : "bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
             }`}
           >
             {t.label}
@@ -98,14 +98,14 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
         ))}
       </div>
 
-      <div className="card divide-y divide-slate-50">
+      <div className="card divide-y divide-white/[0.06]">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center">
-            <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-              <Bell className="h-6 w-6 text-slate-400" />
+            <div className="h-12 w-12 rounded-full bg-white/10 flex items-center justify-center mb-3">
+              <Bell className="h-6 w-6 text-slate-500" />
             </div>
-            <p className="font-medium text-slate-700">No updates</p>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="font-medium text-slate-200">No updates</p>
+            <p className="text-sm text-slate-500 mt-1">
               {filter === "unread" ? "You're all caught up." : "Nothing to show here yet."}
             </p>
           </div>
@@ -116,20 +116,20 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
               <button
                 key={n.id}
                 onClick={() => handleOpen(n)}
-                className={`w-full flex items-start gap-4 px-5 py-4 text-left hover:bg-slate-50 transition-colors ${isRead ? "" : "bg-brand-50/50"}`}
+                className={`w-full flex items-start gap-4 px-5 py-4 text-left hover:bg-white/[0.04] transition-colors ${isRead ? "" : "bg-brand-300/[0.07]"}`}
               >
-                <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${NOTIF_STYLES[n.type] || "bg-slate-100 text-slate-600"}`}>
+                <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${NOTIF_STYLES[n.type] || "bg-white/10 text-slate-300"}`}>
                   {n.type.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
-                    <p className={`text-sm ${isRead ? "text-slate-700" : "text-slate-900 font-semibold"}`}>{n.title}</p>
-                    <span className="text-[11px] text-slate-400 shrink-0">{timeAgo(n.created_at)}</span>
+                    <p className={`text-sm ${isRead ? "text-slate-200" : "text-white font-semibold"}`}>{n.title}</p>
+                    <span className="text-[11px] text-slate-500 shrink-0">{timeAgo(n.created_at)}</span>
                   </div>
-                  {n.body && <p className="text-sm text-slate-500 mt-0.5">{n.body}</p>}
+                  {n.body && <p className="text-sm text-slate-400 mt-0.5">{n.body}</p>}
                   <div className="mt-1.5 flex items-center gap-2">
-                    <span className="badge bg-slate-100 text-slate-500 text-[10px]">{TYPE_LABELS[n.type] || n.type}</span>
-                    {!isRead && <span className="badge bg-brand-100 text-brand-700 text-[10px]">New</span>}
+                    <span className="badge bg-white/10 text-slate-400 text-[10px]">{TYPE_LABELS[n.type] || n.type}</span>
+                    {!isRead && <span className="badge bg-brand-300/10 text-brand-300 text-[10px]">New</span>}
                   </div>
                 </div>
               </button>
