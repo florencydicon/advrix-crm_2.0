@@ -154,12 +154,13 @@ export async function convertLeadAction(leadId: string) {
     args.push(access.ownerId);
   }
   const lead = (
-    await query<{ id: string; name: string; company: string | null; email: string | null; phone: string | null }>(
+    await query<{ id: string; name: string; company: string | null; email: string | null; phone: string | null; converted_client_id: string | null }>(
       sqlTxt,
       args
     )
   )[0];
   if (!lead) return { error: "Lead not found." };
+  if (lead.converted_client_id) return { error: "This lead was already converted to a client." };
 
   const client = (
     await query<{ id: string }>(

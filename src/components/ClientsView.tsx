@@ -430,7 +430,7 @@ export default function ClientsView({
             <input name="name" required className="input" placeholder="Aryush Height — Q3 Content Campaign" />
           </div>
           <div>
-            <label className="label">Task details</label>
+            <label className="label">Task details <span className="text-slate-500 font-normal">(optional)</span></label>
             <textarea name="brief" rows={2} className="input" placeholder="Campaign goal, tone, audience, channels…" />
           </div>
           <div>

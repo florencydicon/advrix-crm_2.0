@@ -28,14 +28,35 @@ import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
 import QuickAssignFullTeam from "@/components/QuickAssignFullTeam";
 
-function fmtDate(d: string | null | undefined) {
-  if (!d) return "—";
-  const iso = d.slice(0, 10);
+/** Postgres DATE columns may arrive as Date objects — normalize to YYYY-MM-DD. */
+function isoDate(v: string | Date | null | undefined): string {
+  if (!v) return "";
+  if (v instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  }
+  return String(v).slice(0, 10);
+}
+
+function fmtDate(d: string | Date | null | undefined) {
+  const iso = isoDate(d);
+  if (!iso) return "—";
   return new Date(`${iso}T00:00:00`).toLocaleDateString([], {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
+}
+
+/** Extend an ISO date by N working days (Sundays excluded), matching the server engine. */
+function extendIso(baseIso: string, days: number): string {
+  const d = new Date(`${baseIso || isoDate(new Date())}T00:00:00`);
+  let left = days;
+  while (left > 0) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0) left--;
+  }
+  return isoDate(d);
 }
 
 export default function ProjectDetailView({
@@ -231,7 +252,7 @@ export default function ProjectDetailView({
                         <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Task</th>
                         <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[90px]">Role</th>
                         <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[110px]">Assignee</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[150px]">Due</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[170px]">Due</th>
                         <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[110px]">Status</th>
                         <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[120px]">Published</th>
                         <th className="px-3 py-2 w-[160px]"></th>
@@ -242,7 +263,7 @@ export default function ProjectDetailView({
                         const open = openTaskId === t.id;
                         const overdue =
                           t.due_date && t.status !== "completed" &&
-                          new Date(t.due_date.slice(0, 10) + "T23:59:59") < new Date();
+                          new Date(isoDate(t.due_date) + "T23:59:59") < new Date();
                         return (
                           <Fragment key={t.id}>
                             <tr
@@ -266,15 +287,34 @@ export default function ProjectDetailView({
                               <td className="px-3 py-2 text-slate-300">{t.assignee_name || "—"}</td>
                               <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                                 {canManage && t.status !== "completed" ? (
-                                  <DatePicker
-                                    value={t.due_date ? t.due_date.slice(0, 10) : undefined}
-                                    placeholder="Set date…"
-                                    onChange={(v) => {
-                                      if (v && v !== (t.due_date || "").slice(0, 10)) {
-                                        run(() => updateTaskDueDateAction(t.id, v));
-                                      }
-                                    }}
-                                  />
+                                  <div className="space-y-1">
+                                    <DatePicker
+                                      value={isoDate(t.due_date) || undefined}
+                                      placeholder="Set date…"
+                                      onChange={(v) => {
+                                        if (v && v !== isoDate(t.due_date)) {
+                                          run(() => updateTaskDueDateAction(t.id, v));
+                                        }
+                                      }}
+                                    />
+                                    <div className="flex items-center gap-0.5" title={`Extend deadline (Sundays skipped)`}>
+                                      <span className="text-[9px] uppercase tracking-wider text-slate-500 mr-0.5">extend</span>
+                                      {[1, 3, 7].map((n) => (
+                                        <button
+                                          key={n}
+                                          disabled={pending}
+                                          onClick={() =>
+                                            run(() =>
+                                              updateTaskDueDateAction(t.id, extendIso(isoDate(t.due_date), n))
+                                            )
+                                          }
+                                          className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200 transition-colors disabled:opacity-40"
+                                        >
+                                          +{n}d
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
                                 ) : (
                                   <span className={overdue ? "text-rose-300 font-medium" : "text-slate-300"}>
                                     {fmtDate(t.due_date)}

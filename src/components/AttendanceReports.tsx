@@ -18,6 +18,16 @@ export interface LeaveReportRowLite {
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+/** Postgres DATE columns may arrive as Date objects — normalize to YYYY-MM-DD. */
+function isoDate(v: string | Date | null | undefined): string {
+  if (!v) return "";
+  if (v instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  }
+  return String(v).slice(0, 10);
+}
+
 function csvEscape(v: string | number) {
   return `"${String(v).replace(/"/g, '""')}"`;
 }
@@ -60,7 +70,7 @@ export default function AttendanceReports({
     lines.push(["Employee", "Type", "From", "To", "Days", "Status", "Reason"].map(csvEscape).join(","));
     for (const l of leaveReport) {
       lines.push(
-        [l.full_name, l.leave_type, l.start_date?.slice(0, 10), l.end_date?.slice(0, 10), l.days, l.status, (l.reason || "").replace(/\r?\n/g, " ")]
+        [l.full_name, l.leave_type, isoDate(l.start_date), isoDate(l.end_date), l.days, l.status, (l.reason || "").replace(/\r?\n/g, " ")]
           .map(csvEscape)
           .join(",")
       );
@@ -86,7 +96,7 @@ export default function AttendanceReports({
     const leaveRows = leaveReport
       .map(
         (l) =>
-          `<tr><td>${escapeHtml(l.full_name)}</td><td>${escapeHtml(l.leave_type)}</td><td>${(l.start_date || "").slice(0, 10)}</td><td>${(l.end_date || "").slice(0, 10)}</td><td style="text-align:center">${l.days}</td><td>${escapeHtml(l.status)}</td><td>${escapeHtml(l.reason || "")}</td></tr>`
+          `<tr><td>${escapeHtml(l.full_name)}</td><td>${escapeHtml(l.leave_type)}</td><td>${isoDate(l.start_date)}</td><td>${isoDate(l.end_date)}</td><td style="text-align:center">${l.days}</td><td>${escapeHtml(l.status)}</td><td>${escapeHtml(l.reason || "")}</td></tr>`
       )
       .join("");
     win.document.write(`<!DOCTYPE html><html><head><title>Advrix Media — Attendance Report ${label}</title>
@@ -216,8 +226,8 @@ export default function AttendanceReports({
                 <tr key={l.id} className="hover:bg-white/[0.03] transition-colors align-top">
                   <td className="px-4 py-2 font-medium text-white">{l.full_name}</td>
                   <td className="px-3 py-2 text-slate-300 capitalize">{l.leave_type}</td>
-                  <td className="px-3 py-2 text-slate-400">{(l.start_date || "").slice(0, 10)}</td>
-                  <td className="px-3 py-2 text-slate-400">{(l.end_date || "").slice(0, 10)}</td>
+                  <td className="px-3 py-2 text-slate-400">{isoDate(l.start_date)}</td>
+                  <td className="px-3 py-2 text-slate-400">{isoDate(l.end_date)}</td>
                   <td className="px-3 py-2 text-center text-slate-200">{l.days}</td>
                   <td className="px-3 py-2">
                     <span className={`badge ${

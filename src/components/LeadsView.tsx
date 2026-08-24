@@ -36,13 +36,24 @@ const STATUS_STYLES: Record<string, string> = {
 
 const SOURCE_LABELS = Object.fromEntries(LEAD_SOURCES.map((s) => [s.key, s.label]));
 
+/** Postgres DATE columns may arrive as Date objects — normalize to YYYY-MM-DD. */
+function isoDate(v: string | Date | null | undefined): string {
+  if (!v) return "";
+  if (v instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  }
+  return String(v).slice(0, 10);
+}
+
 function fmtMoney(n: number) {
   return `₹${Number(n || 0).toLocaleString("en-IN")}`;
 }
 
-function fmtDate(d: string | null) {
-  if (!d) return "—";
-  return new Date(`${d.slice(0, 10)}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" });
+function fmtDate(d: string | Date | null) {
+  const iso = isoDate(d);
+  if (!iso) return "—";
+  return new Date(`${iso}T00:00:00`).toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
 function leadToCsv(leads: Lead[]): string {
@@ -55,7 +66,7 @@ function leadToCsv(leads: Lead[]): string {
     SOURCE_LABELS[l.source] || l.source,
     l.status,
     String(l.deal_value ?? 0),
-    l.next_follow_up ? l.next_follow_up.slice(0, 10) : "",
+    l.next_follow_up ? isoDate(l.next_follow_up) : "",
     (l.notes || "").replace(/\r?\n/g, " "),
     l.created_at ? l.created_at.slice(0, 10) : "",
   ]);
@@ -249,7 +260,7 @@ export default function LeadsView({
               {filtered.map((l) => {
                 const overdueFollowUp =
                   l.next_follow_up && !["won", "lost"].includes(l.status) &&
-                  new Date(l.next_follow_up.slice(0, 10) + "T23:59:59") < new Date();
+                  new Date(isoDate(l.next_follow_up) + "T23:59:59") < new Date();
                 return (
                   <tr key={l.id} className="hover:bg-white/[0.03] transition-colors align-top">
                     <td className="px-4 py-2.5">
@@ -413,7 +424,7 @@ function LeadFormModal({
           <label className="label">Next follow-up</label>
           <DatePicker
             name="next_follow_up"
-            value={editing?.next_follow_up ? editing.next_follow_up.slice(0, 10) : undefined}
+            value={isoDate(editing?.next_follow_up) || undefined}
             placeholder="Schedule a follow-up…"
           />
         </div>

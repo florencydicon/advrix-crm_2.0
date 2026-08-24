@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, UserX, UserCheck, Shield } from "lucide-react";
+import { Plus, UserX, UserCheck, Shield, Eye, EyeOff } from "lucide-react";
 import {
   createUserAction,
   toggleUserActiveAction,
@@ -25,6 +25,24 @@ const ROLE_STYLES: Record<string, string> = {
 
 function initials(name: string) {
   return name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+}
+
+function PasswordInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={show ? "text" : "password"} className={`input pr-10 ${props.className || ""}`} />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setShow((s) => !s)}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-500 hover:text-white transition-colors"
+        aria-label={show ? "Hide password" : "Show password"}
+      >
+        {show ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+      </button>
+    </div>
+  );
 }
 
 export default function TeamView({
@@ -177,7 +195,7 @@ export default function TeamView({
           </div>
           <div>
             <label className="label">Temporary password</label>
-            <input name="password" type="password" required minLength={6} className="input" />
+            <PasswordInput name="password" required minLength={6} />
           </div>
           <div>
             <label className="label">Role</label>
@@ -196,7 +214,7 @@ export default function TeamView({
         <div className="space-y-3">
           <div>
             <label className="label">New password</label>
-            <input type="password" className="input" minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <PasswordInput minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
           </div>
           <button className="btn-primary w-full" disabled={pending || newPassword.length < 6} onClick={() => run(() => resetPasswordAction(resetTarget!.id, newPassword), () => setResetTarget(null))}>
             Reset password

@@ -40,7 +40,6 @@ const NAV: NavItem[] = [
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/leads", label: "Leads", icon: Target, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/clients", label: "Clients", icon: Users, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
-  { href: "/team", label: "Team", icon: Users, roles: ["SUPER_ADMIN"] },
   { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/settings", label: "Settings", icon: Settings, roles: ["SUPER_ADMIN"] },
 ];

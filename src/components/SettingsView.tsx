@@ -6,6 +6,7 @@ import { UserCog, Users, ShieldCheck, KeyRound } from "lucide-react";
 import type { UserRow } from "@/lib/types";
 import type { FilterTab } from "@/components/SmartTable";
 import TeamView from "@/components/TeamView";
+import DataExportPanel from "@/components/DataExportPanel";
 
 export default function SettingsView({
   users,
@@ -85,43 +86,47 @@ export default function SettingsView({
           subtitle="Create users, assign roles, and control access."
         />
       ) : (
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="card p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-brand-300 flex items-center justify-center text-night-950 font-bold">
-                {initials}
+        <div className="space-y-6">
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="card p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-full bg-brand-300 flex items-center justify-center text-night-950 font-bold">
+                  {initials}
+                </div>
+                <div>
+                  <p className="font-semibold text-white">{sessionName}</p>
+                  <p className="text-xs text-slate-400">{sessionRole}</p>
+                </div>
               </div>
-              <div>
-                <p className="font-semibold text-white">{sessionName}</p>
-                <p className="text-xs text-slate-400">{sessionRole}</p>
+              <div className="flex items-center gap-2 rounded-xl bg-brand-300/[0.07] text-brand-300 px-4 py-3 text-sm">
+                <ShieldCheck className="h-4 w-4 shrink-0" />
+                You are signed in with Super Admin privileges.
+              </div>
+              <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] text-slate-300 px-4 py-3 text-sm">
+                <KeyRound className="h-4 w-4 shrink-0" />
+                Use the Users &amp; Roles tab to create team members and manage passwords.
               </div>
             </div>
-            <div className="flex items-center gap-2 rounded-xl bg-brand-300/[0.07] text-brand-300 px-4 py-3 text-sm">
-              <ShieldCheck className="h-4 w-4 shrink-0" />
-              You are signed in with Super Admin privileges.
-            </div>
-            <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] text-slate-300 px-4 py-3 text-sm">
-              <KeyRound className="h-4 w-4 shrink-0" />
-              Use the Users &amp; Roles tab to create team members and manage passwords.
+
+            <div className="card p-6">
+              <h2 className="font-semibold mb-3">Agency</h2>
+              <div className="space-y-3">
+                <div>
+                  <label className="label">Organization name</label>
+                  <input className="input" defaultValue="Advrix Media" disabled />
+                </div>
+                <div>
+                  <label className="label">Workspace</label>
+                  <input className="input" defaultValue="advrix-crm" disabled />
+                </div>
+                <p className="text-xs text-slate-500 pt-1">
+                  These fields are read-only. Contact your developer to change agency branding.
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="card p-6">
-            <h2 className="font-semibold mb-3">Agency</h2>
-            <div className="space-y-3">
-              <div>
-                <label className="label">Organization name</label>
-                <input className="input" defaultValue="Advrix Media" disabled />
-              </div>
-              <div>
-                <label className="label">Workspace</label>
-                <input className="input" defaultValue="advrix-crm" disabled />
-              </div>
-              <p className="text-xs text-slate-500 pt-1">
-                These fields are read-only. Contact your developer to change agency branding.
-              </p>
-            </div>
-          </div>
+          <DataExportPanel />
         </div>
       )}
     </div>

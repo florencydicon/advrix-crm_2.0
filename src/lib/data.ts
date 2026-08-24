@@ -150,7 +150,8 @@ export interface PipelineProject extends Project {
  */
 export async function getPipelineByClient(): Promise<PipelineClient[]> {
   const projects = await query<Project>(
-    `SELECT p.*, c.name AS client_name
+    `SELECT p.*, c.name AS client_name,
+            p.deadline::text AS deadline
      FROM projects p JOIN clients c ON c.id = p.client_id
      ORDER BY c.name ASC, p.created_at DESC`
   );
@@ -208,7 +209,8 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
 
 const TASK_SELECT = `
   SELECT t.*, p.name AS project_name, c.name AS client_name,
-         u.full_name AS assignee_name, r.label AS role_label
+         u.full_name AS assignee_name, r.label AS role_label,
+         t.due_date::text AS due_date
   FROM tasks t
   JOIN projects p ON p.id = t.project_id
   JOIN clients c ON c.id = p.client_id
@@ -656,7 +658,8 @@ export async function getLeads(ownerId: string | null): Promise<Lead[]> {
   const where = ownerId ? `WHERE l.owner_id = $1` : "";
   const args = ownerId ? [ownerId] : [];
   return query<Lead>(
-    `SELECT l.*, u.full_name AS owner_name
+    `SELECT l.*, u.full_name AS owner_name,
+            l.next_follow_up::text AS next_follow_up
      FROM leads l JOIN users u ON u.id = l.owner_id
      ${where}
      ORDER BY l.updated_at DESC`,
@@ -749,7 +752,8 @@ export interface LeaveReportRow {
 export async function getLeaveReport(start: string, end: string): Promise<LeaveReportRow[]> {
   return query<LeaveReportRow>(
     `SELECT l.id, u.full_name, r.label AS role_label, l.leave_type,
-            l.start_date, l.end_date, l.days, l.reason, l.status,
+            l.start_date::text AS start_date, l.end_date::text AS end_date,
+            l.days, l.reason, l.status,
             au.full_name AS approved_by_name, l.created_at
      FROM leaves l
      JOIN users u ON u.id = l.user_id

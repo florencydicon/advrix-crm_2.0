@@ -20,7 +20,6 @@ import {
   validatePhone,
   validateFullName,
   validateText,
-  validateBrief,
   validateDeliverables,
 } from "@/lib/validation";
 
@@ -109,11 +108,9 @@ export async function createProjectAction(formData: FormData) {
 
   const nameErr = validateText(name, "Project name", 3, 120);
   if (nameErr) return { error: nameErr };
-  if (brief) {
-    const briefErr = validateBrief(brief);
-    if (briefErr) return { error: briefErr };
-  } else {
-    return { error: "Project brief is required." };
+  // Task details are optional — deliverables drive task generation.
+  if (brief && brief.length > 2000) {
+    return { error: "Task details are too long (max 2000 characters)." };
   }
 
   const delivErrors = validateDeliverables(deliverables);

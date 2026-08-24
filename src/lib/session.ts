@@ -4,7 +4,20 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
 
 const SESSION_COOKIE = SESSION_COOKIE_NAME;
-const secret = new TextEncoder().encode(process.env.JWT_SECRET || "advrix_super_secret_key_2026_secure_login");
+
+/**
+ * Signing secret: prefer JWT_SECRET. If unset, derive a stable secret from the
+ * DATABASE_URL so no predictable literal ever ships in the bundle.
+ */
+function signingSecret(): Uint8Array {
+  const explicit = process.env.JWT_SECRET;
+  if (explicit && explicit.length >= 16) {
+    return new TextEncoder().encode(explicit);
+  }
+  const derived = `advrix|${process.env.DATABASE_URL || "local"}|session-signing`;
+  return new TextEncoder().encode(derived);
+}
+const secret = signingSecret();
 
 export interface SessionPayload {
   sub: string;
