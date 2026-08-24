@@ -11,6 +11,7 @@ import {
   assignProjectTeamAction,
   updateTaskDueDateAction,
   setMemberLeaveAction,
+  setTaskAssigneeAction,
 } from "@/lib/actions/projects";
 import type { PipelineClient } from "@/lib/data";
 import type { Assignment, UserRow } from "@/lib/types";
@@ -211,7 +212,25 @@ export default function ProjectDetailView({
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px] text-slate-500">
                                   {t.role_label && <span className={`badge !px-1.5 !py-0 text-[10px] ${ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400"}`}>{t.role_label}</span>}
                                   {t.assignee_name ? (
-                                    <span className="flex items-center gap-1"><span className="h-4 w-4 rounded-full bg-white/10 flex items-center justify-center text-[8px] font-bold text-slate-300 shrink-0">{initials(t.assignee_name)}</span><span className="truncate max-w-[100px]">{t.assignee_name}</span></span>
+                                    <span className="flex items-center gap-1">
+                                      <span className="h-4 w-4 rounded-full bg-white/10 flex items-center justify-center text-[8px] font-bold text-slate-300 shrink-0">{initials(t.assignee_name)}</span>
+                                      <span className="truncate max-w-[100px]">{t.assignee_name}</span>
+                                      {canManage && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (confirm(`Remove ${t.assignee_name} from "${t.title}"?`)) run(() => setTaskAssigneeAction(t.id, ""));
+                                          }}
+                                          disabled={pending}
+                                          className="p-0.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors disabled:opacity-40"
+                                          title="Remove assignee"
+                                          aria-label="Remove assignee"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      )}
+                                    </span>
                                   ) : (
                                     <span className="text-slate-600">Unassigned</span>
                                   )}
