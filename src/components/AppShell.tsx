@@ -23,7 +23,7 @@ import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
-import { BrandIcon, BrandWordmark } from "@/components/brand";
+import { BrandMark, BrandLogoFull } from "@/components/brand";
 
 interface NavItem {
   href: string;
@@ -133,24 +133,27 @@ export default function AppShell({
     return (
       <div className="flex h-full flex-col bg-night-950 text-slate-300 border-r border-white/[0.06]">
         {/* Brand */}
-        <div className={`flex items-center py-5 ${mini ? "justify-center px-2" : "gap-3 px-5"}`}>
-          <Link href="/dashboard" className="shrink-0" aria-label="Advrix Media PVT LTD">
-            <BrandIcon className={`${mini ? "h-9 w-9" : "h-10 w-10"} drop-shadow-[0_0_12px_rgba(133,222,133,0.25)]`} />
-          </Link>
-          {!mini && (
-            <div className="min-w-0 flex-1">
-              <BrandWordmark />
-            </div>
-          )}
-          {!mini && !mobile && (
-            <button
-              onClick={toggleCollapsed}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar"
-            >
-              <PanelLeftClose className="h-[18px] w-[18px]" />
-            </button>
+        <div className={`flex items-center py-5 ${mini ? "justify-center px-2" : "gap-2 px-4"}`}>
+          {mini ? (
+            <Link href="/dashboard" className="shrink-0" aria-label="Advrix Media PVT LTD">
+              <BrandMark className="h-9 w-9" />
+            </Link>
+          ) : (
+            <>
+              <Link href="/dashboard" className="min-w-0 flex-1" aria-label="Advrix Media PVT LTD">
+                <BrandLogoFull className="h-10 w-auto max-w-full" />
+              </Link>
+              {!mobile && (
+                <button
+                  onClick={toggleCollapsed}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+                  aria-label="Collapse sidebar"
+                  title="Collapse sidebar"
+                >
+                  <PanelLeftClose className="h-[18px] w-[18px]" />
+                </button>
+              )}
+            </>
           )}
         </div>
         {mini && (

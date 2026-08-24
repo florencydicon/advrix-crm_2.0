@@ -1,5 +1,5 @@
 import LoginForm from "@/components/LoginForm";
-import { BrandIcon, BrandWordmark } from "@/components/brand";
+import { BrandLogoFull } from "@/components/brand";
 
 export default function LoginPage() {
   return (
@@ -10,9 +10,8 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-md">
         <div className="rounded-2xl bg-night-850/90 backdrop-blur shadow-2xl shadow-black/50 p-8 ring-1 ring-white/10">
-          <div className="flex items-center gap-4 mb-8">
-            <BrandIcon className="h-14 w-14 drop-shadow-[0_0_18px_rgba(133,222,133,0.3)]" />
-            <BrandWordmark size="lg" />
+          <div className="mb-8">
+            <BrandLogoFull className="h-16 w-auto" />
           </div>
 
           <h2 className="text-lg font-semibold text-white mb-1">Welcome back</h2>
