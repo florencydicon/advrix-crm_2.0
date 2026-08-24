@@ -17,7 +17,7 @@ export default function LoginForm() {
       )}
       <div>
         <label className="label" htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" required placeholder="you@advrix.agency" className="input" />
+        <input id="email" name="email" type="email" required autoComplete="email" placeholder="name@advrix.com" className="input" />
       </div>
       <div>
         <label className="label" htmlFor="password">Password</label>
@@ -27,6 +27,7 @@ export default function LoginForm() {
             name="password"
             type={showPassword ? "text" : "password"}
             required
+            autoComplete="current-password"
             placeholder="••••••••"
             className="input pr-10"
           />

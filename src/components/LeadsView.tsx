@@ -381,21 +381,21 @@ function LeadFormModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Name *</label>
-            <input name="name" required defaultValue={editing?.name || ""} className="input" placeholder="Riya Sharma" />
+            <input name="name" required defaultValue={editing?.name || ""} className="input" placeholder="Lead name" />
           </div>
           <div>
             <label className="label">Company</label>
-            <input name="company" defaultValue={editing?.company || ""} className="input" placeholder="Sharma Textiles" />
+            <input name="company" defaultValue={editing?.company || ""} className="input" placeholder="Company name" />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Email</label>
-            <input name="email" type="email" defaultValue={editing?.email || ""} className="input" placeholder="riya@sharmatex.in" />
+            <input name="email" type="email" defaultValue={editing?.email || ""} className="input" placeholder="email@company.com" />
           </div>
           <div>
             <label className="label">Phone</label>
-            <input name="phone" defaultValue={editing?.phone || ""} className="input" placeholder="+91 98765 00000" />
+            <input name="phone" defaultValue={editing?.phone || ""} className="input" placeholder="Phone number" />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">

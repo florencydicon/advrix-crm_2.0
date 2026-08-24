@@ -31,7 +31,13 @@ function PasswordInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
-      <input {...props} type={show ? "text" : "password"} className={`input pr-10 ${props.className || ""}`} />
+      <input
+        {...props}
+        type={show ? "text" : "password"}
+        // Stop browsers autofilling the admin's saved password into these fields.
+        autoComplete="new-password"
+        className={`input pr-10 ${props.className || ""}`}
+      />
       <button
         type="button"
         tabIndex={-1}

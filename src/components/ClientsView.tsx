@@ -386,20 +386,20 @@ export default function ClientsView({
         <form action={runWith(createClientAction)} className="space-y-3">
           <div>
             <label className="label">Client / Contact name</label>
-            <input name="name" required className="input" placeholder="Lumina Cosmetics" />
+            <input name="name" required className="input" placeholder="Client name" />
           </div>
           <div>
             <label className="label">Company</label>
-            <input name="company" className="input" placeholder="Lumina Pvt Ltd" />
+            <input name="company" className="input" placeholder="Company name" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Email</label>
-              <input name="email" type="email" className="input" placeholder="hello@lumina.in" />
+              <input name="email" type="email" className="input" placeholder="email@company.com" />
             </div>
             <div>
               <label className="label">Phone</label>
-              <input name="phone" className="input" placeholder="+91 98765 00000" />
+              <input name="phone" className="input" placeholder="Phone number" />
             </div>
           </div>
           <button type="submit" className="btn-primary w-full" disabled={pending}>
@@ -427,7 +427,7 @@ export default function ClientsView({
           </div>
           <div>
             <label className="label">Project name</label>
-            <input name="name" required className="input" placeholder="Aryush Height — Q3 Content Campaign" />
+            <input name="name" required className="input" placeholder="Project name" />
           </div>
           <div>
             <label className="label">Task details <span className="text-slate-500 font-normal">(optional)</span></label>
