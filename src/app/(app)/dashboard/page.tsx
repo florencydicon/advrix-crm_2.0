@@ -122,20 +122,20 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
               <span className="h-7 w-7 rounded-lg bg-brand-300/15 flex items-center justify-center"><Briefcase className="h-3.5 w-3.5 text-brand-300" /></span>
               <h2 className="text-sm font-semibold text-white">Projects</h2>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg bg-white/[0.04] border border-white/10 p-3">
+            <div className="flex items-center justify-center gap-4">
+              <div className="rounded-lg bg-white/[0.04] border border-white/10 p-3 flex-1 min-w-[120px] text-center">
                 <p className="text-[11px] text-slate-400">Total Projects</p>
                 <p className="text-xl font-bold text-white mt-0.5">{projects.length}</p>
               </div>
-              <div className="rounded-lg bg-amber-400/10 border border-amber-400/20 p-3">
+              <div className="rounded-lg bg-amber-400/10 border border-amber-400/20 p-3 flex-1 min-w-[120px] text-center">
                 <p className="text-[11px] text-amber-300">Pending Approval</p>
                 <p className="text-xl font-bold text-amber-300 mt-0.5">{pending.length}</p>
               </div>
-              <div className="rounded-lg bg-brand-300/10 border border-brand-300/20 p-3">
+              <div className="rounded-lg bg-brand-300/10 border border-brand-300/20 p-3 flex-1 min-w-[120px] text-center">
                 <p className="text-[11px] text-brand-300">In Progress</p>
                 <p className="text-xl font-bold text-brand-300 mt-0.5">{active.length}</p>
               </div>
-              <div className="rounded-lg bg-emerald-400/10 border border-emerald-400/20 p-3">
+              <div className="rounded-lg bg-emerald-400/10 border border-emerald-400/20 p-3 flex-1 min-w-[120px] text-center">
                 <p className="text-[11px] text-emerald-300">Completed</p>
                 <p className="text-xl font-bold text-emerald-300 mt-0.5">{projects.filter((p) => p.status === "completed").length}</p>
               </div>
