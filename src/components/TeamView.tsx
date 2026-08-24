@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, UserX, UserCheck, Shield, Eye, EyeOff } from "lucide-react";
+import { Plus, UserX, UserCheck, Shield, Eye, EyeOff, Copy } from "lucide-react";
 import {
   createUserAction,
   toggleUserActiveAction,
   changeRoleAction,
   resetPasswordAction,
+  getUserPasswordAction,
 } from "@/lib/actions/users";
 import type { UserRow } from "@/lib/types";
 import { Modal } from "@/components/ui";
@@ -84,6 +85,27 @@ export default function TeamView({
   const [error, setError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  // undefined = fetching, null = not recoverable (legacy hash), string = viewable
+  const [currentPassword, setCurrentPassword] = useState<string | null | undefined>(undefined);
+  const [showCurrent, setShowCurrent] = useState(true);
+
+  function openPasswordDialog(u: UserRow) {
+    setResetTarget(u);
+    setNewPassword("");
+    setShowCurrent(true);
+    setError(null);
+    setCurrentPassword(undefined);
+    start(async () => {
+      const res = await getUserPasswordAction(u.id);
+      if (res.error) setError(res.error);
+      setCurrentPassword(("password" in res ? res.password : null) ?? null);
+    });
+  }
+
+  function closeReset() {
+    setResetTarget(null);
+    setCurrentPassword(undefined);
+  }
 
   function run(fn: () => Promise<{ ok?: boolean; error?: string }>, onDone?: () => void) {
     start(async () => {
@@ -144,8 +166,8 @@ export default function TeamView({
         <div className="flex items-center justify-end gap-0.5">
           <button
             className="btn-ghost !px-1.5 !py-0.5 text-[11px]"
-            title="Reset password"
-            onClick={() => { setResetTarget(u); setNewPassword(""); }}
+            title="View / reset password"
+            onClick={() => openPasswordDialog(u)}
           >
             <Shield className="h-3.5 w-3.5" />
           </button>
@@ -215,15 +237,56 @@ export default function TeamView({
         </form>
       </Modal>
 
-      <Modal open={!!resetTarget} onClose={() => setResetTarget(null)} title={`Reset password — ${resetTarget?.full_name || ""}`}>
+      <Modal open={!!resetTarget} onClose={closeReset} title={`Password — ${resetTarget?.full_name || ""}`}>
         {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
         <div className="space-y-3">
+          <div>
+            <label className="label">Current password</label>
+            {currentPassword === undefined ? (
+              <p className="input !bg-white/5 text-slate-500 text-xs">Checking…</p>
+            ) : currentPassword === null ? (
+              <p className="rounded-lg bg-amber-400/10 text-amber-300 text-[11px] px-3 py-2 border border-amber-400/20 leading-relaxed">
+                Not recoverable — this account&apos;s password was created before password viewing was
+                enabled. Save a new one below; from then on it stays visible here.
+              </p>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <code className="input flex-1 font-mono text-xs select-all !bg-white/5">
+                  {showCurrent
+                    ? currentPassword
+                    : "•".repeat(Math.min(Math.max(currentPassword.length, 6), 16))}
+                </code>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="btn-ghost !px-2 !py-2 shrink-0"
+                  title={showCurrent ? "Hide" : "Show"}
+                  onClick={() => setShowCurrent((s) => !s)}
+                >
+                  {showCurrent ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="btn-ghost !px-2 !py-2 shrink-0"
+                  title="Copy"
+                  onClick={() => navigator.clipboard?.writeText(currentPassword)}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
           <div>
             <label className="label">New password</label>
             <PasswordInput minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
           </div>
-          <button className="btn-primary w-full" disabled={pending || newPassword.length < 6} onClick={() => run(() => resetPasswordAction(resetTarget!.id, newPassword), () => setResetTarget(null))}>
-            Reset password
+          <button
+            className="btn-primary w-full"
+            disabled={pending || newPassword.length < 6}
+            onClick={() => run(() => resetPasswordAction(resetTarget!.id, newPassword), closeReset)}
+          >
+            Save new password
           </button>
         </div>
       </Modal>
