@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import type { ProjectRow, UserRow } from "@/lib/types";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 const QUICK_ASSIGN_ROLES = [
   { key: "WRITER", label: "Content Writer", icon: "✍️" },
@@ -16,13 +17,16 @@ export default function QuickAssignFullTeam({
   team,
   onAssignAll,
   pending,
+  initial,
 }: {
   project: ProjectRow;
   team: UserRow[];
   onAssignAll: (assignments: { role_key: string; user_id: string | null }[]) => void;
   pending: boolean;
+  /** Current allocations (role_key -> user_id) so the form starts pre-filled. */
+  initial?: Record<string, string>;
 }) {
-  const [quickDraft, setQuickDraft] = useState<Record<string, string>>({});
+  const [quickDraft, setQuickDraft] = useState<Record<string, string>>(initial || {});
 
   const applicableRoles = QUICK_ASSIGN_ROLES.filter((qr) =>
     team.some((u) => u.role_key === qr.key)
@@ -41,39 +45,56 @@ export default function QuickAssignFullTeam({
   const hasAnySelection = applicableRoles.some((r) => quickDraft[r.key]);
 
   return (
-    <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <UserPlus className="h-3.5 w-3.5 text-brand-300" />
-        <p className="text-xs font-semibold text-brand-200">Quick Assign Full Team</p>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {applicableRoles.map((qr) => (
-          <div key={qr.key} className="space-y-0.5">
-            <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1">
-              <span>{qr.icon}</span>
-              {qr.label}
-            </label>
-            <select
-              className="input !py-1 text-xs"
-              value={quickDraft[qr.key] || ""}
-              onChange={(e) =>
-                setQuickDraft((prev) => ({ ...prev, [qr.key]: e.target.value }))
-              }
-            >
-              <option value="">Select…</option>
-              {team
-                .filter((u) => u.role_key === qr.key && u.is_active)
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.full_name}
-                  </option>
-                ))}
-            </select>
+    <div className="rounded-xl border border-brand-300/25 bg-brand-300/[0.06] p-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <span className="h-7 w-7 rounded-lg bg-brand-300/15 flex items-center justify-center shrink-0">
+            <UserPlus className="h-3.5 w-3.5 text-brand-300" />
+          </span>
+          <div>
+            <p className="text-xs font-semibold text-brand-200 leading-tight">Team Allotment</p>
+            <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+              One member per role — tasks auto-route on assign.
+            </p>
           </div>
-        ))}
+        </div>
+        {hasAnySelection && (
+          <button
+            className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+            onClick={() => setQuickDraft({})}
+          >
+            Clear all
+          </button>
+        )}
       </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {applicableRoles.map((qr) => {
+          const members = team.filter((u) => u.role_key === qr.key && u.is_active);
+          return (
+            <div key={qr.key} className="rounded-lg border border-white/10 bg-night-850/60 p-2.5">
+              <label className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-medium text-slate-200 flex items-center gap-1.5">
+                  <span>{qr.icon}</span>
+                  {qr.label}
+                </span>
+                <span className="text-[9px] text-slate-600 bg-white/5 rounded-full px-1.5 py-0.5">
+                  {members.length} available
+                </span>
+              </label>
+              <SearchableSelect
+                options={members.map((u) => ({ value: u.id, label: u.full_name }))}
+                value={quickDraft[qr.key] || ""}
+                onChange={(v) => setQuickDraft((prev) => ({ ...prev, [qr.key]: v }))}
+                placeholder="Select member…"
+              />
+            </div>
+          );
+        })}
+      </div>
+
       <button
-        className="btn-primary !py-1 text-xs w-full"
+        className="btn-primary !py-1.5 text-xs w-full mt-3"
         disabled={pending || !hasAnySelection}
         onClick={assignAll}
       >

@@ -38,6 +38,19 @@ function isoDate(v: string | Date | null | undefined): string {
   return String(v).slice(0, 10);
 }
 
+function initials(name: string) {
+  return name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+}
+
+const ROLE_TINTS: Record<string, string> = {
+  WRITER: "bg-amber-400/10 text-amber-300",
+  DESIGNER: "bg-pink-400/10 text-pink-300",
+  EDITOR: "bg-cyan-400/10 text-cyan-300",
+  SMM: "bg-indigo-400/10 text-indigo-300",
+  PROJECT_MANAGER: "bg-violet-400/10 text-violet-300",
+  SUPER_ADMIN: "bg-brand-300/10 text-brand-300",
+};
+
 function fmtDate(d: string | Date | null | undefined) {
   const iso = isoDate(d);
   if (!iso) return "—";
@@ -225,14 +238,15 @@ export default function ProjectDetailView({
             {/* Team allocation */}
             {canManage && p.status === "in_progress" && (
               <div className="px-4 pt-3">
-                <div className="rounded-lg border border-white/10 bg-night-850 p-3">
-                  <QuickAssignFullTeam
-                    project={p as unknown as Parameters<typeof QuickAssignFullTeam>[0]["project"]}
-                    team={team}
-                    onAssignAll={(assignments) => run(() => assignProjectTeamAction(p.id, assignments))}
-                    pending={pending}
-                  />
-                </div>
+                <QuickAssignFullTeam
+                  project={p as unknown as Parameters<typeof QuickAssignFullTeam>[0]["project"]}
+                  team={team}
+                  initial={Object.fromEntries(
+                    p.assignments.filter((a) => !a.on_leave).map((a) => [a.role_key, a.user_id])
+                  )}
+                  onAssignAll={(assignments) => run(() => assignProjectTeamAction(p.id, assignments))}
+                  pending={pending}
+                />
               </div>
             )}
 
@@ -249,13 +263,13 @@ export default function ProjectDetailView({
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-white/10 bg-white/[0.03]">
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Task</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[90px]">Role</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[110px]">Assignee</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[170px]">Due</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[110px]">Status</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[120px]">Published</th>
-                        <th className="px-3 py-2 w-[160px]"></th>
+                        <th className="px-3.5 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Task</th>
+                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[100px]">Role</th>
+                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[140px]">Assignee</th>
+                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[250px]">Due</th>
+                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[115px]">Status</th>
+                        <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[120px]">Published</th>
+                        <th className="px-3 py-2.5 w-[150px]"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.06]">
@@ -270,7 +284,7 @@ export default function ProjectDetailView({
                               className={`cursor-pointer transition-colors align-top ${open ? "bg-brand-300/[0.07]" : "hover:bg-white/[0.04]"}`}
                               onClick={() => setOpenTaskId(open ? null : t.id)}
                             >
-                              <td className="px-3 py-2">
+                              <td className="px-3.5 py-2.5">
                                 <div className="min-w-0">
                                   <p className="font-medium text-white">{t.title}</p>
                                   {t.description && (
@@ -281,39 +295,56 @@ export default function ProjectDetailView({
                                   )}
                                 </div>
                               </td>
-                              <td className="px-3 py-2">
-                                {t.role_label && <span className="badge bg-white/10 text-slate-400">{t.role_label}</span>}
+                              <td className="px-3 py-2.5">
+                                {t.role_label && (
+                                  <span className={`badge ${ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400"}`}>
+                                    {t.role_label}
+                                  </span>
+                                )}
                               </td>
-                              <td className="px-3 py-2 text-slate-300">{t.assignee_name || "—"}</td>
-                              <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-3 py-2.5">
+                                {t.assignee_name ? (
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-bold text-slate-300 shrink-0">
+                                      {initials(t.assignee_name)}
+                                    </span>
+                                    <span className="text-slate-300 truncate">{t.assignee_name}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-600">Unassigned</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                                 {canManage && t.status !== "completed" ? (
-                                  <div className="space-y-1">
-                                    <DatePicker
-                                      value={isoDate(t.due_date) || undefined}
-                                      placeholder="Set date…"
-                                      onChange={(v) => {
-                                        if (v && v !== isoDate(t.due_date)) {
-                                          run(() => updateTaskDueDateAction(t.id, v));
-                                        }
-                                      }}
-                                    />
-                                    <div className="flex items-center gap-0.5" title={`Extend deadline (Sundays skipped)`}>
-                                      <span className="text-[9px] uppercase tracking-wider text-slate-500 mr-0.5">extend</span>
-                                      {[1, 3, 7].map((n) => (
-                                        <button
-                                          key={n}
-                                          disabled={pending}
-                                          onClick={() =>
-                                            run(() =>
-                                              updateTaskDueDateAction(t.id, extendIso(isoDate(t.due_date), n))
-                                            )
+                                  <div
+                                    className="flex items-center gap-1"
+                                    title="Extend deadline (Sundays skipped)"
+                                  >
+                                    <div className="w-[124px] shrink-0">
+                                      <DatePicker
+                                        value={isoDate(t.due_date) || undefined}
+                                        placeholder="Set date…"
+                                        onChange={(v) => {
+                                          if (v && v !== isoDate(t.due_date)) {
+                                            run(() => updateTaskDueDateAction(t.id, v));
                                           }
-                                          className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200 transition-colors disabled:opacity-40"
-                                        >
-                                          +{n}d
-                                        </button>
-                                      ))}
+                                        }}
+                                      />
                                     </div>
+                                    {[1, 3, 7].map((n) => (
+                                      <button
+                                        key={n}
+                                        disabled={pending}
+                                        onClick={() =>
+                                          run(() =>
+                                            updateTaskDueDateAction(t.id, extendIso(isoDate(t.due_date), n))
+                                          )
+                                        }
+                                        className="px-1.5 py-1 rounded-md text-[10px] font-medium bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200 transition-colors disabled:opacity-40 shrink-0"
+                                      >
+                                        +{n}d
+                                      </button>
+                                    ))}
                                   </div>
                                 ) : (
                                   <span className={overdue ? "text-rose-300 font-medium" : "text-slate-300"}>
@@ -322,9 +353,9 @@ export default function ProjectDetailView({
                                   </span>
                                 )}
                               </td>
-                              <td className="px-3 py-2"><StatusBadge status={t.status} /></td>
-                              <td className="px-3 py-2"><PlatformBadges platforms={t.platforms} /></td>
-                              <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-3 py-2.5"><StatusBadge status={t.status} /></td>
+                              <td className="px-3 py-2.5"><PlatformBadges platforms={t.platforms} /></td>
+                              <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                                 <TaskActions
                                   task={t}
                                   roleKey={roleKey}

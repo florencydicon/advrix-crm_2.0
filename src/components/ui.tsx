@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect } from "react";
 import { X, CircleCheck, Clock, PauseCircle, Send, Undo2, Users, Upload } from "lucide-react";
 
 export const STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
@@ -104,6 +107,21 @@ export function Modal({
   title: string;
   children: React.ReactNode;
 }) {
+  // Escape closes; background scroll locks while open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

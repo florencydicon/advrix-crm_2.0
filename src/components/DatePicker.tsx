@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -34,16 +34,32 @@ export function DatePicker({
   const [internal, setInternal] = useState(value || "");
   const now = new Date();
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() });
-  const ref = useRef<HTMLDivElement>(null);
 
+  useEffect(() => setInternal(value || ""), [value]);
+
+  // Escape closes the popup; background scroll locks while open.
   useEffect(() => {
     if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open]);
+
+  function toggle() {
+    if (!open) {
+      // Center the visible month on the selected date (or today).
+      const base = internal ? new Date(`${internal}T00:00:00`) : new Date();
+      setView({ y: base.getFullYear(), m: base.getMonth() });
+    }
+    setOpen((o) => !o);
+  }
 
   const formatted = internal
     ? new Date(internal + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "long", day: "numeric" })
@@ -66,12 +82,12 @@ export function DatePicker({
   }
 
   return (
-    <div className="relative" ref={ref}>
+    <div>
       <div className="relative">
         <input type="hidden" name={name} value={internal} />
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggle}
           className={`input text-left cursor-pointer ${internal ? "" : "text-slate-500"}`}
         >
           {formatted || placeholder}
@@ -84,7 +100,6 @@ export function DatePicker({
               e.stopPropagation();
               setInternal("");
               onChange?.("");
-              setOpen(false);
             }}
             className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-white/10 text-slate-500"
             title="Clear date"
@@ -94,78 +109,84 @@ export function DatePicker({
         )}
       </div>
 
+      {/* Centered popup — horizontally & vertically middle of the viewport */}
       {open && (
-        <div className="absolute z-30 mt-1.5 w-72 rounded-2xl border border-white/10 bg-night-850 p-3 shadow-lg shadow-black/40">
-          <div className="flex items-center justify-between mb-2">
-            <button type="button" onClick={prev} className="p-1 rounded-lg hover:bg-white/10 text-slate-500">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <p className="text-sm font-semibold text-white">
-              {new Date(view.y, view.m, 1).toLocaleDateString([], { month: "long", year: "numeric" })}
-            </p>
-            <button type="button" onClick={next} className="p-1 rounded-lg hover:bg-white/10 text-slate-500">
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
-            {WEEKDAYS.map((d) => (
-              <span key={d} className="text-[10px] font-medium text-slate-500 py-1">
-                {d}
-              </span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5">
-            {Array.from({ length: firstDay }).map((_, i) => (
-              <span key={`b${i}`} />
-            ))}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day = i + 1;
-              const iso = toIso(new Date(view.y, view.m, day));
-              const isToday = iso === todayKey();
-              const isSelected = iso === internal;
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => pick(day)}
-                  className={`h-8 w-8 mx-auto rounded-lg text-xs font-medium transition-colors ${
-                    isSelected
-                      ? "bg-brand-300 text-night-950 shadow-sm shadow-brand-300/25"
-                      : isToday
-                      ? "bg-brand-300/10 text-brand-300"
-                      : "text-slate-200 hover:bg-white/10"
-                  }`}
-                >
-                  {day}
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div className="relative w-80 max-w-full rounded-2xl border border-white/10 bg-night-850 p-4 shadow-2xl shadow-black/50">
+            <div className="flex items-center justify-between mb-3">
+              <button type="button" onClick={prev} className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <p className="text-sm font-semibold text-white">
+                {new Date(view.y, view.m, 1).toLocaleDateString([], { month: "long", year: "numeric" })}
+              </p>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={next} className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+                  <ChevronRight className="h-4 w-4" />
                 </button>
-              );
-            })}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
 
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/10">
-            <span className="text-[10px] text-slate-500">
-              {required && !internal ? "Required" : internal ? "Selected" : "Pick a date"}
-            </span>
-            {internal && (
+            <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
+              {WEEKDAYS.map((d) => (
+                <span key={d} className="text-[10px] font-medium text-slate-500 py-1">
+                  {d}
+                </span>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-0.5">
+              {Array.from({ length: firstDay }).map((_, i) => (
+                <span key={`b${i}`} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const iso = toIso(new Date(view.y, view.m, day));
+                const isToday = iso === todayKey();
+                const isSelected = iso === internal;
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => pick(day)}
+                    className={`h-9 w-9 mx-auto rounded-lg text-xs font-medium transition-colors ${
+                      isSelected
+                        ? "bg-brand-300 text-night-950 shadow-sm shadow-brand-300/25"
+                        : isToday
+                        ? "bg-brand-300/10 text-brand-300"
+                        : "text-slate-200 hover:bg-white/10"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/10">
+              <span className="text-[10px] text-slate-500">
+                {required && !internal ? "Required — pick a date" : internal ? `Selected: ${formatted}` : "Pick a date"}
+              </span>
               <button
                 type="button"
-                onClick={() => pick(Math.min(dayOf(internal), daysInMonth))}
-                disabled={!internal}
-                className="text-[10px] font-semibold text-brand-300 hover:text-brand-200"
+                onClick={() => setOpen(false)}
+                className="text-[11px] font-semibold text-brand-300 hover:text-brand-200 px-2 py-1 rounded-lg hover:bg-brand-300/10 transition-colors"
               >
-                OK
+                Done
               </button>
-            )}
+            </div>
           </div>
         </div>
       )}
     </div>
   );
-}
-
-function dayOf(iso: string) {
-  const d = new Date(iso + "T00:00:00");
-  return d.getDate();
 }
