@@ -105,15 +105,15 @@ export default function ProjectDetailView({
   function handleAllotmentRowAdd(projectId: string, row: TeamAllocationRow) {
     if (!row.role_key || !row.user_id) return;
     setAllotmentRows((prev) => {
-      const exists = prev.some((r) => r.role_key === row.role_key);
+      const exists = prev.some((r) => r.role_key === row.role_key && r.user_id === row.user_id);
       if (exists) return prev;
       return [...prev, row];
     });
     run(() => assignProjectTeamAction(projectId, [{ role_key: row.role_key, user_id: row.user_id! }]));
   }
 
-  function handleAllotmentRowRemove(roleKey: string) {
-    setAllotmentRows((prev) => prev.filter((r) => r.role_key !== roleKey));
+  function handleAllotmentRowRemove(id: string) {
+    setAllotmentRows((prev) => prev.filter((r) => r.id !== id));
   }
 
   const totalTasks = client.projects.reduce((n, p) => n + p.total_tasks, 0);
