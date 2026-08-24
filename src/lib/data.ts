@@ -673,6 +673,9 @@ export async function getLeadStats(ownerId: string | null): Promise<LeadStats> {
   const rows = await query<{
     total: string;
     new_count: string;
+    contacted: string;
+    follow_up: string;
+    proposal: string;
     followups_due: string;
     won: string;
     lost: string;
@@ -682,6 +685,9 @@ export async function getLeadStats(ownerId: string | null): Promise<LeadStats> {
     `SELECT
        COUNT(*)::text AS total,
        COUNT(*) FILTER (WHERE status = 'new')::text AS new_count,
+       COUNT(*) FILTER (WHERE status = 'contacted')::text AS contacted,
+       COUNT(*) FILTER (WHERE status = 'follow_up')::text AS follow_up,
+       COUNT(*) FILTER (WHERE status = 'proposal')::text AS proposal,
        COUNT(*) FILTER (WHERE status = 'follow_up' AND next_follow_up <= CURRENT_DATE)::text AS followups_due,
        COUNT(*) FILTER (WHERE status = 'won')::text AS won,
        COUNT(*) FILTER (WHERE status = 'lost')::text AS lost,
@@ -694,12 +700,24 @@ export async function getLeadStats(ownerId: string | null): Promise<LeadStats> {
   return {
     total: Number(r?.total || 0),
     newCount: Number(r?.new_count || 0),
+    contacted: Number((r as any)?.contacted || 0),
+    followUp: Number((r as any)?.follow_up || 0),
+    proposal: Number((r as any)?.proposal || 0),
     followUpsDue: Number(r?.followups_due || 0),
     won: Number(r?.won || 0),
     lost: Number(r?.lost || 0),
     pipelineValue: Number(r?.pipeline_value || 0),
     wonValue: Number(r?.won_value || 0),
   };
+}
+
+export async function getTaskStatusCounts(): Promise<Record<string, number>> {
+  const rows = await query<{ status: string; count: string }>(
+    `SELECT status, COUNT(*)::text AS count FROM tasks GROUP BY status`
+  );
+  const map: Record<string, number> = {};
+  for (const r of rows) map[r.status] = Number(r.count);
+  return map;
 }
 
 // ---------- Attendance reports ----------

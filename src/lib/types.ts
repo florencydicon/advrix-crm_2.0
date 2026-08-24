@@ -305,6 +305,9 @@ export interface Lead {
 export interface LeadStats {
   total: number;
   newCount: number;
+  contacted: number;
+  followUp: number;
+  proposal: number;
   followUpsDue: number;
   won: number;
   lost: number;
