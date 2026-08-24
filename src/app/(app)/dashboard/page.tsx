@@ -1,7 +1,7 @@
 ﻿import Link from "next/link";
-import { AlertTriangle, FolderKanban, Users, CheckCircle2, Sparkles } from "lucide-react";
+import { AlertTriangle, FolderKanban, Users, CheckCircle2, Sparkles, Target } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { getMyTasks, getProjects, getSubmittedTasks } from "@/lib/data";
+import { getMyTasks, getProjects, getSubmittedTasks, getLeadStats } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
@@ -86,9 +86,10 @@ export default async function DashboardPage() {
     );
   }
 
-const projects = await getProjects();
+const [projects, leadStats] = await Promise.all([getProjects(), getLeadStats(null)]);
   const pending = projects.filter((p) => p.status === "pending_approval");
   const active = projects.filter((p) => p.status === "in_progress");
+  const isSuperAdmin = session.role_key === "SUPER_ADMIN";
 
   return (
     <div className="space-y-6">
@@ -97,11 +98,12 @@ const projects = await getProjects();
         <p className="text-sm text-slate-400">Live overview of every active campaign.</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 gap-4 ${isSuperAdmin ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         <Stat label="Total Projects" value={projects.length} />
         <Stat label="Pending Approval" value={pending.length} accent="text-amber-400" />
         <Stat label="In Progress" value={active.length} accent="text-brand-300" />
         <Stat label="Completed" value={projects.filter((p) => p.status === "completed").length} accent="text-emerald-400" />
+        {isSuperAdmin && <Stat label="Total Leads" value={leadStats.total} accent="text-sky-400" />}
       </div>
 
       <div className="card overflow-hidden">
