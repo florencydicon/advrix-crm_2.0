@@ -6,6 +6,8 @@ import type {
   AttendanceWithUser,
   Client,
   DeliverableType,
+  Lead,
+  LeadStats,
   Leave,
   LeaveWithUser,
   PaginatedResult,
@@ -645,5 +647,116 @@ export async function getLeavesForDateRange(startDate: string, endDate: string):
      WHERE l.status = 'approved' AND l.start_date <= $2 AND l.end_date >= $1
      ORDER BY l.start_date ASC`,
     [startDate, endDate]
+  );
+}
+
+// ---------- Sales Leads ----------
+
+export async function getLeads(ownerId: string | null): Promise<Lead[]> {
+  const where = ownerId ? `WHERE l.owner_id = $1` : "";
+  const args = ownerId ? [ownerId] : [];
+  return query<Lead>(
+    `SELECT l.*, u.full_name AS owner_name
+     FROM leads l JOIN users u ON u.id = l.owner_id
+     ${where}
+     ORDER BY l.updated_at DESC`,
+    args
+  );
+}
+
+export async function getLeadStats(ownerId: string | null): Promise<LeadStats> {
+  const where = ownerId ? `WHERE owner_id = $1` : "";
+  const args = ownerId ? [ownerId] : [];
+  const rows = await query<{
+    total: string;
+    new_count: string;
+    followups_due: string;
+    won: string;
+    lost: string;
+    pipeline_value: string | null;
+    won_value: string | null;
+  }>(
+    `SELECT
+       COUNT(*)::text AS total,
+       COUNT(*) FILTER (WHERE status = 'new')::text AS new_count,
+       COUNT(*) FILTER (WHERE status = 'follow_up' AND next_follow_up <= CURRENT_DATE)::text AS followups_due,
+       COUNT(*) FILTER (WHERE status = 'won')::text AS won,
+       COUNT(*) FILTER (WHERE status = 'lost')::text AS lost,
+       COALESCE(SUM(deal_value) FILTER (WHERE status NOT IN ('won','lost')), 0)::text AS pipeline_value,
+       COALESCE(SUM(deal_value) FILTER (WHERE status = 'won'), 0)::text AS won_value
+     FROM leads ${where}`,
+    args
+  );
+  const r = rows[0];
+  return {
+    total: Number(r?.total || 0),
+    newCount: Number(r?.new_count || 0),
+    followUpsDue: Number(r?.followups_due || 0),
+    won: Number(r?.won || 0),
+    lost: Number(r?.lost || 0),
+    pipelineValue: Number(r?.pipeline_value || 0),
+    wonValue: Number(r?.won_value || 0),
+  };
+}
+
+// ---------- Attendance reports ----------
+
+export interface AttendanceReportRow {
+  user_id: string;
+  full_name: string;
+  role_label: string;
+  present: number;
+  half_days: number;
+  late: number;
+  on_leave: number;
+  absent: number;
+  total_hours: number;
+}
+
+export async function getAttendanceReport(start: string, end: string): Promise<AttendanceReportRow[]> {
+  return query<AttendanceReportRow>(
+    `SELECT u.id AS user_id, u.full_name, r.label AS role_label,
+            COUNT(a.id) FILTER (WHERE a.status = 'present')::int AS present,
+            COUNT(a.id) FILTER (WHERE a.status = 'half_day')::int AS half_days,
+            COUNT(a.id) FILTER (WHERE a.status = 'late')::int AS late,
+            COUNT(a.id) FILTER (WHERE a.status = 'on_leave')::int AS on_leave,
+            COUNT(a.id) FILTER (WHERE a.status = 'absent')::int AS absent,
+            COALESCE(SUM(a.hours_worked), 0)::float8 AS total_hours
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN attendance a ON a.user_id = u.id AND a.date BETWEEN $1 AND $2
+     WHERE u.is_active = true
+     GROUP BY u.id, u.full_name, r.label
+     ORDER BY u.full_name ASC`,
+    [start, end]
+  );
+}
+
+export interface LeaveReportRow {
+  id: string;
+  full_name: string;
+  role_label: string;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  days: number;
+  reason: string;
+  status: string;
+  approved_by_name: string | null;
+  created_at: string;
+}
+
+export async function getLeaveReport(start: string, end: string): Promise<LeaveReportRow[]> {
+  return query<LeaveReportRow>(
+    `SELECT l.id, u.full_name, r.label AS role_label, l.leave_type,
+            l.start_date, l.end_date, l.days, l.reason, l.status,
+            au.full_name AS approved_by_name, l.created_at
+     FROM leaves l
+     JOIN users u ON u.id = l.user_id
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN users au ON au.id = l.approved_by
+     WHERE l.start_date <= $2 AND l.end_date >= $1
+     ORDER BY l.start_date DESC`,
+    [start, end]
   );
 }

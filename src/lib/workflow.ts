@@ -300,3 +300,152 @@ async function maybeCompleteProject(projectId: string) {
     await query(`UPDATE projects SET status = 'completed' WHERE id = $1`, [projectId]);
   }
 }
+
+// ---------- Deadline engine (Sundays excluded) ----------
+
+/** Adds `days` working days to a date, skipping Sundays. */
+export function addWorkingDays(start: Date, days: number): Date {
+  const d = new Date(start.getTime());
+  let remaining = Math.max(0, days);
+  while (remaining > 0) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0) remaining -= 1;
+  }
+  return d;
+}
+
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Assigns sequential working-day due dates to every task of a project that
+ * doesn't have one yet. Sundays are excluded. Each stage gets 2 working days;
+ * if the project has an overall deadline the tasks are spread evenly across
+ * the available working days instead.
+ */
+export async function computeSequentialDeadlines(projectId: string) {
+  const tasks = await query<{ id: string; due_date: string | null }>(
+    `SELECT id, due_date::text AS due_date FROM tasks WHERE project_id = $1 ORDER BY created_at ASC, id ASC`,
+    [projectId]
+  );
+  if (tasks.length === 0) return;
+
+  const project = (
+    await query<{ deadline: string | null }>(
+      `SELECT deadline::text AS deadline FROM projects WHERE id = $1`,
+      [projectId]
+    )
+  )[0];
+
+  const start = new Date();
+  start.setHours(12, 0, 0, 0);
+
+  const missing = tasks.filter((t) => !t.due_date);
+  if (missing.length === 0) return;
+
+  let dates: Date[] = [];
+  const totalTasks = tasks.length;
+  const deadlineStr = project?.deadline || null;
+
+  if (deadlineStr) {
+    // Spread evenly across working days from today up to the deadline.
+    const end = new Date(`${deadlineStr}T12:00:00`);
+    const spanDays = Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+    const step = totalTasks > 1 ? Math.max(1, Math.floor(spanDays / (totalTasks - 1))) : spanDays;
+    let cursor = new Date(start.getTime());
+    for (let i = 0; i < totalTasks; i++) {
+      cursor = addWorkingDays(cursor, i === 0 ? 1 : Math.max(1, step));
+      dates.push(new Date(cursor.getTime()));
+    }
+    // Ensure monotonic non-decreasing dates.
+    for (let i = 1; i < dates.length; i++) {
+      if (dates[i] < dates[i - 1]) dates[i] = addWorkingDays(dates[i - 1], 1);
+      while (dates[i].getDay() === 0) dates[i].setDate(dates[i].getDate() + 1);
+    }
+  } else {
+    // Sequential: first due in 2 working days, then +2 per task.
+    let cursor = new Date(start.getTime());
+    for (let i = 0; i < totalTasks; i++) {
+      cursor = addWorkingDays(cursor, 2);
+      dates.push(new Date(cursor.getTime()));
+    }
+  }
+
+  // Only fill in the missing ones, preserving their order position.
+  for (let i = 0; i < totalTasks; i++) {
+    const t = tasks[i];
+    if (!t.due_date) {
+      await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [t.id, toISODate(dates[i])]);
+    }
+  }
+}
+
+/**
+ * Emergency leave handling. Extends the affected member's open task deadlines
+ * by N working days (Sundays excluded), records the reason on each task, and
+ * cascades the same extension to every subsequent open task in the project so
+ * the sequential pipeline absorbs the delay.
+ */
+export async function extendForLeave(
+  projectId: string,
+  userId: string,
+  days: number,
+  reason: string
+) {
+  const cleanDays = Math.max(0, Math.min(365, Math.floor(days)));
+
+  // Record leave on the assignment row (preserving role_key).
+  const roleRow = (
+    await query<{ role_key: string }>(
+      `SELECT a.role_key FROM assignments a WHERE a.project_id = $1 AND a.user_id = $2
+       UNION ALL
+       SELECT t.role_key FROM tasks t WHERE t.project_id = $1 AND t.assigned_to = $2
+       LIMIT 1`,
+      [projectId, userId]
+    )
+  )[0];
+
+  if (roleRow) {
+    await query(
+      `INSERT INTO assignments (user_id, project_id, role_key, on_leave, leave_reason, leave_days)
+       VALUES ($1, $2, $3, true, $4, $5)
+       ON CONFLICT (user_id, project_id, role_key) DO UPDATE
+       SET on_leave = true, leave_reason = EXCLUDED.leave_reason, leave_days = EXCLUDED.leave_days`,
+      [userId, projectId, roleRow.role_key, reason || null, cleanDays]
+    );
+  }
+
+  if (cleanDays === 0) return;
+
+  const tasks = await query<{ id: string; assigned_to: string | null }>(
+    `SELECT id, assigned_to FROM tasks WHERE project_id = $1 AND status <> 'completed' ORDER BY created_at ASC, id ASC`,
+    [projectId]
+  );
+
+  const cascadeStartIdx = tasks.findIndex((t) => t.assigned_to === userId);
+  if (cascadeStartIdx === -1) return;
+
+  for (let i = cascadeStartIdx; i < tasks.length; i++) {
+    const t = tasks[i];
+    const current = (
+      await query<{ due_date: string | null }>(`SELECT due_date::text AS due_date FROM tasks WHERE id = $1`, [t.id])
+    )[0];
+    const base = current?.due_date ? new Date(`${current.due_date}T12:00:00`) : new Date();
+    base.setHours(12, 0, 0, 0);
+    const next = addWorkingDays(base, cleanDays);
+    const isOwner = t.assigned_to === userId;
+    await query(
+      `UPDATE tasks SET due_date = $2${isOwner ? `, on_leave_note = $3` : ""} WHERE id = $1`,
+      isOwner ? [t.id, toISODate(next), reason || null] : [t.id, toISODate(next)]
+    );
+  }
+}
+
+/** Manual deadline adjustment by admins/PMs — never locked. */
+export async function setTaskDeadline(taskId: string, date: string | null) {
+  await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [taskId, date || null]);
+}

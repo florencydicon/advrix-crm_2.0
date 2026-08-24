@@ -100,10 +100,10 @@ export function validateQuantity(qty: number): string | null {
 
 export function validateBrief(brief: string): string | null {
   const v = String(brief || "").trim();
-  if (!v) return "Project brief is required.";
-  if (v.length < 20) return "Project brief must be at least 20 characters — describe the campaign goal and audience.";
-  if (v.length > 2000) return "Project brief is too long (max 2000 characters).";
-  if (looksPlaceholder(v)) return "This brief appears to be placeholder data.";
+  if (!v) return "Task details are required.";
+  if (v.length < 20) return "Task details must be at least 20 characters — describe the campaign goal and audience.";
+  if (v.length > 2000) return "Task details are too long (max 2000 characters).";
+  if (looksPlaceholder(v)) return "This appears to be placeholder data.";
   return null;
 }
 

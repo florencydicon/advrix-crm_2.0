@@ -1,7 +1,7 @@
 ﻿import Link from "next/link";
 import { AlertTriangle, FolderKanban, Users, CheckCircle2, Sparkles } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { getMyTasks, getBottlenecks, getProjects, getTeam, getSubmittedTasks } from "@/lib/data";
+import { getMyTasks, getBottlenecks, getProjects, getSubmittedTasks } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
 import ApprovalQueue from "@/components/ApprovalQueue";
@@ -54,22 +54,22 @@ export default async function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold tracking-tight">Business Development</h1>
-            <p className="text-sm text-slate-400">Your briefs and their approval status.</p>
+            <p className="text-sm text-slate-400">Your projects and their approval status.</p>
           </div>
           <Link href="/clients" className="btn-primary">
-            + New Brief
+            + Add Tasks
           </Link>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Stat label="Your Briefs" value={mine.length} />
+          <Stat label="My Projects" value={mine.length} />
           <Stat label="Awaiting Approval" value={mine.filter((p) => p.status === "pending_approval").length} accent="text-amber-400" />
           <Stat label="In Production" value={mine.filter((p) => p.status === "in_progress").length} accent="text-brand-300" />
           <Stat label="Delivered" value={mine.filter((p) => p.status === "completed").length} accent="text-emerald-400" />
         </div>
 
         {mine.length === 0 ? (
-          <EmptyState title="No briefs yet" subtitle="Create your first client brief from the Clients page." />
+          <EmptyState title="No projects yet" subtitle="Create tasks for a client from the Clients page." />
         ) : (
           <div className="card divide-y divide-white/[0.06] overflow-hidden">
             {mine.map((p) => (
@@ -90,7 +90,6 @@ export default async function DashboardPage() {
   // PROJECT_MANAGER + SUPER_ADMIN command center
   const projects = await getProjects();
   const bottlenecks = await getBottlenecks();
-  const team = await getTeam();
   const submittedTasks = await getSubmittedTasks();
   const pending = projects.filter((p) => p.status === "pending_approval");
   const active = projects.filter((p) => p.status === "in_progress");
@@ -103,10 +102,10 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Active Campaigns" value={active.length} accent="text-brand-300" />
-        <Stat label="Awaiting Approval" value={pending.length} accent="text-amber-400" />
+        <Stat label="Total Projects" value={projects.length} />
+        <Stat label="Pending Approval" value={pending.length} accent="text-amber-400" />
+        <Stat label="In Progress" value={active.length} accent="text-brand-300" />
         <Stat label="Completed" value={projects.filter((p) => p.status === "completed").length} accent="text-emerald-400" />
-        <Stat label="Team Members" value={team.length} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -142,11 +141,11 @@ export default async function DashboardPage() {
       <div className="card overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.06]">
           <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          <h2 className="font-semibold">Briefs awaiting approval</h2>
+          <h2 className="font-semibold">Projects awaiting approval</h2>
           <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{pending.length}</span>
         </div>
         {pending.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-slate-500">No briefs waiting for approval.</p>
+          <p className="px-5 py-6 text-sm text-slate-500">Nothing waiting for approval.</p>
         ) : (
           <div className="divide-y divide-white/[0.06]">
             {pending.map((p) => (

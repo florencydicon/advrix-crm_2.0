@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -18,6 +18,7 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
+  Target,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -37,6 +38,7 @@ const NAV: NavItem[] = [
   { href: "/attendance", label: "Attendance", icon: Clock },
   { href: "/updates", label: "Updates", icon: Bell },
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
+  { href: "/leads", label: "Leads", icon: Target, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/clients", label: "Clients", icon: Users, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
   { href: "/team", label: "Team", icon: Users, roles: ["SUPER_ADMIN"] },
   { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
@@ -88,10 +90,69 @@ export default function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [notifs, setNotifs] = useState<Notification[]>(notifications);
+  const [unread, setUnread] = useState(unreadCount);
+  const [ringing, setRinging] = useState(false);
+  const [missedToast, setMissedToast] = useState(0);
+  const prevUnread = useRef(unreadCount);
+  const awayAt = useRef<number | null>(null);
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
   }, []);
+
+  const pollNotifications = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications", { cache: "no-store" });
+      if (!res.ok) return;
+      const data: { items: Notification[]; unread: number } = await res.json();
+      setNotifs(data.items || []);
+      const nextUnread = data.unread ?? 0;
+      if (nextUnread > prevUnread.current) {
+        const gained = nextUnread - prevUnread.current;
+      if (document.hidden) {
+        setMissedToast((m) => m + gained);
+      } else {
+        setRinging(true);
+        setTimeout(() => setRinging(false), 3000);
+      }
+      }
+      prevUnread.current = nextUnread;
+      setUnread(nextUnread);
+    } catch {
+      // offline — retry on the next tick
+    }
+  }, []);
+
+  // Live polling every 25s.
+  useEffect(() => {
+    const id = setInterval(pollNotifications, 25000);
+    return () => clearInterval(id);
+  }, [pollNotifications]);
+
+  // Return-to-tab alert: surface what was missed while away.
+  useEffect(() => {
+    function onVisibility() {
+      if (document.hidden) {
+        awayAt.current = Date.now();
+        return;
+      }
+      const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 15000;
+      awayAt.current = null;
+      pollNotifications();
+      if (wasAway && missedToast > 0) {
+        setRinging(true);
+        setTimeout(() => setRinging(false), 6000);
+        router.refresh();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [pollNotifications, missedToast, router]);
+
+  function dismissMissedToast() {
+    setMissedToast(0);
+  }
 
   function toggleCollapsed() {
     setCollapsed((c) => {
@@ -116,16 +177,20 @@ export default function AppShell({
   async function handleRead(notif: Notification) {
     setNotifOpen(false);
     if (!notif.read) {
+      setNotifs((list) => list.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
+      setUnread((u) => Math.max(0, u - 1));
+      prevUnread.current = Math.max(0, prevUnread.current - 1);
       await markNotificationReadAction(notif.id);
-      router.refresh();
     }
     if (notif.link) router.push(notif.link);
   }
 
   async function handleMarkAll() {
     await markAllNotificationsReadAction();
+    setNotifs((list) => list.map((n) => ({ ...n, read: true })));
+    setUnread(0);
+    prevUnread.current = 0;
     setNotifOpen(false);
-    router.refresh();
   }
 
   const sidebar = (mobile: boolean) => {
@@ -191,16 +256,16 @@ export default function AppShell({
                 )}
                 <span className="relative shrink-0">
                   <Icon className="h-[18px] w-[18px]" />
-                  {mini && item.href === "/updates" && unreadCount > 0 && (
+                  {mini && item.href === "/updates" && unread > 0 && (
                     <span className="absolute -top-1 -right-1.5 h-2 w-2 rounded-full bg-brand-300 ring-2 ring-night-950" />
                   )}
                 </span>
                 {!mini && (
                   <>
                     <span className="flex-1">{item.label}</span>
-                    {item.href === "/updates" && unreadCount > 0 && (
+                    {item.href === "/updates" && unread > 0 && (
                       <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-300 text-night-950 text-[10px] font-bold flex items-center justify-center">
-                        {unreadCount}
+                        {unread}
                       </span>
                     )}
                   </>
@@ -251,6 +316,30 @@ export default function AppShell({
 
   return (
     <div className="min-h-screen flex bg-paper">
+      {/* Return-to-tab alert */}
+      {missedToast > 0 && (
+        <div className="fixed top-16 right-4 sm:right-6 z-[60] animate-toast-in">
+          <div className="flex items-center gap-3 rounded-2xl bg-night-850 ring-1 ring-brand-300/30 shadow-2xl shadow-black/50 px-4 py-3 max-w-sm">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-300 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-300" />
+            </span>
+            <p className="text-sm text-slate-200 flex-1">
+              You missed <span className="font-bold text-white">{missedToast}</span> update{missedToast === 1 ? "" : "s"} while you were away.
+            </p>
+            <button
+              onClick={() => { setNotifOpen(true); dismissMissedToast(); }}
+              className="text-xs font-semibold text-brand-300 hover:text-brand-200 shrink-0"
+            >
+              View
+            </button>
+            <button onClick={dismissMissedToast} className="text-slate-500 hover:text-white shrink-0" aria-label="Dismiss">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Desktop sidebar */}
       <aside
         className={`hidden lg:block fixed inset-y-0 left-0 z-30 transition-[width] duration-300 ease-in-out ${collapsed ? "w-[76px]" : "w-64"}`}
@@ -296,12 +385,17 @@ export default function AppShell({
                 className="relative p-2 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
                 aria-label="Notifications"
               >
-                <Bell className="h-5 w-5" />
-                {unreadCount > 0 && (
+                <Bell
+                  className={`h-5 w-5 ${ringing ? "animate-bell-ring text-brand-300" : ""}`}
+                />
+                {missedToast > 0 && unread === 0 && (
+                  <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-brand-300" />
+                )}
+                {unread > 0 && (
                   <>
-                    <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-brand-300 animate-pulse" />
+                    <span className={`absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-brand-300 ${ringing ? "" : "animate-pulse"}`} />
                     <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-300 text-night-950 text-[10px] font-bold flex items-center justify-center shadow">
-                      {unreadCount > 9 ? "9+" : unreadCount}
+                      {unread > 9 ? "9+" : unread}
                     </span>
                   </>
                 )}
@@ -313,20 +407,20 @@ export default function AppShell({
                   <div className="absolute right-0 z-40 mt-2 w-80 sm:w-96 rounded-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
                       <p className="text-sm font-semibold text-white">Updates</p>
-                      {unreadCount > 0 && (
+                      {unread > 0 && (
                         <button onClick={handleMarkAll} className="text-xs font-medium text-brand-300 hover:text-brand-200">
                           Mark all read
                         </button>
                       )}
                     </div>
                     <div className="max-h-[60vh] overflow-y-auto divide-y divide-white/[0.04]">
-                      {notifications.length === 0 ? (
+                      {notifs.length === 0 ? (
                         <div className="px-4 py-10 text-center">
                           <Bell className="h-8 w-8 mx-auto text-slate-600 mb-2" />
                           <p className="text-sm text-slate-500">No updates yet.</p>
                         </div>
                       ) : (
-                        notifications.map((n) => (
+                        notifs.map((n) => (
                           <button
                             key={n.id}
                             onClick={() => handleRead(n)}

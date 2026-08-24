@@ -1,7 +1,7 @@
 ﻿import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { getPipelineByClient, getTeam } from "@/lib/data";
-import ProjectsBoard from "@/components/ProjectsBoard";
+import { getPipelineByClient } from "@/lib/data";
+import ClientPipeline from "@/components/ClientPipeline";
 
 export const metadata = { title: "Project Pipeline — Advrix CRM" };
 
@@ -15,15 +15,10 @@ export default async function ProjectsPage({
 
   const params = await searchParams;
 
-  const [pipeline, team] = await Promise.all([getPipelineByClient(), getTeam()]);
+  // Legacy deep links (?client=) now resolve to the dedicated client pipeline page.
+  if (params.client) redirect(`/projects/${params.client}`);
 
-  return (
-    <ProjectsBoard
-      pipeline={pipeline}
-      team={team}
-      roleKey={session.role_key}
-      userId={session.sub}
-      initialClientId={params.client || undefined}
-    />
-  );
+  const pipeline = await getPipelineByClient();
+
+  return <ClientPipeline pipeline={pipeline} />;
 }

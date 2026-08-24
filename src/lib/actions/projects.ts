@@ -10,6 +10,9 @@ import {
   allocateProjectTeam,
   handoffVisualTaskToSmm,
   routeVisualTaskToProducer,
+  computeSequentialDeadlines,
+  extendForLeave,
+  setTaskDeadline,
 } from "@/lib/workflow";
 import { createNotification, getProjectCreatorId, notifyRoles } from "@/lib/notifications";
 import {
@@ -168,6 +171,7 @@ export async function approveProjectAction(projectId: string) {
   // Deliverable-based projects generate individual tasks; others use the pipeline.
   await generateDeliverableTasks(projectId);
   await runWorkflow(projectId);
+  await computeSequentialDeadlines(projectId);
 
   const creatorId = await getProjectCreatorId(projectId);
   if (creatorId) {
@@ -637,6 +641,98 @@ export async function deleteProjectAction(projectId: string) {
     return { error: "Not authorized." };
   }
   await query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** Super Admin only: cleanly removes a client and all their projects/tasks. */
+export async function deleteClientAction(clientId: string) {
+  const session = await getSession();
+  if (!session || session.role_key !== "SUPER_ADMIN") {
+    return { error: "Only the Super Admin can remove clients." };
+  }
+
+  const client = (
+    await query<{ name: string }>(`SELECT name FROM clients WHERE id = $1`, [clientId])
+  )[0];
+  if (!client) return { error: "Client not found." };
+
+  await query(`DELETE FROM clients WHERE id = $1`, [clientId]);
+
+  revalidatePath("/clients");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  return { ok: true, name: client.name };
+}
+
+/** Admins/PMs can manually adjust any task deadline (editable timelines). */
+export async function updateTaskDueDateAction(taskId: string, date: string) {
+  const session = await getSession();
+  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  await setTaskDeadline(taskId, date);
+
+  const task = (
+    await query<{ title: string; assigned_to: string | null }>(
+      `SELECT title, assigned_to FROM tasks WHERE id = $1`,
+      [taskId]
+    )
+  )[0];
+  if (task?.assigned_to && task.assigned_to !== session.sub) {
+    await createNotification({
+      userId: task.assigned_to,
+      type: "task",
+      title: "Deadline updated",
+      body: `"${task.title}" is now due ${date ? new Date(`${date}T00:00:00`).toLocaleDateString() : "—"} (set by ${session.name}).`,
+      link: "/dashboard",
+    });
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/**
+ * Emergency leave handling. Marks a team member on leave for this project with
+ * a reason and day counter; their open task deadlines extend by that many
+ * working days (Sundays excluded) and every subsequent task in the pipeline
+ * shifts by the same amount.
+ */
+export async function setMemberLeaveAction(
+  projectId: string,
+  userId: string,
+  days: number,
+  reason: string
+) {
+  const session = await getSession();
+  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  if (!reason || reason.trim().length < 3) {
+    return { error: "Please enter the reason for the leave." };
+  }
+
+  await extendForLeave(projectId, userId, days, reason.trim());
+
+  if (userId !== session.sub) {
+    await createNotification({
+      userId,
+      type: "leave",
+      title: "Marked on leave",
+      body: `${session.name} marked you on leave for ${days} day${days === 1 ? "" : "s"} — deadlines extended automatically.`,
+      link: "/dashboard",
+    });
+  }
+  await notifyRoles(["SUPER_ADMIN", "PROJECT_MANAGER"], {
+    type: "leave",
+    title: "Deadline cascade applied",
+    body: `${session.name} extended deadlines in a project (${days}d leave).`,
+    link: "/projects",
+  });
+
+  revalidatePath("/app");
   revalidatePath("/projects");
   return { ok: true };
 }

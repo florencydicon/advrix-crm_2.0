@@ -22,12 +22,14 @@ export default async function ClientsPage({
     getClientCards({ page, pageSize, search }),
     getDeliverableTypes(),
   ]);
-  const canCreate = session.role_key === "SALES" || session.role_key === "SUPER_ADMIN";
+  const canCreate = ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key);
+  const canDelete = session.role_key === "SUPER_ADMIN";
 
   return (
     <ClientsView
       clients={result.items}
       canCreate={canCreate}
+      canDelete={canDelete}
       deliverableTypes={deliverableTypes}
       page={result.page}
       pageSize={result.pageSize}

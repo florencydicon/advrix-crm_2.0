@@ -83,6 +83,9 @@ export interface Assignment {
   role_key: RoleKey;
   user_name: string | null;
   role_label: string;
+  on_leave?: boolean;
+  leave_reason?: string | null;
+  leave_days?: number;
 }
 
 export type TaskStatus =
@@ -130,11 +133,12 @@ export interface Task {
   review_comment: string | null;
   client_feedback: string | null;
   platforms: string[];
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  due_date: string | null;
-  created_at: string;
-  completed_at: string | null;
+   reviewed_by: string | null;
+   reviewed_at: string | null;
+   due_date: string | null;
+   on_leave_note: string | null;
+   created_at: string;
+   completed_at: string | null;
 }
 
 export interface WorkflowGroup {
@@ -255,4 +259,55 @@ export interface Notification {
   link: string | null;
   read: boolean;
   created_at: string;
+}
+
+// ---------- Sales Leads ----------
+
+export type LeadStatus = "new" | "contacted" | "follow_up" | "proposal" | "won" | "lost";
+export type LeadSource = "website" | "referral" | "instagram" | "cold_outreach" | "walk_in" | "other";
+
+export const LEAD_STATUSES: { key: LeadStatus; label: string }[] = [
+  { key: "new", label: "New" },
+  { key: "contacted", label: "Contacted" },
+  { key: "follow_up", label: "Follow-up" },
+  { key: "proposal", label: "Proposal Sent" },
+  { key: "won", label: "Won" },
+  { key: "lost", label: "Lost" },
+];
+
+export const LEAD_SOURCES: { key: LeadSource; label: string }[] = [
+  { key: "website", label: "Website" },
+  { key: "referral", label: "Referral" },
+  { key: "instagram", label: "Instagram" },
+  { key: "cold_outreach", label: "Cold Outreach" },
+  { key: "walk_in", label: "Walk-in" },
+  { key: "other", label: "Other" },
+];
+
+export interface Lead {
+  id: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  source: LeadSource;
+  status: LeadStatus;
+  deal_value: number;
+  notes: string | null;
+  next_follow_up: string | null;
+  owner_id: string;
+  owner_name?: string | null;
+  converted_client_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadStats {
+  total: number;
+  newCount: number;
+  followUpsDue: number;
+  won: number;
+  lost: number;
+  pipelineValue: number;
+  wonValue: number;
 }

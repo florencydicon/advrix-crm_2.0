@@ -11,8 +11,9 @@ import {
   ChevronRight,
   Search,
   ChevronLeft,
+  Trash2,
 } from "lucide-react";
-import { createClientAction, createProjectAction } from "@/lib/actions/projects";
+import { createClientAction, createProjectAction, deleteClientAction } from "@/lib/actions/projects";
 import type { ClientCard } from "@/lib/data";
 import type { DeliverableType } from "@/lib/types";
 import { Modal, EmptyState } from "@/components/ui";
@@ -50,13 +51,14 @@ function DeliverablesPicker({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [custom, setCustom] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
+  const [customQty, setCustomQty] = useState(1);
 
   const selected: Deliv[] = [
     ...types
       .filter((t) => (quantities[t.key] || 0) > 0)
       .map((t) => ({ key: t.key, label: t.label, quantity: quantities[t.key] || 0, isCustom: false })),
-    ...(custom && customLabel.trim()
-      ? [{ key: "custom", label: customLabel.trim(), quantity: 1, isCustom: true, customLabel: customLabel.trim() }]
+    ...(custom && customLabel.trim() && customQty > 0
+      ? [{ key: "custom", label: customLabel.trim(), quantity: customQty, isCustom: true, customLabel: customLabel.trim() }]
       : []),
   ];
 
@@ -95,6 +97,7 @@ function DeliverablesPicker({
         })}
       </div>
 
+      {/* Other — fully custom deliverable with its own repeat counter */}
       <div className="rounded-lg border border-dashed border-white/10 p-2 space-y-1.5">
         <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
           <input
@@ -103,15 +106,36 @@ function DeliverablesPicker({
             onChange={(e) => { setCustom(e.target.checked); onChange([...selected]); }}
             className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-brand-300 focus:ring-brand-300/25"
           />
-          Custom Design Deliverables
+          Other (custom task)
         </label>
         {custom && (
-          <input
-            value={customLabel}
-            onChange={(e) => { setCustomLabel(e.target.value); onChange([...selected]); }}
-            className="input !py-1 text-xs"
-            placeholder="e.g. Catalogue Covers, Packaging Mockups…"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              value={customLabel}
+              onChange={(e) => { setCustomLabel(e.target.value); onChange([...selected]); }}
+              className="input !py-1 text-xs flex-1"
+              placeholder="e.g. Catalogue Covers, Packaging Mockups…"
+            />
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={customQty}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(500, Number(e.target.value) || 1));
+                setCustomQty(v);
+                onChange([...selected]);
+              }}
+              className="input !w-14 !py-1 text-center text-xs shrink-0"
+              aria-label="How many times to repeat this custom task"
+              title="Repeat count"
+            />
+          </div>
+        )}
+        {custom && customLabel.trim() && (
+          <p className="text-[10px] text-brand-300">
+            {customQty} × “{customLabel.trim()}” task{customQty === 1 ? "" : "s"} will be generated
+          </p>
         )}
       </div>
 
@@ -146,6 +170,7 @@ function DeliverablesPicker({
 export default function ClientsView({
   clients,
   canCreate,
+  canDelete,
   deliverableTypes,
   page,
   pageSize,
@@ -156,6 +181,7 @@ export default function ClientsView({
 }: {
   clients: ClientCard[];
   canCreate: boolean;
+  canDelete: boolean;
   deliverableTypes: DeliverableType[];
   page: number;
   pageSize: number;
@@ -211,12 +237,12 @@ export default function ClientsView({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Clients</h1>
-          <p className="text-sm text-slate-500">Accounts and briefs flowing through the agency.</p>
+          <p className="text-sm text-slate-500">Accounts and tasks flowing through the agency.</p>
         </div>
         {canCreate && (
           <div className="flex gap-1.5">
             <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={() => setBriefModal(true)}>
-              <FilePlus2 className="h-3.5 w-3.5" /> New Brief
+              <FilePlus2 className="h-3.5 w-3.5" /> Add Tasks
             </button>
             <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => setClientModal(true)}>
               <Plus className="h-3.5 w-3.5" /> New Client
@@ -269,9 +295,25 @@ export default function ClientsView({
                     <button
                       onClick={(e) => { e.stopPropagation(); setSelectedClient(c.id); setBriefModal(true); }}
                       className="btn-secondary !py-1 !px-2 text-[11px] shrink-0"
-                      title="New brief for this client"
+                      title="Add tasks for this client"
                     >
-                      <FilePlus2 className="h-3 w-3" /> Brief
+                      <FilePlus2 className="h-3 w-3" /> Tasks
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`Remove "${c.name}" and ALL of their projects and tasks? This cannot be undone.`)) return;
+                        const res = await deleteClientAction(c.id);
+                        if (res.error) window.alert(res.error);
+                        else router.refresh();
+                      }}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-400/10 transition-colors shrink-0"
+                      title="Remove this client"
+                      aria-label={`Remove ${c.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
@@ -366,7 +408,7 @@ export default function ClientsView({
         </form>
       </Modal>
 
-      <Modal open={briefModal} onClose={() => setBriefModal(false)} title="New Project Brief">
+      <Modal open={briefModal} onClose={() => setBriefModal(false)} title="Add Tasks">
         {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
         <form action={runWith(createProjectAction)} className="space-y-3">
           <div>
@@ -388,7 +430,7 @@ export default function ClientsView({
             <input name="name" required className="input" placeholder="Aryush Height — Q3 Content Campaign" />
           </div>
           <div>
-            <label className="label">Brief</label>
+            <label className="label">Task details</label>
             <textarea name="brief" rows={2} className="input" placeholder="Campaign goal, tone, audience, channels…" />
           </div>
           <div>

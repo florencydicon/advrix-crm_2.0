@@ -18,6 +18,8 @@ import {
 import { punchInAction, punchOutAction } from "@/lib/actions/attendance";
 import type { Attendance, AttendanceStats, LeaveWithUser } from "@/lib/types";
 import LeaveApplicationModal from "@/components/LeaveApplicationModal";
+import AttendanceReports, { type LeaveReportRowLite } from "@/components/AttendanceReports";
+import type { AttendanceReportRow } from "@/lib/data";
 
 function formatTime(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -70,6 +72,10 @@ export default function AttendanceView({
   leaveBalance,
   pendingLeaves,
   allLeaves,
+  reportMonth,
+  reportYear,
+  attendanceReport,
+  leaveReport,
 }: {
   todayRecord: Attendance | null;
   history: Attendance[];
@@ -79,6 +85,10 @@ export default function AttendanceView({
   leaveBalance: Record<string, { used: number; total: number }>;
   pendingLeaves: LeaveWithUser[];
   allLeaves: LeaveWithUser[];
+  reportMonth: number;
+  reportYear: number;
+  attendanceReport: AttendanceReportRow[];
+  leaveReport: LeaveReportRowLite[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -165,8 +175,28 @@ export default function AttendanceView({
             <Calendar className="h-3.5 w-3.5 inline mr-1" />
             Leaves
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab("reports")}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                activeTab === "reports" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
+              }`}
+            >
+              <TrendingUp className="h-3.5 w-3.5 inline mr-1" />
+              Reports
+            </button>
+          )}
         </div>
       </div>
+
+      {activeTab === "reports" && isAdmin && (
+        <AttendanceReports
+          month={reportMonth}
+          year={reportYear}
+          attendanceReport={attendanceReport}
+          leaveReport={leaveReport}
+        />
+      )}
 
       {activeTab === "attendance" && (
         <>
