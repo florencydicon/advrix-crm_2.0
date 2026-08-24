@@ -115,7 +115,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           <p className="text-sm text-slate-400">Super Admin overview — projects, tasks & leads at a glance.</p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {/* Card 1 — Projects */}
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
