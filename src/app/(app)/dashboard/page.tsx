@@ -1,10 +1,9 @@
 ﻿import Link from "next/link";
 import { AlertTriangle, FolderKanban, Users, CheckCircle2, Sparkles } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { getMyTasks, getBottlenecks, getProjects, getSubmittedTasks } from "@/lib/data";
+import { getMyTasks, getProjects, getSubmittedTasks } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
-import ApprovalQueue from "@/components/ApprovalQueue";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 
 const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM"];
@@ -87,10 +86,7 @@ export default async function DashboardPage() {
     );
   }
 
-  // PROJECT_MANAGER + SUPER_ADMIN command center
-  const projects = await getProjects();
-  const bottlenecks = await getBottlenecks();
-  const submittedTasks = await getSubmittedTasks();
+const projects = await getProjects();
   const pending = projects.filter((p) => p.status === "pending_approval");
   const active = projects.filter((p) => p.status === "in_progress");
 
@@ -106,36 +102,6 @@ export default async function DashboardPage() {
         <Stat label="Pending Approval" value={pending.length} accent="text-amber-400" />
         <Stat label="In Progress" value={active.length} accent="text-brand-300" />
         <Stat label="Completed" value={projects.filter((p) => p.status === "completed").length} accent="text-emerald-400" />
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="card overflow-hidden">
-          <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.06]">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <h2 className="font-semibold">Bottlenecks — holding up production</h2>
-          </div>
-          {bottlenecks.length === 0 ? (
-            <p className="px-5 py-6 text-sm text-slate-500">Nothing blocking the pipeline right now.</p>
-          ) : (
-            <div className="divide-y divide-white/[0.06]">
-              {bottlenecks.map((b) => (
-                <div key={b.task_id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-white/[0.04] transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{b.title}</p>
-                    <p className="text-xs text-slate-500 truncate">
-                      {b.project_name} · {b.assignee_name || "Unassigned"} {b.role_label ? `(${b.role_label})` : ""}
-                    </p>
-                  </div>
-                  <span className={`badge shrink-0 ${b.days_open > 5 ? "bg-rose-400/10 text-rose-300" : "bg-amber-400/10 text-amber-300"}`}>
-                    {b.days_open}d open
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <ApprovalQueue initialTasks={submittedTasks} />
       </div>
 
       <div className="card overflow-hidden">
