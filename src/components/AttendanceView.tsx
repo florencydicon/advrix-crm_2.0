@@ -20,6 +20,7 @@ import type { Attendance, AttendanceStats, LeaveWithUser } from "@/lib/types";
 import LeaveApplicationModal from "@/components/LeaveApplicationModal";
 import AttendanceReports, { type LeaveReportRowLite } from "@/components/AttendanceReports";
 import type { AttendanceReportRow } from "@/lib/data";
+import { useToast } from "@/components/Toast";
 
 function formatTime(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -92,6 +93,7 @@ export default function AttendanceView({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const { toast } = useToast();
   const [now, setNow] = useState(new Date());
   const [activeTab, setActiveTab] = useState("attendance");
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -132,7 +134,7 @@ export default function AttendanceView({
   function handlePunchIn() {
     start(async () => {
       const res = await punchInAction();
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       router.refresh();
     });
   }
@@ -140,7 +142,7 @@ export default function AttendanceView({
   function handlePunchOut() {
     start(async () => {
       const res = await punchOutAction();
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       router.refresh();
     });
   }
@@ -386,7 +388,8 @@ export default function AttendanceView({
                             start(async () => {
                               const { approveLeaveAction } = await import("@/lib/actions/leaves");
                               const res = await approveLeaveAction(l.id);
-                              if (res.error) alert(res.error);
+                              if (res.error) toast(res.error, "error");
+                              else toast("Leave approved.", "success");
                               router.refresh();
                             });
                           }}
@@ -402,7 +405,8 @@ export default function AttendanceView({
                               const reason = prompt("Reason for rejection:");
                               if (reason) {
                                 const res = await rejectLeaveAction(l.id, reason);
-                                if (res.error) alert(res.error);
+                                if (res.error) toast(res.error, "error");
+                                else toast("Leave rejected.", "success");
                                 router.refresh();
                               }
                             });

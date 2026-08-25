@@ -13,6 +13,7 @@ import {
   updateTaskContentAction,
 } from "@/lib/actions/projects";
 import type { Task } from "@/lib/types";
+import { useToast } from "@/components/Toast";
 import { PLATFORMS } from "@/components/ui";
 
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
@@ -97,6 +98,7 @@ export function TaskDetails({
 export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: string; userId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const { toast } = useToast();
   const [draft, setDraft] = useState(task.content || "");
   const [saved, setSaved] = useState(false);
 
@@ -117,16 +119,15 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   function save() {
     start(async () => {
       const res = await updateTaskContentAction(task.id, draft);
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       else { setSaved(true); router.refresh(); setTimeout(() => setSaved(false), 2000); }
     });
   }
 
   function submit() {
     start(async () => {
-      // Single action: persist the draft and move to submitted.
       const res = await submitTaskAction(task.id, draft);
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       router.refresh();
     });
   }
@@ -188,6 +189,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
 export function ReviewPanel({ task }: { task: Task }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const { toast } = useToast();
   const [comment, setComment] = useState("");
   const [decision, setDecision] = useState<"needs_improvement" | "final" | "approve" | null>(null);
 
@@ -196,13 +198,13 @@ export function ReviewPanel({ task }: { task: Task }) {
 
   function decide(choice: "needs_improvement" | "final" | "approve") {
     if (choice === "needs_improvement" && comment.trim().length < 5) {
-      alert("Please provide specific feedback for the improvement.");
+      toast("Please provide specific feedback for the improvement.", "error");
       return;
     }
     setDecision(choice);
     start(async () => {
       const res = await reviewTaskAction(task.id, choice, comment);
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       router.refresh();
     });
   }
@@ -256,12 +258,13 @@ export function ReviewPanel({ task }: { task: Task }) {
 export function ClientFeedbackPanel({ task }: { task: Task }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const { toast } = useToast();
   const [feedback, setFeedback] = useState("");
 
   function send() {
     start(async () => {
       const res = await clientFeedbackAction(task.id, feedback);
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       router.refresh();
     });
   }
@@ -269,7 +272,7 @@ export function ClientFeedbackPanel({ task }: { task: Task }) {
   function approve() {
     start(async () => {
       const res = await approveClientAction(task.id);
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       router.refresh();
     });
   }
@@ -311,6 +314,7 @@ export function ClientFeedbackPanel({ task }: { task: Task }) {
 export function PublishPanel({ task }: { task: Task }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const { toast } = useToast();
   const [selected, setSelected] = useState<string[]>(task.platforms || []);
 
   function toggle(key: string) {
@@ -320,7 +324,7 @@ export function PublishPanel({ task }: { task: Task }) {
   function complete() {
     start(async () => {
       const res = await completeTaskWithPlatformsAction(task.id, selected);
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       router.refresh();
     });
   }
@@ -379,6 +383,7 @@ export function TaskActions({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const { toast } = useToast();
 
   const isReviewer = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const isSmm = roleKey === "SMM";
@@ -388,7 +393,7 @@ export function TaskActions({
   function run(fn: () => Promise<{ ok?: boolean; error?: string }>, expand = false) {
     start(async () => {
       const res = await fn();
-      if (res.error) alert(res.error);
+      if (res.error) toast(res.error, "error");
       else if (expand) onExpand?.(task.id);
       router.refresh();
     });

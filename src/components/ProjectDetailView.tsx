@@ -193,6 +193,7 @@ export default function ProjectDetailView({
                         initialAllocations={allotmentRows}
                         onRowAdd={(row) => handleAllotmentRowAdd(p.id, row)}
                         onRowRemove={handleAllotmentRowRemove}
+                        onSave={(filled) => run(() => assignProjectTeamAction(p.id, filled.map((r) => ({ role_key: r.role_key, user_id: r.user_id! }))))}
                       />
                     </div>
                   )}

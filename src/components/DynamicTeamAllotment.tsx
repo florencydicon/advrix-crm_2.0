@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus, X, Calendar } from "lucide-react";
+import { UserPlus, X, Calendar, Save } from "lucide-react";
 import type { UserRow, ProjectRow } from "@/lib/types";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
+import { useToast } from "@/components/Toast";
 
 const AVAILABLE_ROLES = [
   { key: "WRITER", label: "Content Writer", icon: "✍️" },
@@ -30,14 +31,17 @@ export function DynamicTeamAllotment({
   team,
   onRowAdd,
   onRowRemove,
+  onSave,
   initialAllocations,
 }: {
   project: ProjectRow;
   team: UserRow[];
   onRowAdd: (row: TeamAllocationRow) => void;
   onRowRemove: (id: string) => void;
+  onSave?: (rows: TeamAllocationRow[]) => void;
   initialAllocations?: TeamAllocationRow[];
 }) {
+  const { toast } = useToast();
   const [rows, setRows] = useState<TeamAllocationRow[]>(() => {
     if (initialAllocations && initialAllocations.length > 0) return initialAllocations;
     return [{ id: uid(), role_key: "", user_id: null, deadline: "" }];
@@ -140,9 +144,26 @@ export function DynamicTeamAllotment({
         })}
       </div>
 
-      <button type="button" onClick={addRow} className="btn-secondary !py-1 text-[11px] w-full mt-2 border-dashed">
-        <UserPlus className="h-3 w-3" /> Add Team Member
-      </button>
+      <div className="flex gap-2 mt-2">
+        <button type="button" onClick={addRow} className="btn-secondary !py-1 text-[11px] flex-1 border-dashed">
+          <UserPlus className="h-3 w-3" /> Add Team Member
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const filled = rows.filter((r) => r.role_key && r.user_id);
+            if (filled.length === 0) {
+              toast("Add at least one team member before saving.", "error");
+              return;
+            }
+            onSave?.(filled);
+            toast("Team member added.", "success");
+          }}
+          className="btn-primary !py-1 text-[11px] px-3"
+        >
+          <Save className="h-3 w-3" /> Save
+        </button>
+      </div>
     </div>
   );
 }

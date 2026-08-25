@@ -19,6 +19,7 @@ import type { DeliverableType } from "@/lib/types";
 import { Modal, EmptyState } from "@/components/ui";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
+import { useToast } from "@/components/Toast";
 
 interface Deliv {
   key: string;
@@ -43,16 +44,25 @@ function initials(name: string) {
 
 function DeliverablesPicker({
   types,
-  onChange,
+  quantities,
+  setQuantities,
+  custom,
+  setCustom,
+  customLabel,
+  setCustomLabel,
+  customQty,
+  setCustomQty,
 }: {
   types: DeliverableType[];
-  onChange: (d: Deliv[]) => void;
+  quantities: Record<string, number>;
+  setQuantities: (fn: (prev: Record<string, number>) => Record<string, number>) => void;
+  custom: boolean;
+  setCustom: (v: boolean) => void;
+  customLabel: string;
+  setCustomLabel: (v: string) => void;
+  customQty: number;
+  setCustomQty: (v: number) => void;
 }) {
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [custom, setCustom] = useState(false);
-  const [customLabel, setCustomLabel] = useState("");
-  const [customQty, setCustomQty] = useState(1);
-
   const selected: Deliv[] = [
     ...types
       .filter((t) => (quantities[t.key] || 0) > 0)
@@ -81,7 +91,6 @@ function DeliverablesPicker({
                   onChange={(e) => {
                     const v = Math.max(0, Math.min(500, Number(e.target.value) || 0));
                     setQuantities((prev) => ({ ...prev, [t.key]: v }));
-                    onChange([...selected]);
                   }}
                   className="input !w-14 !py-0.5 text-center text-xs"
                   aria-label={`Quantity of ${t.label}`}
@@ -103,7 +112,7 @@ function DeliverablesPicker({
           <input
             type="checkbox"
             checked={custom}
-            onChange={(e) => { setCustom(e.target.checked); onChange([...selected]); }}
+            onChange={(e) => setCustom(e.target.checked)}
             className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-brand-300 focus:ring-brand-300/25"
           />
           Other (custom task)
@@ -112,7 +121,7 @@ function DeliverablesPicker({
           <div className="flex items-center gap-2">
             <input
               value={customLabel}
-              onChange={(e) => { setCustomLabel(e.target.value); onChange([...selected]); }}
+              onChange={(e) => setCustomLabel(e.target.value)}
               className="input !py-1 text-xs flex-1"
               placeholder="e.g. Catalogue Covers, Packaging Mockups…"
             />
@@ -124,7 +133,6 @@ function DeliverablesPicker({
               onChange={(e) => {
                 const v = Math.max(1, Math.min(500, Number(e.target.value) || 1));
                 setCustomQty(v);
-                onChange([...selected]);
               }}
               className="input !w-14 !py-1 text-center text-xs shrink-0"
               aria-label="How many times to repeat this custom task"
@@ -193,11 +201,16 @@ export default function ClientsView({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
+  const { toast } = useToast();
   const [clientModal, setClientModal] = useState(false);
   const [briefModal, setBriefModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState("");
   const [deliv, setDeliv] = useState<Deliv[]>([]);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [custom, setCustom] = useState(false);
+  const [customLabel, setCustomLabel] = useState("");
+  const [customQty, setCustomQty] = useState(1);
   const [searchDraft, setSearchDraft] = useState(search);
 
   const navigate = useCallback(
@@ -220,13 +233,26 @@ export default function ClientsView({
   function runWith(fn: (fd: FormData) => Promise<{ ok?: boolean; error?: string }>) {
     return async (fd: FormData) => {
       setError(null);
-      if (deliv.length > 0) fd.set("deliverables_json", JSON.stringify(deliv));
+      const types = deliverableTypes;
+      const currentDeliv: Deliv[] = [
+        ...types
+          .filter((t) => (quantities[t.key] || 0) > 0)
+          .map((t) => ({ key: t.key, label: t.label, quantity: quantities[t.key] || 0, isCustom: false })),
+        ...(custom && customLabel.trim() && customQty > 0
+          ? [{ key: "custom", label: customLabel.trim(), quantity: customQty, isCustom: true, customLabel: customLabel.trim() }]
+          : []),
+      ];
+      if (currentDeliv.length > 0) fd.set("deliverables_json", JSON.stringify(currentDeliv));
       const res = await fn(fd);
       if (res.error) setError(res.error);
       else {
         setClientModal(false);
         setBriefModal(false);
         setDeliv([]);
+        setQuantities({});
+        setCustom(false);
+        setCustomLabel("");
+        setCustomQty(1);
         router.refresh();
       }
     };
@@ -306,8 +332,8 @@ export default function ClientsView({
                         e.stopPropagation();
                         if (!window.confirm(`Remove "${c.name}" and ALL of their projects and tasks? This cannot be undone.`)) return;
                         const res = await deleteClientAction(c.id);
-                        if (res.error) window.alert(res.error);
-                        else router.refresh();
+                        if (res.error) toast(res.error, "error");
+                        else { toast("Client removed.", "success"); router.refresh(); }
                       }}
                       className="p-1.5 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-400/10 transition-colors shrink-0"
                       title="Remove this client"
@@ -435,7 +461,17 @@ export default function ClientsView({
           </div>
           <div>
             <label className="label">Deliverables</label>
-            <DeliverablesPicker types={deliverableTypes} onChange={setDeliv} />
+            <DeliverablesPicker
+              types={deliverableTypes}
+              quantities={quantities}
+              setQuantities={setQuantities}
+              custom={custom}
+              setCustom={setCustom}
+              customLabel={customLabel}
+              setCustomLabel={setCustomLabel}
+              customQty={customQty}
+              setCustomQty={setCustomQty}
+            />
           </div>
           <div>
             <label className="label">Deadline</label>
