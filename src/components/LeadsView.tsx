@@ -291,7 +291,17 @@ export default function LeadsView({
                       <StageSelect
                         lead={l}
                         disabled={pending}
-                        onSelect={(status) =>
+                        onSelect={(status) => {
+                          if (
+                            l.status === "won" &&
+                            l.has_active_work &&
+                            status !== "won" &&
+                            !window.confirm(
+                              `${l.name} has active projects and tasks (${l.active_task_count} open). Are you sure you want to change the status?`
+                            )
+                          ) {
+                            return;
+                          }
                           start(async () => {
                             const res = await updateLeadStatusAction(l.id, status);
                             if (res.error) toast(res.error, "error");
@@ -301,8 +311,8 @@ export default function LeadsView({
                                 "success"
                               );
                             router.refresh();
-                          })
-                        }
+                          });
+                        }}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right font-medium text-slate-200">{fmtMoney(l.deal_value)}</td>
@@ -360,6 +370,17 @@ export default function LeadsView({
         error={error}
         onClose={() => setFormModal(false)}
         onSubmit={async (fd) => {
+          if (
+            editing &&
+            editing.status === "won" &&
+            editing.has_active_work &&
+            String(fd.get("status") || "won") !== "won" &&
+            !window.confirm(
+              `${editing.name} has active projects and tasks (${editing.active_task_count} open). Are you sure you want to change the status?`
+            )
+          ) {
+            return;
+          }
           const res = editing ? await updateLeadAction(editing.id, fd) : await createLeadAction(fd);
           if (res.error) setError(res.error);
           else {

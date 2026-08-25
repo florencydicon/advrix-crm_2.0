@@ -664,14 +664,24 @@ export async function getLeavesForDateRange(startDate: string, endDate: string):
 export async function getLeads(ownerId: string | null): Promise<Lead[]> {
   const where = ownerId ? `WHERE l.owner_id = $1` : "";
   const args = ownerId ? [ownerId] : [];
-  return query<Lead>(
+  const rows = await query<Lead & { active_task_count: number }>(
     `SELECT l.*, u.full_name AS owner_name,
-            l.next_follow_up::text AS next_follow_up
+            l.next_follow_up::text AS next_follow_up,
+            COALESCE((
+              SELECT COUNT(*)::int FROM tasks t
+              JOIN projects p ON p.id = t.project_id
+              WHERE p.client_id = l.converted_client_id AND t.status <> 'completed'
+            ), 0) AS active_task_count
      FROM leads l JOIN users u ON u.id = l.owner_id
      ${where}
      ORDER BY l.updated_at DESC`,
     args
   );
+  for (const r of rows) {
+    r.active_task_count = Number(r.active_task_count || 0);
+    r.has_active_work = r.active_task_count > 0;
+  }
+  return rows;
 }
 
 export async function getLeadStats(ownerId: string | null): Promise<LeadStats> {

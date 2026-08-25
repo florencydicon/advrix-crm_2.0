@@ -300,6 +300,8 @@ export interface Lead {
   owner_id: string;
   owner_name?: string | null;
   converted_client_id: string | null;
+  has_active_work?: boolean;
+  active_task_count?: number;
   created_at: string;
   updated_at: string;
 }
