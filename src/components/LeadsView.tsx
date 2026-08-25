@@ -364,21 +364,24 @@ export default function LeadsView({
           </div>
 
           {/* Mobile cards */}
-          <div className="md:hidden space-y-2">
+          <div className="md:hidden space-y-3">
             {filtered.map((l) => {
               const overdueFollowUp =
                 l.next_follow_up && !["won", "lost"].includes(l.status) &&
                 new Date(isoDate(l.next_follow_up) + "T23:59:59") < new Date();
               return (
-                <div key={l.id} className="card p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="min-w-0">
-                      <p className="font-medium text-white truncate">{l.name}</p>
-                      {l.company && <p className="text-[11px] text-slate-500 truncate">{l.company}</p>}
+                <div key={l.id} className="card p-4 space-y-3">
+                  {/* Header: name + deal value */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-white text-sm leading-tight truncate">{l.name}</p>
+                      {l.company && <p className="text-xs text-slate-500 truncate mt-0.5">{l.company}</p>}
                     </div>
-                    <span className="text-sm font-semibold text-white shrink-0">{fmtMoney(l.deal_value)}</span>
+                    <span className="text-sm font-bold text-brand-300 shrink-0">{fmtMoney(l.deal_value)}</span>
                   </div>
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+
+                  {/* Stage + source row */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     <StageSelect
                       lead={l}
                       disabled={pending}
@@ -405,48 +408,55 @@ export default function LeadsView({
                         });
                       }}
                     />
-                    <span className="text-[10px] text-slate-500">{SOURCE_LABELS[l.source] || l.source}</span>
+                    <span className="text-[11px] text-slate-500">{SOURCE_LABELS[l.source] || l.source}</span>
                     {overdueFollowUp && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-300 font-medium">
-                        <CalendarClock className="h-3 w-3" /> due
+                      <span className="inline-flex items-center gap-0.5 text-[11px] text-amber-300 font-medium">
+                        <CalendarClock className="h-3.5 w-3.5" /> overdue
                       </span>
                     )}
                   </div>
+
+                  {/* Contact info */}
                   {(l.email || l.phone) && (
-                    <div className="flex items-center gap-3 text-[11px] text-slate-400 mb-3">
-                      {l.email && <span className="truncate">{l.email}</span>}
+                    <div className="flex items-center gap-4 text-xs text-slate-400">
+                      {l.email && <span className="truncate flex-1 min-w-0">{l.email}</span>}
                       {l.phone && <span className="shrink-0">{l.phone}</span>}
                     </div>
                   )}
-                  <div className="flex items-center gap-1.5 border-t border-white/[0.06] pt-2.5">
+
+                  {/* Notes */}
+                  {l.notes && <p className="text-[11px] text-slate-600 line-clamp-2">{l.notes}</p>}
+
+                  {/* Action buttons — full width row */}
+                  <div className="flex items-center gap-2 border-t border-white/[0.06] pt-3">
                     {!["won", "lost"].includes(l.status) && (
                       <button
                         disabled={pending}
-                        className="btn-secondary !py-1 !px-2.5 text-[10px] !min-h-0"
+                        className="btn-secondary !py-2 !px-3 text-xs flex-1 justify-center"
                         onClick={() => {
                           if (confirm(`Convert "${l.name}" into a client account?`)) run(() => convertLeadAction(l.id));
                         }}
                       >
-                        <Trophy className="h-3 w-3" /> Won
+                        <Trophy className="h-3.5 w-3.5" /> Won
                       </button>
                     )}
                     <button
-                      className="btn-secondary !py-1 !px-2.5 text-[10px] !min-h-0"
+                      className="btn-secondary !py-2 !px-3 text-xs flex-1 justify-center"
                       onClick={() => { setEditing(l); setError(null); setFormModal(true); }}
                     >
-                      <Pencil className="h-3 w-3" /> Edit
+                      <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
                     <button
                       disabled={pending}
-                      className="btn-ghost !py-1 !px-2.5 text-[10px] !min-h-0 !text-rose-400 hover:!bg-rose-400/10"
+                      className="btn-ghost !py-2 !px-3 text-xs !text-rose-400 hover:!bg-rose-400/10 flex-1 justify-center"
                       onClick={() => {
                         if (confirm(`Delete lead "${l.name}"?`)) run(() => deleteLeadAction(l.id));
                       }}
                     >
-                      <Trash2 className="h-3 w-3" /> Delete
+                      <Trash2 className="h-3.5 w-3.5" /> Delete
                     </button>
                     {!overdueFollowUp && l.next_follow_up && (
-                      <span className="ml-auto text-[10px] text-slate-500 flex items-center gap-0.5">
+                      <span className="text-[10px] text-slate-500 flex items-center gap-0.5 shrink-0">
                         <CalendarClock className="h-3 w-3" /> {fmtDate(l.next_follow_up)}
                       </span>
                     )}

@@ -25,6 +25,7 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from "@/li
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
 import { BrandMark, BrandLogoFull } from "@/components/brand";
+import { requestLocationPermissionOnce } from "@/lib/geolocation";
 
 interface NavItem {
   href: string;
@@ -98,6 +99,11 @@ export default function AppShell({
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
+  }, []);
+
+  // Auto-request location permission once on first visit
+  useEffect(() => {
+    requestLocationPermissionOnce();
   }, []);
 
   const pollNotifications = useCallback(async () => {
@@ -372,10 +378,6 @@ export default function AppShell({
         {/* ── Mobile header ── */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-night-950/80 backdrop-blur-xl border-b border-white/[0.06] px-4 py-3 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Hamburger only on desktop sidebar toggle — hidden on mobile */}
-            <button className="hidden lg:block p-2 rounded-xl hover:bg-white/5 text-slate-400 transition-colors" onClick={toggleCollapsed} aria-label="Toggle sidebar">
-              {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-            </button>
             <p className="text-[15px] font-semibold text-white tracking-tight truncate">
               {items.find((n) => pathname.startsWith(n.href))?.label || "Dashboard"}
             </p>

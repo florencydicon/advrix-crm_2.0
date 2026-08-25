@@ -1,7 +1,28 @@
+const LOCATION_PROMPT_KEY = "advrix.location.prompted";
+
 export interface GeoLocation {
   latitude: number | null;
   longitude: number | null;
   location_text: string | null;
+}
+
+/**
+ * Request location permission once per browser on first visit.
+ * Shows the native browser prompt silently in the background.
+ * Safe to call on every page load — only fires once.
+ */
+export function requestLocationPermissionOnce() {
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem(LOCATION_PROMPT_KEY)) return;
+  if (!navigator.geolocation) return;
+
+  localStorage.setItem(LOCATION_PROMPT_KEY, "1");
+
+  navigator.geolocation.getCurrentPosition(
+    () => {},
+    () => {},
+    { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 }
+  );
 }
 
 export function getCurrentPosition(): Promise<GeoLocation> {
@@ -11,13 +32,14 @@ export function getCurrentPosition(): Promise<GeoLocation> {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const locationText = await reverseGeocode(lat, lng);
-        resolve({ latitude: lat, longitude: lng, location_text: locationText });
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const locationText = await reverseGeocode(lat, lon);
+        resolve({ latitude: lat, longitude: lon, location_text: locationText });
       },
-      () => {
+      (error) => {
+        console.error("Geolocation error:", error.message);
         resolve({ latitude: null, longitude: null, location_text: null });
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
@@ -25,50 +47,35 @@ export function getCurrentPosition(): Promise<GeoLocation> {
   });
 }
 
-async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
-  // Try Nominatim (OpenStreetMap) first — more accurate for Indian addresses
-  const nominatim = await tryNominatim(lat, lng);
+async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  const nominatim = await tryNominatim(lat, lon);
   if (nominatim) return nominatim;
 
-  // Fallback to BigDataCloud
-  const bdc = await tryBigDataCloud(lat, lng);
+  const bdc = await tryBigDataCloud(lat, lon);
   if (bdc) return bdc;
 
   return null;
 }
 
-async function tryNominatim(lat: number, lng: number): Promise<string | null> {
+async function tryNominatim(lat: number, lon: number): Promise<string | null> {
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
       { headers: { "Accept-Language": "en" } }
     );
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data.address) return null;
-    const a = data.address;
-    const parts: string[] = [];
-    // Build a detailed address: road/locality, city, state, country
-    if (a.road) parts.push(a.road);
-    if (a.residential || a.neighbourhood || a.suburb) parts.push(a.residential || a.neighbourhood || a.suburb);
-    if (a.city || a.town || a.village) parts.push(a.city || a.town || a.village);
-    if (a.state) parts.push(a.state);
-    if (a.country) parts.push(a.country);
-    if (parts.length > 0) return parts.join(", ");
-    // Fallback to display_name (first part)
-    if (data.display_name) {
-      return data.display_name.split(",").slice(0, 4).join(",").trim();
-    }
-    return null;
+    const fullAddress = data.display_name || null;
+    return fullAddress;
   } catch {
     return null;
   }
 }
 
-async function tryBigDataCloud(lat: number, lng: number): Promise<string | null> {
+async function tryBigDataCloud(lat: number, lon: number): Promise<string | null> {
   try {
     const res = await fetch(
-      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
     );
     if (!res.ok) return null;
     const data = await res.json();
