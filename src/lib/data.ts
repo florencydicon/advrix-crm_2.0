@@ -799,3 +799,92 @@ export async function getLeaveReport(start: string, end: string): Promise<LeaveR
     [start, end]
   );
 }
+
+// ---------- Employee attendance detail ----------
+
+export interface EmployeeAttendanceDetail {
+  id: string;
+  date: string;
+  punch_in: string | null;
+  punch_out: string | null;
+  status: string;
+  hours_worked: number;
+  latitude: number | null;
+  longitude: number | null;
+  location_text: string | null;
+}
+
+export interface EmployeeAttendanceSummary {
+  user_id: string;
+  full_name: string;
+  role_label: string;
+  total_days: number;
+  present: number;
+  late: number;
+  half_days: number;
+  absent: number;
+  on_leave: number;
+  total_hours: number;
+}
+
+export async function getEmployeeAttendanceDetail(
+  userId: string,
+  startDate: string,
+  endDate: string
+): Promise<EmployeeAttendanceDetail[]> {
+  return query<EmployeeAttendanceDetail>(
+    `SELECT id, date::text AS date, punch_in, punch_out, status, hours_worked,
+            latitude, longitude, location_text
+     FROM attendance
+     WHERE user_id = $1 AND date BETWEEN $2 AND $3
+     ORDER BY date DESC, punch_in DESC`,
+    [userId, startDate, endDate]
+  );
+}
+
+export async function getEmployeeAttendanceSummary(
+  userId: string,
+  startDate: string,
+  endDate: string
+): Promise<EmployeeAttendanceSummary | null> {
+  const rows = await query<EmployeeAttendanceSummary>(
+    `SELECT u.id AS user_id, u.full_name, r.label AS role_label,
+            COUNT(a.id) AS total_days,
+            COUNT(a.id) FILTER (WHERE a.status = 'present')::int AS present,
+            COUNT(a.id) FILTER (WHERE a.status = 'late')::int AS late,
+            COUNT(a.id) FILTER (WHERE a.status = 'half_day')::int AS half_days,
+            COUNT(a.id) FILTER (WHERE a.status = 'absent')::int AS absent,
+            COUNT(a.id) FILTER (WHERE a.status = 'on_leave')::int AS on_leave,
+            COALESCE(SUM(a.hours_worked), 0)::float8 AS total_hours
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN attendance a ON a.user_id = u.id AND a.date BETWEEN $2 AND $3
+     WHERE u.id = $1
+     GROUP BY u.id, u.full_name, r.label`,
+    [userId, startDate, endDate]
+  );
+  return rows[0] || null;
+}
+
+export async function getEmployeeLeavesDetail(
+  userId: string,
+  startDate: string,
+  endDate: string
+) {
+  return query<{
+    id: string;
+    leave_type: string;
+    start_date: string;
+    end_date: string;
+    days: number;
+    reason: string;
+    status: string;
+  }>(
+    `SELECT id, leave_type, start_date::text AS start_date, end_date::text AS end_date,
+            days, reason, status
+     FROM leaves
+     WHERE user_id = $1 AND start_date <= $3 AND end_date >= $2
+     ORDER BY start_date DESC`,
+    [userId, startDate, endDate]
+  );
+}

@@ -5,6 +5,16 @@ export function openWhatsApp(text: string) {
   window.open(url, "_blank");
 }
 
+function mapsLink(lat: number | null, lng: number | null): string | null {
+  if (lat == null || lng == null) return null;
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
+function fmtCoord(v: number | null): string {
+  if (v == null) return "—";
+  return v.toFixed(6);
+}
+
 export function buildCheckInMessage(args: {
   name: string;
   role: string;
@@ -12,7 +22,10 @@ export function buildCheckInMessage(args: {
   time: string;
   date: string;
   location?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }) {
+  const link = mapsLink(args.latitude ?? null, args.longitude ?? null);
   const lines = [
     "🟢 CHECK-IN",
     "",
@@ -22,6 +35,9 @@ export function buildCheckInMessage(args: {
     `Status: ${args.status}`,
   ];
   if (args.location) lines.push(`Location: ${args.location}`);
+  lines.push(`Latitude: ${fmtCoord(args.latitude ?? null)}`);
+  lines.push(`Longitude: ${fmtCoord(args.longitude ?? null)}`);
+  if (link) lines.push(`Map: ${link}`);
   return lines.join("\n");
 }
 
@@ -32,7 +48,10 @@ export function buildCheckOutMessage(args: {
   date: string;
   hoursWorked: number;
   location?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }) {
+  const link = mapsLink(args.latitude ?? null, args.longitude ?? null);
   const lines = [
     "🔴 CHECK-OUT",
     "",
@@ -42,6 +61,9 @@ export function buildCheckOutMessage(args: {
     `Hours Worked: ${args.hoursWorked}h`,
   ];
   if (args.location) lines.push(`Location: ${args.location}`);
+  lines.push(`Latitude: ${fmtCoord(args.latitude ?? null)}`);
+  lines.push(`Longitude: ${fmtCoord(args.longitude ?? null)}`);
+  if (link) lines.push(`Map: ${link}`);
   return lines.join("\n");
 }
 

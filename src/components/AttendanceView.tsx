@@ -154,6 +154,8 @@ export default function AttendanceView({
         time: now2.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         date: now2.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }),
         location: loc.location_text,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
       }));
       router.refresh();
     });
@@ -174,6 +176,8 @@ export default function AttendanceView({
         date: now2.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }),
         hoursWorked: res.hoursWorked ?? 0,
         location: loc.location_text,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
       }));
       router.refresh();
     });

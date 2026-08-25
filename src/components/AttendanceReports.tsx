@@ -1,8 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Download, Printer, FileSpreadsheet } from "lucide-react";
+import { useState } from "react";
+import { Download, Printer, FileSpreadsheet, Eye } from "lucide-react";
 import type { AttendanceReportRow } from "@/lib/data";
+import EmployeeAttendanceDetail from "@/components/EmployeeAttendanceDetail";
 
 export interface LeaveReportRowLite {
   id: string;
@@ -44,6 +46,7 @@ export default function AttendanceReports({
   leaveReport: LeaveReportRowLite[];
 }) {
   const router = useRouter();
+  const [selectedEmployee, setSelectedEmployee] = useState<{ userId: string; name: string; role: string } | null>(null);
   const label = `${MONTHS[month - 1]} ${year}`;
   const now = new Date();
   const years = Array.from({ length: now.getFullYear() - 2023 + 2 }, (_, i) => 2024 + i);
@@ -123,6 +126,18 @@ export default function AttendanceReports({
     setTimeout(() => win.print(), 300);
   }
 
+  // If an employee is selected, show their detailed view
+  if (selectedEmployee) {
+    return (
+      <EmployeeAttendanceDetail
+        userId={selectedEmployee.userId}
+        userName={selectedEmployee.name}
+        userRole={selectedEmployee.role}
+        onClose={() => setSelectedEmployee(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="card p-4">
@@ -186,7 +201,15 @@ export default function AttendanceReports({
             <tbody className="divide-y divide-white/[0.05]">
               {attendanceReport.map((r) => (
                 <tr key={r.user_id} className="hover:bg-white/[0.03] transition-colors">
-                  <td className="px-4 py-2 font-medium text-white">{r.full_name}</td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => setSelectedEmployee({ userId: r.user_id, name: r.full_name, role: r.role_label })}
+                      className="flex items-center gap-1.5 text-white hover:text-brand-300 transition-colors font-medium group"
+                    >
+                      {r.full_name}
+                      <Eye className="h-3 w-3 text-slate-500 group-hover:text-brand-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  </td>
                   <td className="px-3 py-2 text-slate-400">{r.role_label}</td>
                   <td className="px-3 py-2 text-center text-emerald-300">{r.present}</td>
                   <td className="px-3 py-2 text-center text-slate-300">{r.half_days}</td>
