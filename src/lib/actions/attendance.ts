@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
 
-export async function punchInAction(loc?: { latitude?: number | null; longitude?: number | null; location_text?: string | null }) {
+export async function punchInAction(loc: { latitude: number | null; longitude: number | null; location_text: string | null }) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
 
@@ -28,12 +28,12 @@ export async function punchInAction(loc?: { latitude?: number | null; longitude?
   if (existing[0]) {
     await query(
       `UPDATE attendance SET punch_in = $1, status = $2, latitude = $3, longitude = $4, location_text = $5 WHERE id = $6`,
-      [now, status, loc?.latitude ?? null, loc?.longitude ?? null, loc?.location_text ?? null, existing[0].id]
+      [now, status, loc.latitude, loc.longitude, loc.location_text, existing[0].id]
     );
   } else {
     await query(
       `INSERT INTO attendance (user_id, date, punch_in, status, latitude, longitude, location_text) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [session.sub, today, now, status, loc?.latitude ?? null, loc?.longitude ?? null, loc?.location_text ?? null]
+      [session.sub, today, now, status, loc.latitude, loc.longitude, loc.location_text]
     );
   }
 
@@ -41,7 +41,7 @@ export async function punchInAction(loc?: { latitude?: number | null; longitude?
   return { ok: true, status };
 }
 
-export async function punchOutAction(loc?: { latitude?: number | null; longitude?: number | null; location_text?: string | null }) {
+export async function punchOutAction(loc: { latitude: number | null; longitude: number | null; location_text: string | null }) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
 
@@ -68,7 +68,7 @@ export async function punchOutAction(loc?: { latitude?: number | null; longitude
 
   await query(
     `UPDATE attendance SET punch_out = $1, hours_worked = $2, latitude = $3, longitude = $4, location_text = $5 WHERE id = $6`,
-    [now, Math.round(hours * 100) / 100, loc?.latitude ?? null, loc?.longitude ?? null, loc?.location_text ?? null, record.id]
+    [now, Math.round(hours * 100) / 100, loc.latitude, loc.longitude, loc.location_text, record.id]
   );
 
   revalidatePath("/attendance");
