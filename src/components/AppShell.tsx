@@ -459,13 +459,54 @@ export default function AppShell({
           </div>
         </header>
 
-        <main className="p-4 sm:p-6 flex-1">{children}</main>
+        <main className="p-4 sm:p-6 pb-24 md:pb-6 flex-1">{children}</main>
         <footer className="px-6 pb-4 pt-2 hidden lg:block">
           <p className="text-[10px] tracking-[0.14em] uppercase text-slate-600 text-right">
             © {new Date().getFullYear()} Advrix Media PVT LTD
           </p>
         </footer>
       </div>
+
+      {/* Mobile bottom navigation */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-night-950/95 backdrop-blur-lg border-t border-white/[0.08] safe-area-bottom">
+        <div className="flex items-center justify-around h-16 px-1">
+          {items.slice(0, 4).map((n) => {
+            const active = pathname.startsWith(n.href);
+            const Icon = n.icon;
+            return (
+              <Link
+                key={n.href}
+                href={n.href}
+                className={`flex flex-col items-center justify-center gap-0.5 w-16 py-1 rounded-xl transition-colors ${
+                  active ? "text-brand-300" : "text-slate-500"
+                }`}
+              >
+                {active && <span className="absolute top-0 h-[3px] w-6 rounded-full bg-brand-300" />}
+                <Icon className="h-5 w-5" />
+                <span className="text-[9px] font-medium leading-none">{n.label.split(" ")[0]}</span>
+              </Link>
+            );
+          })}
+          {items.length > 4 ? (
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="flex flex-col items-center justify-center gap-0.5 w-16 py-1 text-slate-500"
+            >
+              <Menu className="h-5 w-5" />
+              <span className="text-[9px] font-medium leading-none">More</span>
+            </button>
+          ) : (
+            <Link
+              href="/dashboard"
+              onClick={() => setMobileOpen(true)}
+              className="flex flex-col items-center justify-center gap-0.5 w-16 py-1 text-slate-500"
+            >
+              <Menu className="h-5 w-5" />
+              <span className="text-[9px] font-medium leading-none">More</span>
+            </Link>
+          )}
+        </div>
+      </nav>
     </div>
   );
 }

@@ -16,6 +16,8 @@ import {
   Search,
 } from "lucide-react";
 import { punchInAction, punchOutAction } from "@/lib/actions/attendance";
+import { getCurrentPosition } from "@/lib/geolocation";
+import { openWhatsApp, buildCheckInMessage, buildCheckOutMessage } from "@/lib/whatsapp";
 import type { Attendance, AttendanceStats, LeaveWithUser } from "@/lib/types";
 import LeaveApplicationModal from "@/components/LeaveApplicationModal";
 import AttendanceReports, { type LeaveReportRowLite } from "@/components/AttendanceReports";
@@ -65,6 +67,8 @@ const LEAVE_STATUS_META = {
 };
 
 export default function AttendanceView({
+  userName,
+  userRole,
   todayRecord,
   history,
   stats,
@@ -78,6 +82,8 @@ export default function AttendanceView({
   attendanceReport,
   leaveReport,
 }: {
+  userName: string;
+  userRole: string;
   todayRecord: Attendance | null;
   history: Attendance[];
   stats: AttendanceStats;
@@ -131,18 +137,44 @@ export default function AttendanceView({
   const hasPunchedIn = !!todayRecord?.punch_in;
   const hasPunchedOut = !!todayRecord?.punch_out;
 
+  const [geoLoc, setGeoLoc] = useState<{ latitude: number | null; longitude: number | null; location_text: string | null }>({ latitude: null, longitude: null, location_text: null });
+
   function handlePunchIn() {
     start(async () => {
-      const res = await punchInAction();
-      if (res.error) toast(res.error, "error");
+      const loc = await getCurrentPosition();
+      setGeoLoc(loc);
+      const res = await punchInAction(loc);
+      if (res.error) { toast(res.error, "error"); return; }
+      toast("Punched in successfully.", "success");
+      const now2 = new Date();
+      openWhatsApp(buildCheckInMessage({
+        name: userName,
+        role: userRole,
+        status: res.status === "late" ? "Late" : "Present",
+        time: now2.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        date: now2.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }),
+        location: loc.location_text,
+      }));
       router.refresh();
     });
   }
 
   function handlePunchOut() {
     start(async () => {
-      const res = await punchOutAction();
-      if (res.error) toast(res.error, "error");
+      const loc = await getCurrentPosition();
+      setGeoLoc(loc);
+      const res = await punchOutAction(loc);
+      if (res.error) { toast(res.error, "error"); return; }
+      toast(`Punched out. ${res.hoursWorked}h worked.`, "success");
+      const now2 = new Date();
+      openWhatsApp(buildCheckOutMessage({
+        name: userName,
+        role: userRole,
+        time: now2.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        date: now2.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }),
+        hoursWorked: res.hoursWorked ?? 0,
+        location: loc.location_text,
+      }));
       router.refresh();
     });
   }
@@ -202,7 +234,7 @@ export default function AttendanceView({
 
       {activeTab === "attendance" && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="card p-4 flex flex-col items-center justify-center text-center">
               <div className="h-12 w-12 rounded-full bg-brand-300/10 flex items-center justify-center mb-2">
                 <LogIn className="h-6 w-6 text-brand-300" />
@@ -263,7 +295,7 @@ export default function AttendanceView({
                 <Users className="h-4 w-4 text-brand-300" />
                 <h2 className="font-semibold text-sm">Today&apos;s Team Overview</h2>
               </div>
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div className="text-center">
                   <p className="text-xl font-bold text-emerald-600">{stats.presentToday}</p>
                   <p className="text-xs text-slate-400">Present</p>
@@ -315,6 +347,9 @@ export default function AttendanceView({
                         <p className="text-xs text-slate-500">
                           {formatTime(h.punch_in)} — {formatTime(h.punch_out)}
                         </p>
+                        {h.location_text && (
+                          <p className="text-[10px] text-slate-600 truncate max-w-[180px]" title={h.location_text}>📍 {h.location_text}</p>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -350,7 +385,7 @@ export default function AttendanceView({
             </button>
           </div>
 
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             {Object.entries(leaveBalance).map(([type, bal]) => (
               <div key={type} className="card p-3 text-center">
                 <span className={`badge ${LEAVE_TYPE_META[type]?.cls || "bg-white/10 text-slate-300"}`}>
@@ -498,7 +533,7 @@ export default function AttendanceView({
         </>
       )}
 
-      {showLeaveModal && <LeaveApplicationModal onClose={() => setShowLeaveModal(false)} />}
+      {showLeaveModal && <LeaveApplicationModal onClose={() => setShowLeaveModal(false)} userName={userName} userRole={userRole} />}
     </div>
   );
 }

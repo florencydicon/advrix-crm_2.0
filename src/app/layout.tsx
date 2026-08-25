@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
@@ -10,9 +10,21 @@ const poppins = Poppins({
   variable: "--font-brand",
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#1D2A32",
+};
+
 export const metadata: Metadata = {
   title: "Advrix CRM — Creative Agency Workflow",
   description: "High-performance CRM & automated task handoff for creative production teams.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Advrix CRM",
+  },
 };
 
 export default function RootLayout({

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { applyLeaveAction } from "@/lib/actions/leaves";
+import { openWhatsApp, buildLeaveMessage } from "@/lib/whatsapp";
 import { DatePicker } from "@/components/DatePicker";
 
 const LEAVE_TYPES = [
@@ -14,7 +15,7 @@ const LEAVE_TYPES = [
   { value: "emergency", label: "Emergency Leave" },
 ];
 
-export default function LeaveApplicationModal({ onClose }: { onClose: () => void }) {
+export default function LeaveApplicationModal({ onClose, userName, userRole }: { onClose: () => void; userName: string; userRole: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +26,20 @@ export default function LeaveApplicationModal({ onClose }: { onClose: () => void
       const res = await applyLeaveAction(fd);
       if (res.error) setError(res.error);
       else {
+        const leaveType = String(fd.get("leave_type") || "");
+        const startDate = String(fd.get("start_date") || "");
+        const endDate = String(fd.get("end_date") || "");
+        const reason = String(fd.get("reason") || "");
+        const days = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
+        openWhatsApp(buildLeaveMessage({
+          name: userName,
+          role: userRole,
+          leaveType,
+          startDate,
+          endDate,
+          days,
+          reason,
+        }));
         onClose();
         router.refresh();
       }

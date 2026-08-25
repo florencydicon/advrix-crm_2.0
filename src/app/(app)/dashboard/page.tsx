@@ -256,11 +256,26 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
     );
   }
 
+  // PROJECT_MANAGER fallback
+  const pmToday = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Command Center</h1>
-        <p className="text-sm text-slate-400">Live overview of every active campaign.</p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">
+            {greeting()}, {firstName}! <span role="img" aria-label="wave">👋</span>
+          </h1>
+          <p className="text-sm text-slate-400">Live overview of every active campaign.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
+            <CalendarDays className="h-3.5 w-3.5 text-slate-500" /> {pmToday}
+          </span>
+          <Link href="/settings" className="btn-secondary !py-2 text-xs">
+            <Download className="h-3.5 w-3.5" /> Export Report
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -273,11 +288,16 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
       <div className="card overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.06]">
           <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          <h2 className="font-semibold">Projects awaiting approval</h2>
+          <h2 className="font-semibold">Action & Approval Center</h2>
           <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{pending.length}</span>
         </div>
         {pending.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-slate-500">Nothing waiting for approval.</p>
+          <div className="flex flex-col items-center justify-center px-5 py-8 text-center">
+            <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center mb-2">
+              <Folder className="h-5 w-5 text-slate-500" />
+            </div>
+            <p className="text-sm text-slate-400">Nothing waiting for approval.</p>
+          </div>
         ) : (
           <div className="divide-y divide-white/[0.06]">
             {pending.map((p) => (
@@ -286,19 +306,17 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
                   <p className="text-sm font-medium text-white truncate">{p.name}</p>
                   <p className="text-xs text-slate-500 truncate">{p.client_name}</p>
                 </div>
-                <Link href="/projects" className="btn-secondary !py-1.5 text-xs shrink-0">
-                  Review
-                </Link>
+                <Link href="/projects" className="btn-secondary !py-1.5 text-xs shrink-0">Review</Link>
               </div>
             ))}
           </div>
         )}
+        <div className="px-5 py-3 border-t border-white/[0.06]">
+          <Link href="/projects" className="btn-secondary w-full justify-center text-xs">
+            <FolderKanban className="h-3.5 w-3.5" /> Open full pipeline board
+          </Link>
+        </div>
       </div>
-
-      <Link href="/projects" className="btn-secondary">
-        <FolderKanban className="h-4 w-4" />
-        Open full pipeline board
-      </Link>
     </div>
   );
 }

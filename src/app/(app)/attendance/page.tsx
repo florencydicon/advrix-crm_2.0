@@ -52,6 +52,8 @@ export default async function AttendancePage({
 
   return (
     <AttendanceView
+      userName={session.name}
+      userRole={session.role_label}
       todayRecord={todayRecord}
       history={history}
       stats={stats}

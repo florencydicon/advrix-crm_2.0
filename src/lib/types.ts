@@ -201,6 +201,9 @@ export interface Attendance {
   status: AttendanceStatus;
   hours_worked: number;
   note: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_text: string | null;
   created_at: string;
 }
 

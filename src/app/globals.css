@@ -189,3 +189,13 @@ a:focus-visible {
   outline-offset: 2px;
   border-radius: 0.75rem;
 }
+
+/* iOS safe-area for bottom navigation */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Hide scrollbar on bottom nav */
+.bottom-nav-scroll::-webkit-scrollbar {
+  display: none;
+}
