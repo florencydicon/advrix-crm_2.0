@@ -25,7 +25,6 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from "@/li
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
 import { BrandMark, BrandLogoFull } from "@/components/brand";
-import { requestLocationPermissionOnce } from "@/lib/geolocation";
 
 interface NavItem {
   href: string;
@@ -99,11 +98,6 @@ export default function AppShell({
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
-  }, []);
-
-  // Auto-request location permission once on first visit
-  useEffect(() => {
-    requestLocationPermissionOnce();
   }, []);
 
   const pollNotifications = useCallback(async () => {

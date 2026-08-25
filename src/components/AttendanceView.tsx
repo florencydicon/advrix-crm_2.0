@@ -14,6 +14,8 @@ import {
   TrendingUp,
   Plus,
   Search,
+  MapPin,
+  AlertTriangle,
 } from "lucide-react";
 import { punchInAction, punchOutAction } from "@/lib/actions/attendance";
 import { getCurrentPosition } from "@/lib/geolocation";
@@ -139,6 +141,35 @@ export default function AttendanceView({
 
   const [geoLoc, setGeoLoc] = useState<{ latitude: number | null; longitude: number | null; location_text: string | null }>({ latitude: null, longitude: null, location_text: null });
 
+  const [locStatus, setLocStatus] = useState<"checking" | "granted" | "denied" | "prompt">("checking");
+
+  useEffect(() => {
+    if (!navigator.geolocation) { setLocStatus("denied"); return; }
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: "geolocation" }).then((result) => {
+        setLocStatus(result.state === "granted" ? "granted" : result.state === "denied" ? "denied" : "prompt");
+        result.addEventListener("change", () => {
+          setLocStatus(result.state === "granted" ? "granted" : result.state === "denied" ? "denied" : "prompt");
+        });
+      }).catch(() => setLocStatus("prompt"));
+    } else {
+      setLocStatus("prompt");
+    }
+  }, []);
+
+  function requestLocationPermission() {
+    setLocStatus("checking");
+    navigator.geolocation.getCurrentPosition(
+      () => setLocStatus("granted"),
+      (err) => {
+        if (err.code === 1) setLocStatus("denied");
+        else setLocStatus("prompt");
+        toast("Location permission was denied. Please allow location in your browser settings.", "error");
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
   function handlePunchIn() {
     start(async () => {
       const loc = await getCurrentPosition();
@@ -235,6 +266,48 @@ export default function AttendanceView({
         </div>
       </div>
 
+      {activeTab === "attendance" && locStatus !== "granted" && (
+        <div className={`rounded-xl px-4 py-3 flex items-center gap-3 ${
+          locStatus === "denied"
+            ? "bg-rose-400/10 ring-1 ring-rose-400/20"
+            : locStatus === "checking"
+            ? "bg-amber-400/10 ring-1 ring-amber-400/20"
+            : "bg-amber-400/10 ring-1 ring-amber-400/20"
+        }`}>
+          <div className="shrink-0">
+            {locStatus === "denied" ? (
+              <AlertTriangle className="h-5 w-5 text-rose-400" />
+            ) : locStatus === "checking" ? (
+              <span className="block h-5 w-5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+            ) : (
+              <MapPin className="h-5 w-5 text-amber-400" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-white">
+              {locStatus === "denied"
+                ? "Location Access Blocked"
+                : locStatus === "checking"
+                ? "Requesting Location…"
+                : "Location Permission Required"}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {locStatus === "denied"
+                ? "You blocked location access. Please go to browser settings → Site Settings → Location → Allow this site."
+                : "Click the button to allow location access. Your location is used for attendance check-in/check-out."}
+            </p>
+          </div>
+          {locStatus === "prompt" && (
+            <button
+              onClick={requestLocationPermission}
+              className="btn-primary !py-1.5 !px-3 text-xs shrink-0"
+            >
+              <MapPin className="h-3.5 w-3.5" /> Allow Location
+            </button>
+          )}
+        </div>
+      )}
+
       {activeTab === "reports" && isAdmin && (
         <AttendanceReports
           month={reportMonth}
@@ -258,7 +331,7 @@ export default function AttendanceView({
               )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs"
-                disabled={pending || hasPunchedIn}
+                disabled={pending || hasPunchedIn || locStatus !== "granted"}
                 onClick={handlePunchIn}
               >
                 {hasPunchedIn ? "Punched In" : "Punch In"}
@@ -276,7 +349,7 @@ export default function AttendanceView({
               )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs bg-emerald-600 hover:bg-emerald-700"
-                disabled={pending || !hasPunchedIn || hasPunchedOut}
+                disabled={pending || !hasPunchedIn || hasPunchedOut || locStatus !== "granted"}
                 onClick={handlePunchOut}
               >
                 {hasPunchedOut ? "Punched Out" : "Punch Out"}
