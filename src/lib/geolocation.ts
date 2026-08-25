@@ -48,43 +48,11 @@ export function getCurrentPosition(): Promise<GeoLocation> {
 }
 
 async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
-  const nominatim = await tryNominatim(lat, lon);
-  if (nominatim) return nominatim;
-
-  const bdc = await tryBigDataCloud(lat, lon);
-  if (bdc) return bdc;
-
-  return null;
-}
-
-async function tryNominatim(lat: number, lon: number): Promise<string | null> {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
-      { headers: { "Accept-Language": "en" } }
-    );
+    const res = await fetch(`/api/geocode?lat=${lat}&lon=${lon}`);
     if (!res.ok) return null;
     const data = await res.json();
-    const fullAddress = data.display_name || null;
-    return fullAddress;
-  } catch {
-    return null;
-  }
-}
-
-async function tryBigDataCloud(lat: number, lon: number): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const parts: string[] = [];
-    if (data.locality) parts.push(data.locality);
-    if (data.city) parts.push(data.city);
-    if (data.principalSubdivision) parts.push(data.principalSubdivision);
-    if (data.countryName) parts.push(data.countryName);
-    return parts.length > 0 ? parts.join(", ") : null;
+    return data.address || null;
   } catch {
     return null;
   }
