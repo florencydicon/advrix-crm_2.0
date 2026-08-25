@@ -503,8 +503,8 @@ function escapeHtml(s: string) {
 }
 
 /**
- * Custom themed stage picker — anchored dropdown menu with reliable
- * outside-click and Escape handling, fully aligned with the dark theme.
+ * Stage picker — popup dialog rendered via `fixed` so it is never
+ * clipped by the parent table's `overflow-x-auto` container.
  */
 function StageSelect({
   lead,
@@ -516,62 +516,68 @@ function StageSelect({
   onSelect: (status: LeadStatus) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
-    document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
     };
   }, [open]);
 
   const current = LEAD_STATUSES.find((s) => s.key === lead.status);
   return (
-    <div className="relative inline-block" ref={ref}>
+    <>
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(true)}
         aria-label={`Change stage for ${lead.name}`}
         className={`badge cursor-pointer inline-flex items-center gap-1 transition-colors ${STATUS_STYLES[lead.status] || "bg-white/10 text-slate-300"}`}
       >
         {current?.label || lead.status}
-        <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className="h-3 w-3 opacity-60" />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1.5 z-30 w-44 rounded-xl border border-white/10 bg-night-850 shadow-lg shadow-black/40 overflow-hidden animate-fade-in">
-          {LEAD_STATUSES.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                if (s.key !== lead.status) onSelect(s.key);
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
-                s.key === lead.status
-                  ? "text-brand-300 bg-brand-300/10"
-                  : "text-slate-200 hover:bg-white/[0.06]"
-              }`}
-            >
-              <span className={`h-2 w-2 rounded-full shrink-0 ${STAGE_DOTS[s.key] || "bg-slate-500"}`} />
-              {s.label}
-              {s.key === lead.status && <span className="ml-auto text-[9px] text-brand-300">current</span>}
-            </button>
-          ))}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div className="relative w-full max-w-xs rounded-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden animate-fade-in">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+              <p className="text-sm font-semibold text-white">Change Stage</p>
+              <p className="text-xs text-slate-500 truncate ml-2">{lead.name}</p>
+            </div>
+            <div className="p-2">
+              {LEAD_STATUSES.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    if (s.key !== lead.status) onSelect(s.key);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-colors ${
+                    s.key === lead.status
+                      ? "text-brand-300 bg-brand-300/10 ring-1 ring-brand-300/20"
+                      : "text-slate-200 hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${STAGE_DOTS[s.key] || "bg-slate-500"}`} />
+                  <span className="flex-1">{s.label}</span>
+                  {s.key === lead.status && <span className="text-[10px] font-medium text-brand-300">current</span>}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

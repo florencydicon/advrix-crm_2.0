@@ -20,6 +20,12 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Advrix CRM — Creative Agency Workflow",
   description: "High-performance CRM & automated task handoff for creative production teams.",
+  icons: {
+    icon: [
+      { url: "/logo-mark-wt.png", media: "(prefers-color-scheme: light)" },
+      { url: "/logo-mark.png", media: "(prefers-color-scheme: dark)" },
+    ],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
