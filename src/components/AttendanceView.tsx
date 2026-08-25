@@ -297,12 +297,12 @@ export default function AttendanceView({
                 : "Click the button to allow location access. Your location is used for attendance check-in/check-out."}
             </p>
           </div>
-          {locStatus === "prompt" && (
+          {(locStatus === "prompt" || locStatus === "denied") && (
             <button
               onClick={requestLocationPermission}
               className="btn-primary !py-1.5 !px-3 text-xs shrink-0"
             >
-              <MapPin className="h-3.5 w-3.5" /> Allow Location
+              <MapPin className="h-3.5 w-3.5" /> {locStatus === "denied" ? "Try Again" : "Allow Location"}
             </button>
           )}
         </div>
