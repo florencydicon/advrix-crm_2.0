@@ -83,6 +83,7 @@ export interface Assignment {
   role_key: RoleKey;
   user_name: string | null;
   role_label: string;
+  allotment_deadline?: string | null;
   on_leave?: boolean;
   leave_reason?: string | null;
   leave_days?: number;

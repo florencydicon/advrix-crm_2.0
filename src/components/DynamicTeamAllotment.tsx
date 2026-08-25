@@ -74,14 +74,23 @@ export function DynamicTeamAllotment({
   }
 
   return (
-    <div className="rounded-lg border border-brand-300/25 bg-brand-300/[0.06] p-1.5">
-      <div className="space-y-1">
+    <div className="rounded-xl border border-brand-300/25 bg-brand-300/[0.06] p-2">
+      {/* Column headers — aligned to the row grid */}
+      <div className="flex items-center gap-1.5 mb-1 px-0.5">
+        <span className="w-[30%] text-[8px] font-semibold uppercase tracking-wider text-slate-500">Role</span>
+        <span className="flex-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">Employee</span>
+        <span className="w-[26%] text-[8px] font-semibold uppercase tracking-wider text-slate-500">Deadline</span>
+        <span className="w-[22px] shrink-0" />
+      </div>
+
+      <div className="space-y-1.5">
         {rows.map((row) => {
           const roleMembers = row.role_key
             ? team.filter((u) => u.role_key === row.role_key && u.is_active)
             : [];
+          const disabled = !row.role_key;
           return (
-            <div key={row.id} className="flex items-center gap-1">
+            <div key={row.id} className="flex items-center gap-1.5">
               <div className="w-[30%] min-w-0">
                 <SearchableSelect
                   options={AVAILABLE_ROLES.map((r) => ({ value: r.key, label: r.label }))}
@@ -90,7 +99,7 @@ export function DynamicTeamAllotment({
                   placeholder="Role…"
                 />
               </div>
-              <div className={`flex-1 min-w-0 ${!row.role_key ? "opacity-40 pointer-events-none" : ""}`}>
+              <div className={`flex-1 min-w-0 transition-opacity ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
                 {roleMembers.length > 0 ? (
                   <SearchableSelect
                     options={roleMembers.map((u) => ({ value: u.id, label: u.full_name, search: `${u.full_name} ${u.email || ""}` }))}
@@ -99,10 +108,10 @@ export function DynamicTeamAllotment({
                     placeholder="Employee…"
                   />
                 ) : (
-                  <div className="input !py-1 text-[10px] text-center text-slate-600 bg-white/[0.02]">{row.role_key ? "No members" : "—"}</div>
+                  <div className="input !py-1.5 h-8 text-[10px] text-slate-600 bg-white/[0.02] text-center">{row.role_key ? "No members" : "—"}</div>
                 )}
               </div>
-              <div className={`w-[26%] min-w-0 ${row.role_key && row.user_id ? "" : "opacity-40 pointer-events-none"}`}>
+              <div className={`w-[26%] min-w-0 transition-opacity ${row.role_key && row.user_id ? "" : "opacity-40 pointer-events-none"}`}>
                 <DatePicker
                   value={row.deadline || undefined}
                   onChange={(v) => updateRow(row.id, { deadline: v })}
@@ -112,7 +121,7 @@ export function DynamicTeamAllotment({
               <button
                 type="button"
                 onClick={() => removeRow(row.id)}
-                className="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors shrink-0"
+                className="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors shrink-0 self-center"
                 title="Remove"
                 aria-label="Remove row"
               >
@@ -123,8 +132,8 @@ export function DynamicTeamAllotment({
         })}
       </div>
 
-      <div className="flex gap-1.5 mt-1.5">
-        <button type="button" onClick={addRow} className="btn-secondary !py-0.5 text-[10px] flex-1 border-dashed">
+      <div className="flex gap-1.5 mt-2">
+        <button type="button" onClick={addRow} className="btn-secondary !py-1 text-[10px] flex-1 border-dashed">
           <UserPlus className="h-3 w-3" /> Add Team Member
         </button>
         <button
@@ -138,7 +147,7 @@ export function DynamicTeamAllotment({
             onSave?.(filled);
             toast("Team member added.", "success");
           }}
-          className="btn-primary !py-0.5 text-[10px] px-3"
+          className="btn-primary !py-1 text-[10px] px-3"
         >
           <Save className="h-3 w-3" /> Save
         </button>

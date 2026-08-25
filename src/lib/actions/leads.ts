@@ -80,14 +80,19 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
     if (phoneErr) return { error: phoneErr };
   }
   if (!LEAD_SOURCES.includes(f.source)) return { error: "Invalid lead source." };
+  if (f.status && !LEAD_STATUSES.includes(f.status)) return { error: "Invalid lead stage." };
 
   let sqlTxt = `UPDATE leads SET
        name = $2, company = $3, email = $4, phone = $5, source = $6,
-       deal_value = $7, notes = $8, next_follow_up = $9, updated_at = now()
-     WHERE id = $1`;
+       deal_value = $7, notes = $8, next_follow_up = $9`;
   const args: unknown[] = [leadId, f.name, f.company, f.email, f.phone, f.source, f.deal_value, f.notes, f.next_follow_up];
+  if (f.status) {
+    sqlTxt += `, status = $${args.length + 1}`;
+    args.push(f.status);
+  }
+  sqlTxt += `, updated_at = now() WHERE id = $1`;
   if (access.ownerId) {
-    sqlTxt += ` AND owner_id = $10`;
+    sqlTxt += ` AND owner_id = $${args.length + 1}`;
     args.push(access.ownerId);
   }
 

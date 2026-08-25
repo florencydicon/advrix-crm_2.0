@@ -92,7 +92,11 @@ export default function ProjectDetailView({
       if (exists) return prev;
       return [...prev, row];
     });
-    run(() => assignProjectTeamAction(projectId, [{ role_key: row.role_key, user_id: row.user_id! }]));
+    run(() =>
+      assignProjectTeamAction(projectId, [
+        { role_key: row.role_key, user_id: row.user_id!, deadline: row.deadline || null },
+      ])
+    );
   }
   function handleAllotmentRowRemove(id: string) {
     setAllotmentRows((prev) => prev.filter((r) => r.id !== id));
@@ -187,15 +191,49 @@ export default function ProjectDetailView({
                   )}
 
                   {canManage && p.status === "in_progress" && (
-                    <div className="px-3 pt-2.5">
+                    <div className="px-3 pt-2.5 space-y-1.5">
                       <DynamicTeamAllotment
                         project={p as unknown as Parameters<typeof DynamicTeamAllotment>[0]["project"]}
                         team={team}
                         initialAllocations={allotmentRows}
                         onRowAdd={(row) => handleAllotmentRowAdd(p.id, row)}
                         onRowRemove={handleAllotmentRowRemove}
-                        onSave={(filled) => run(() => assignProjectTeamAction(p.id, filled.map((r) => ({ role_key: r.role_key, user_id: r.user_id! }))))}
+                        onSave={(filled) =>
+                          run(() =>
+                            assignProjectTeamAction(
+                              p.id,
+                              filled.map((r) => ({ role_key: r.role_key, user_id: r.user_id!, deadline: r.deadline || null }))
+                            )
+                          )
+                        }
                       />
+                      {/* Active assignments — saved team with role + deadline */}
+                      {p.assignments.length > 0 && (
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2">
+                          <p className="text-[8px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
+                            <Users className="h-2.5 w-2.5" /> Active Team — {p.assignments.length} allocated
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {p.assignments.map((a) => (
+                              <span
+                                key={a.id}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-night-850 border border-white/10 pl-0.5 pr-2 py-0.5"
+                              >
+                                <span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">
+                                  {initials(a.user_name || "?")}
+                                </span>
+                                <span className="text-[10px] text-slate-200 font-medium max-w-[90px] truncate">{a.user_name}</span>
+                                <span className={`badge !px-1 !py-0 text-[9px] ${ROLE_TINTS[a.role_key] || "bg-white/10 text-slate-400"}`}>{a.role_label}</span>
+                                {a.allotment_deadline ? (
+                                  <span className="text-[9px] text-slate-400 flex items-center gap-0.5">
+                                    <CalendarDays className="h-2.5 w-2.5" /> {fmtDate(a.allotment_deadline)}
+                                  </span>
+                                ) : null}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

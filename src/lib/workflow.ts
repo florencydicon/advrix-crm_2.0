@@ -279,26 +279,20 @@ export async function routeVisualTaskToProducer(projectId: string, taskId: strin
  */
 export async function allocateProjectTeam(
   projectId: string,
-  allocations: { role_key: string; user_id: string | null }[]
+  allocations: { role_key: string; user_id: string | null; deadline?: string | null }[]
 ) {
-  await query(`DELETE FROM assignments WHERE project_id = $1`, [projectId]);
+  // Additive sync: never wipe existing allocations (multiple members per
+  // role are supported); upsert deadline per member.
   for (const a of allocations) {
-    if (a.user_id) {
-      await query(
-        `INSERT INTO assignments (user_id, project_id, role_key) VALUES ($1, $2, $3)
-         ON CONFLICT (user_id, project_id, role_key) DO NOTHING`,
-        [a.user_id, projectId, a.role_key]
-      );
-    }
-  }
-
-  const projectRoles = await query<{ role_key: string }>(
-    `SELECT DISTINCT role_key FROM tasks WHERE project_id = $1`,
-    [projectId]
-  );
-  for (const r of projectRoles) {
-    const alloc = allocations.find((a) => a.role_key === r.role_key);
-    await allocateTasksForRole(projectId, r.role_key, alloc?.user_id ?? null);
+    if (!a.user_id) continue;
+    await query(
+      `INSERT INTO assignments (user_id, project_id, role_key, allotment_deadline)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, project_id, role_key)
+       DO UPDATE SET allotment_deadline = EXCLUDED.allotment_deadline`,
+      [a.user_id, projectId, a.role_key, a.deadline || null]
+    );
+    await allocateTasksForRole(projectId, a.role_key, a.user_id);
   }
 }
 

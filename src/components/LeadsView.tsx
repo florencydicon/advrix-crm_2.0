@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
 import {
   Plus,
   Search,
@@ -13,7 +14,6 @@ import {
   CalendarClock,
   Target,
   ChevronDown,
-  Check,
 } from "lucide-react";
 import {
   createLeadAction,
@@ -26,6 +26,7 @@ import type { Lead, LeadStatus } from "@/lib/types";
 import { LEAD_STATUSES, LEAD_SOURCES } from "@/lib/types";
 import { Modal, EmptyState, Stat } from "@/components/ui";
 import { DatePicker } from "@/components/DatePicker";
+import { useToast } from "@/components/Toast";
 
 const STATUS_STYLES: Record<string, string> = {
   new: "bg-sky-400/10 text-sky-300",
@@ -96,6 +97,7 @@ export default function LeadsView({
   roleKey: string;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [pending, start] = useTransition();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LeadStatus | "">("");
@@ -289,7 +291,18 @@ export default function LeadsView({
                       <StageSelect
                         lead={l}
                         disabled={pending}
-                        onSelect={(status) => run(() => updateLeadStatusAction(l.id, status))}
+                        onSelect={(status) =>
+                          start(async () => {
+                            const res = await updateLeadStatusAction(l.id, status);
+                            if (res.error) toast(res.error, "error");
+                            else
+                              toast(
+                                `${l.name} moved to ${LEAD_STATUSES.find((s) => s.key === status)?.label}.`,
+                                "success"
+                              );
+                            router.refresh();
+                          })
+                        }
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right font-medium text-slate-200">{fmtMoney(l.deal_value)}</td>
@@ -364,9 +377,9 @@ function escapeHtml(s: string) {
 }
 
 /**
- * Themed stage picker — replaces the native <select> whose popup can't be
- * styled. Renders a fixed-position dark menu (escapes the table's
- * overflow clipping) with per-stage color dots and a brand highlight.
+ * HeroUI-powered stage picker — React Aria handles outside-click, ESC and
+ * focus reliably (the old hand-rolled fixed-position menu raced its own
+ * close handlers and swallowed selections).
  */
 function StageSelect({
   lead,
@@ -377,83 +390,41 @@ function StageSelect({
   disabled?: boolean;
   onSelect: (status: LeadStatus) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
   const current = LEAD_STATUSES.find((s) => s.key === lead.status);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  function toggle() {
-    if (open) {
-      setOpen(false);
-      return;
-    }
-    const r = btnRef.current?.getBoundingClientRect();
-    if (!r) return;
-    setCoords({
-      top: Math.min(r.bottom + 4, window.innerHeight - 260),
-      left: Math.max(8, Math.min(r.left, window.innerWidth - 190)),
-    });
-    setOpen(true);
-  }
-
   return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        disabled={disabled}
-        onClick={toggle}
-        aria-label={`Change stage for ${lead.name}`}
-        className={`badge cursor-pointer inline-flex items-center gap-1 transition-transform ${STATUS_STYLES[lead.status] || "bg-white/10 text-slate-300"} ${open ? "ring-1 ring-brand-300/40" : ""}`}
-      >
-        {current?.label || lead.status}
-        <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && coords && (
-        <div
-          className="fixed z-50 min-w-[176px] rounded-xl border border-white/10 bg-night-900/95 backdrop-blur p-1 shadow-2xl shadow-black/50"
-          style={{ top: coords.top, left: coords.left }}
-          onMouseDown={(e) => e.stopPropagation()}
+    <Dropdown
+      placement="bottom-start"
+      classNames={{ content: "bg-night-900 border border-white/10 min-w-[176px]" }}
+    >
+      <DropdownTrigger>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={`Change stage for ${lead.name}`}
+          className={`badge cursor-pointer inline-flex items-center gap-1 transition-transform ${STATUS_STYLES[lead.status] || "bg-white/10 text-slate-300"}`}
         >
-          {LEAD_STATUSES.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                setOpen(false);
-                if (s.key !== lead.status) onSelect(s.key);
-              }}
-              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors ${
-                s.key === lead.status
-                  ? "text-brand-300 bg-brand-300/10 font-medium"
-                  : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
-              }`}
-            >
+          {current?.label || lead.status}
+          <ChevronDown className="h-3 w-3 opacity-60" />
+        </button>
+      </DropdownTrigger>
+      <DropdownMenu
+        aria-label="Lead stage"
+        onAction={(key) => {
+          const next = String(key) as LeadStatus;
+          if (next !== lead.status) onSelect(next);
+        }}
+      >
+        {LEAD_STATUSES.map((s) => (
+          <DropdownItem key={s.key} className={s.key === lead.status ? "text-brand-300" : ""}>
+            <span className="flex items-center gap-2 text-xs">
               <span className={`h-2 w-2 rounded-full shrink-0 ${STAGE_DOTS[s.key] || "bg-slate-500"}`} />
-              <span className="flex-1 text-left">{s.label}</span>
-              {s.key === lead.status && <Check className="h-3 w-3 shrink-0" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </>
+              {s.label}
+              {s.key === lead.status && <span className="ml-auto text-[9px] text-brand-300">current</span>}
+            </span>
+          </DropdownItem>
+        ))}
+      </DropdownMenu>
+    </Dropdown>
   );
 }
 
@@ -506,17 +477,25 @@ function LeadFormModal({
             </select>
           </div>
           <div>
-            <label className="label">Deal value (₹)</label>
-            <input
-              name="deal_value"
-              type="number"
-              min={0}
-              step={1000}
-              defaultValue={editing?.deal_value || ""}
-              className="input"
-              placeholder="25000"
-            />
+            <label className="label">Lead stage / status</label>
+            <select name="status" defaultValue={editing?.status || "new"} className="input" style={{ colorScheme: "dark" }}>
+              {LEAD_STATUSES.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
           </div>
+        </div>
+        <div>
+          <label className="label">Deal value (₹)</label>
+          <input
+            name="deal_value"
+            type="number"
+            min={0}
+            step={1000}
+            defaultValue={editing?.deal_value || ""}
+            className="input"
+            placeholder="25000"
+          />
         </div>
         <div>
           <label className="label">Next follow-up</label>

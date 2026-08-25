@@ -637,7 +637,7 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
 
 export async function assignProjectTeamAction(
   projectId: string,
-  allocations: { role_key: string; user_id: string | null }[]
+  allocations: { role_key: string; user_id: string | null; deadline?: string | null }[]
 ) {
   const session = await getSession();
   if (!session || !CAN_MANAGE.includes(session.role_key)) {
