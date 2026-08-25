@@ -16,6 +16,17 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
+  /* Inter stylistic sets — cleaner a/g/l glyphs, tabular-friendly digits */
+  font-feature-settings: 'cv02' 1, 'cv03' 1, 'cv04' 1, 'cv11' 1;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tighter display type for headings — modern SaaS look */
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.02em;
 }
 
 ::selection {
@@ -117,4 +128,64 @@ body {
   .badge {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Component-level theme sync — every native control blends with the dark
+   surface palette (night-850 panels, white/10 borders, brand-300 accents).
+--------------------------------------------------------------------------- */
+
+/* Select inputs: custom chevron + dark popup options */
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  padding-right: 2rem;
+  cursor: pointer;
+}
+select.input:focus {
+  background-color: #1d2a32;
+}
+select option,
+select optgroup {
+  background-color: #17232c;
+  color: #e2e8f0;
+}
+
+/* Date/time inputs: dim the native picker icon to match slate-500 */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  color-scheme: dark;
+}
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='time']::-webkit-calendar-picker-indicator,
+input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  filter: invert(0.62);
+  cursor: pointer;
+}
+
+/* Search/clear cancel buttons on native inputs */
+input[type='search']::-webkit-search-cancel-button {
+  filter: invert(0.62);
+}
+
+/* Autofill: keep dark background instead of browser pale blue */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e2e8f0;
+  -webkit-box-shadow: 0 0 0 1000px #1a262e inset;
+  transition: background-color 9999s ease-in-out 0s;
+  caret-color: #ffffff;
+}
+
+/* Keyboard focus ring for buttons/badges (inputs already have their own) */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(133, 222, 133, 0.55);
+  outline-offset: 2px;
+  border-radius: 0.75rem;
 }

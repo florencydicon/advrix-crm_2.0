@@ -20,7 +20,7 @@ import { StatusBadge, PlatformBadges } from "@/components/ui";
 import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
 import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
-import { DynamicTeamAllotment, type TeamAllocationRow } from "@/components/DynamicTeamAllotment";
+import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
 
 function isoDate(v: string | Date | null | undefined): string {
   if (!v) return "";
@@ -74,7 +74,6 @@ export default function ProjectDetailView({
   const [leaveTarget, setLeaveTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
-  const [allotmentRows, setAllotmentRows] = useState<TeamAllocationRow[]>([]);
 
   const canManage = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const canDelete = roleKey === "SUPER_ADMIN";
@@ -84,22 +83,6 @@ export default function ProjectDetailView({
       await fn();
       router.refresh();
     });
-  }
-  function handleAllotmentRowAdd(projectId: string, row: TeamAllocationRow) {
-    if (!row.role_key || !row.user_id) return;
-    setAllotmentRows((prev) => {
-      const exists = prev.some((r) => r.role_key === row.role_key && r.user_id === row.user_id);
-      if (exists) return prev;
-      return [...prev, row];
-    });
-    run(() =>
-      assignProjectTeamAction(projectId, [
-        { role_key: row.role_key, user_id: row.user_id!, deadline: row.deadline || null },
-      ])
-    );
-  }
-  function handleAllotmentRowRemove(id: string) {
-    setAllotmentRows((prev) => prev.filter((r) => r.id !== id));
   }
 
   const totalTasks = client.projects.reduce((n, p) => n + p.total_tasks, 0);
@@ -193,11 +176,9 @@ export default function ProjectDetailView({
                   {canManage && p.status === "in_progress" && (
                     <div className="px-3 pt-2.5 space-y-1.5">
                       <DynamicTeamAllotment
+                        key={p.id}
                         project={p as unknown as Parameters<typeof DynamicTeamAllotment>[0]["project"]}
                         team={team}
-                        initialAllocations={allotmentRows}
-                        onRowAdd={(row) => handleAllotmentRowAdd(p.id, row)}
-                        onRowRemove={handleAllotmentRowRemove}
                         onSave={(filled) =>
                           run(() =>
                             assignProjectTeamAction(

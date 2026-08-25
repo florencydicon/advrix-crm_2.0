@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
 import {
   Plus,
   Search,
@@ -398,9 +397,8 @@ function escapeHtml(s: string) {
 }
 
 /**
- * HeroUI-powered stage picker — React Aria handles outside-click, ESC and
- * focus reliably (the old hand-rolled fixed-position menu raced its own
- * close handlers and swallowed selections).
+ * Custom themed stage picker — anchored dropdown menu with reliable
+ * outside-click and Escape handling, fully aligned with the dark theme.
  */
 function StageSelect({
   lead,
@@ -411,41 +409,63 @@ function StageSelect({
   disabled?: boolean;
   onSelect: (status: LeadStatus) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   const current = LEAD_STATUSES.find((s) => s.key === lead.status);
   return (
-    <Dropdown
-      placement="bottom-start"
-      classNames={{ content: "bg-night-900 border border-white/10 min-w-[176px]" }}
-    >
-      <DropdownTrigger>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-label={`Change stage for ${lead.name}`}
-          className={`badge cursor-pointer inline-flex items-center gap-1 transition-transform ${STATUS_STYLES[lead.status] || "bg-white/10 text-slate-300"}`}
-        >
-          {current?.label || lead.status}
-          <ChevronDown className="h-3 w-3 opacity-60" />
-        </button>
-      </DropdownTrigger>
-      <DropdownMenu
-        aria-label="Lead stage"
-        onAction={(key) => {
-          const next = String(key) as LeadStatus;
-          if (next !== lead.status) onSelect(next);
-        }}
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        aria-label={`Change stage for ${lead.name}`}
+        className={`badge cursor-pointer inline-flex items-center gap-1 transition-colors ${STATUS_STYLES[lead.status] || "bg-white/10 text-slate-300"}`}
       >
-        {LEAD_STATUSES.map((s) => (
-          <DropdownItem key={s.key} className={s.key === lead.status ? "text-brand-300" : ""}>
-            <span className="flex items-center gap-2 text-xs">
+        {current?.label || lead.status}
+        <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-30 w-44 rounded-xl border border-white/10 bg-night-850 shadow-lg shadow-black/40 overflow-hidden animate-fade-in">
+          {LEAD_STATUSES.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                if (s.key !== lead.status) onSelect(s.key);
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                s.key === lead.status
+                  ? "text-brand-300 bg-brand-300/10"
+                  : "text-slate-200 hover:bg-white/[0.06]"
+              }`}
+            >
               <span className={`h-2 w-2 rounded-full shrink-0 ${STAGE_DOTS[s.key] || "bg-slate-500"}`} />
               {s.label}
               {s.key === lead.status && <span className="ml-auto text-[9px] text-brand-300">current</span>}
-            </span>
-          </DropdownItem>
-        ))}
-      </DropdownMenu>
-    </Dropdown>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

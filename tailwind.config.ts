@@ -1,12 +1,10 @@
 import type { Config } from "tailwindcss";
-import { heroui } from "@heroui/react";
 
 const config: Config = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
@@ -49,32 +47,6 @@ const config: Config = {
     },
   },
   darkMode: "class",
-  plugins: [
-    heroui({
-      themes: {
-        dark: {
-          colors: {
-            background: "#0d151b",
-            foreground: "#e6edf2",
-            primary: {
-              50: "#f0faf1",
-              100: "#dcf4de",
-              200: "#b9ebbd",
-              300: "#85DE85",
-              400: "#5ecf68",
-              500: "#3fb84e",
-              600: "#2f9c3f",
-              700: "#287e36",
-              800: "#23642d",
-              900: "#1e5326",
-              DEFAULT: "#85DE85",
-              foreground: "#0d151b",
-            },
-            focus: "#85DE85",
-          },
-        },
-      },
-    }),
-  ],
+  plugins: [],
 };
 export default config;

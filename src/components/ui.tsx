@@ -1,13 +1,7 @@
 "use client";
 
-import {
-  Chip,
-  Modal as HeroModal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-} from "@heroui/react";
-import { CircleCheck, Clock, PauseCircle, Send, Undo2, Users, Upload } from "lucide-react";
+import { useEffect } from "react";
+import { X, CircleCheck, Clock, PauseCircle, Send, Undo2, Users, Upload } from "lucide-react";
 
 export const STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
   pending: { label: "Pending", cls: "bg-white/10 text-slate-300", Icon: PauseCircle },
@@ -35,49 +29,14 @@ export const STATUS_ORDER = [
   "completed",
 ];
 
-type ChipColor = "default" | "primary" | "secondary" | "success" | "warning" | "danger";
-
-const STATUS_COLOR: Record<string, ChipColor> = {
-  pending: "default",
-  pending_approval: "warning",
-  in_progress: "primary",
-  submitted: "secondary",
-  needs_improvement: "danger",
-  client_review: "secondary",
-  client_feedback: "danger",
-  client_approved: "success",
-  uploading: "primary",
-  upload_done: "success",
-  completed: "success",
-};
-
-const STATUS_ICON: Record<string, any> = {
-  pending: PauseCircle,
-  pending_approval: Clock,
-  in_progress: Clock,
-  submitted: Send,
-  needs_improvement: Undo2,
-  client_review: Users,
-  client_feedback: Undo2,
-  client_approved: CircleCheck,
-  uploading: Upload,
-  upload_done: Upload,
-  completed: CircleCheck,
-};
-
 export function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status] || STATUS_META.pending;
-  const Icon = STATUS_ICON[status] || PauseCircle;
+  const Icon = meta.Icon;
   return (
-    <Chip
-      size="sm"
-      variant="flat"
-      color={STATUS_COLOR[status] || "default"}
-      startContent={<Icon className="h-3 w-3" />}
-      className="text-[10px] h-5 pl-1"
-    >
+    <span className={`badge ${meta.cls}`}>
+      <Icon className="h-3 w-3" />
       {meta.label}
-    </Chip>
+    </span>
   );
 }
 
@@ -93,9 +52,9 @@ export function PlatformBadges({ platforms }: { platforms: string[] }) {
   return (
     <span className="flex flex-wrap gap-1">
       {PLATFORMS.filter((p) => platforms.includes(p.key)).map((p) => (
-        <Chip key={p.key} size="sm" variant="bordered" className="text-[10px] h-5 border-white/15 text-slate-400">
+        <span key={p.key} className="badge bg-white/5 text-slate-400 ring-1 ring-white/10">
           {p.icon} {p.label}
-        </Chip>
+        </span>
       ))}
     </span>
   );
@@ -116,38 +75,29 @@ export function TaskProgress({ done, total }: { done: number; total: number }) {
   );
 }
 
-const PRIORITY_META: Record<string, { label: string; color: ChipColor }> = {
-  low: { label: "Low", color: "default" },
-  medium: { label: "Medium", color: "primary" },
-  high: { label: "High", color: "danger" },
+const PRIORITY_META: Record<string, { label: string; cls: string }> = {
+  low: { label: "Low", cls: "bg-white/10 text-slate-400" },
+  medium: { label: "Medium", cls: "bg-sky-400/10 text-sky-300" },
+  high: { label: "High", cls: "bg-rose-400/10 text-rose-300" },
 };
 
 export function PriorityBadge({ priority }: { priority: string }) {
   const meta = PRIORITY_META[priority] || PRIORITY_META.medium;
-  return (
-    <Chip size="sm" variant="flat" color={meta.color} className="text-[10px] h-5">
-      {meta.label}
-    </Chip>
-  );
+  return <span className={`badge ${meta.cls}`}>{meta.label}</span>;
 }
 
-const PROJECT_STATUS_META: Record<string, { label: string; color: ChipColor }> = {
-  pending_approval: { label: "Awaiting PM Approval", color: "warning" },
-  in_progress: { label: "In Production", color: "primary" },
-  completed: { label: "Completed", color: "success" },
-  rejected: { label: "Rejected", color: "danger" },
+const PROJECT_STATUS_META: Record<string, { label: string; cls: string }> = {
+  pending_approval: { label: "Awaiting PM Approval", cls: "bg-amber-400/10 text-amber-300" },
+  in_progress: { label: "In Production", cls: "bg-brand-300/10 text-brand-300" },
+  completed: { label: "Completed", cls: "bg-emerald-400/10 text-emerald-300" },
+  rejected: { label: "Rejected", cls: "bg-rose-400/10 text-rose-300" },
 };
 
 export function ProjectStatusBadge({ status }: { status: string }) {
   const meta = PROJECT_STATUS_META[status] || PROJECT_STATUS_META.pending_approval;
-  return (
-    <Chip size="sm" variant="flat" color={meta.color} className="text-[10px] h-5">
-      {meta.label}
-    </Chip>
-  );
+  return <span className={`badge ${meta.cls}`}>{meta.label}</span>;
 }
 
-/** HeroUI-powered modal. Same external props as before (open/onClose/title). */
 export function Modal({
   open,
   onClose,
@@ -159,25 +109,35 @@ export function Modal({
   title: string;
   children: React.ReactNode;
 }) {
+  // Escape closes; background scroll locks while open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
   return (
-    <HeroModal
-      isOpen={open}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      placement="center"
-      backdrop="blur"
-      classNames={{
-        base: "bg-night-850 border border-white/10",
-        header: "border-b border-white/[0.06] text-white pb-2",
-        body: "py-4",
-      }}
-    >
-      <ModalContent>
-        <ModalHeader className="flex item-center gap-2 text-base font-semibold">{title}</ModalHeader>
-        <ModalBody>{children}</ModalBody>
-      </ModalContent>
-    </HeroModal>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-night-850 rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-white/10">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+          <h3 className="text-base font-semibold text-white">{title}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">{children}</div>
+      </div>
+    </div>
   );
 }
 

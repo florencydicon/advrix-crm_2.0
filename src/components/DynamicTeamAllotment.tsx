@@ -26,51 +26,41 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+function blankRow(): TeamAllocationRow {
+  return { id: uid(), role_key: "", user_id: null, deadline: "" };
+}
+
+/**
+ * Fully manual team allotment builder. Always starts completely blank —
+ * the Project Manager picks a role, then an employee, then a deadline,
+ * and persists the batch with Save. Nothing is ever pre-filled or
+ * auto-assigned.
+ */
 export function DynamicTeamAllotment({
   project,
   team,
-  onRowAdd,
-  onRowRemove,
   onSave,
-  initialAllocations,
 }: {
   project: ProjectRow;
   team: UserRow[];
-  onRowAdd: (row: TeamAllocationRow) => void;
-  onRowRemove: (id: string) => void;
   onSave?: (rows: TeamAllocationRow[]) => void;
-  initialAllocations?: TeamAllocationRow[];
 }) {
   const { toast } = useToast();
-  const [rows, setRows] = useState<TeamAllocationRow[]>(() => {
-    if (initialAllocations && initialAllocations.length > 0) return initialAllocations;
-    return [{ id: uid(), role_key: "", user_id: null, deadline: "" }];
-  });
+  const [rows, setRows] = useState<TeamAllocationRow[]>([blankRow()]);
 
   function addRow() {
-    setRows((prev) => [...prev, { id: uid(), role_key: "", user_id: null, deadline: "" }]);
+    setRows((prev) => [...prev, blankRow()]);
   }
 
   function removeRow(id: string) {
     setRows((prev) => {
       const next = prev.filter((r) => r.id !== id);
-      onRowRemove(id);
-      return next.length === 0 ? [{ id: uid(), role_key: "", user_id: null, deadline: "" }] : next;
+      return next.length === 0 ? [blankRow()] : next;
     });
   }
 
   function updateRow(id: string, patch: Partial<TeamAllocationRow>) {
-    let updated: TeamAllocationRow | undefined;
-    setRows((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        updated = { ...r, ...patch };
-        return updated;
-      })
-    );
-    if (updated && updated.role_key && updated.user_id && patch.user_id !== undefined) {
-      onRowAdd(updated);
-    }
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
   return (
@@ -144,8 +134,14 @@ export function DynamicTeamAllotment({
               toast("Add at least one team member before saving.", "error");
               return;
             }
+            const incomplete = rows.some((r) => (r.role_key && !r.user_id) || (!r.role_key && r.user_id));
+            if (incomplete) {
+              toast("Finish or remove incomplete rows before saving.", "error");
+              return;
+            }
             onSave?.(filled);
-            toast("Team member added.", "success");
+            toast("Team saved.", "success");
+            setRows([blankRow()]);
           }}
           className="btn-primary !py-1 text-[10px] px-3"
         >
