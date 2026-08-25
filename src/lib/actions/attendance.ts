@@ -4,9 +4,20 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
 
+async function ensureLocationColumns() {
+  await query(`
+    ALTER TABLE attendance
+      ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS location_text TEXT
+  `);
+}
+
 export async function punchInAction(loc: { latitude: number | null; longitude: number | null; location_text: string | null }) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
+
+  await ensureLocationColumns();
 
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
@@ -44,6 +55,8 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
 export async function punchOutAction(loc: { latitude: number | null; longitude: number | null; location_text: string | null }) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
+
+  await ensureLocationColumns();
 
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();

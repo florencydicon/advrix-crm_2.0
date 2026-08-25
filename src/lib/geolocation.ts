@@ -21,13 +21,14 @@ export function requestLocationPermissionOnce() {
   navigator.geolocation.getCurrentPosition(
     () => {},
     () => {},
-    { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 }
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
 }
 
 export function getCurrentPosition(): Promise<GeoLocation> {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
+      console.error("Geolocation: navigator.geolocation not available");
       resolve({ latitude: null, longitude: null, location_text: null });
       return;
     }
@@ -35,14 +36,16 @@ export function getCurrentPosition(): Promise<GeoLocation> {
       async (position) => {
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
+        console.log(`Geolocation: got coordinates ${lat}, ${lon}`);
         const locationText = await reverseGeocode(lat, lon);
+        console.log(`Geolocation: resolved address → ${locationText}`);
         resolve({ latitude: lat, longitude: lon, location_text: locationText });
       },
       (error) => {
-        console.error("Geolocation error:", error.message);
+        console.error(`Geolocation error (code ${error.code}): ${error.message}`);
         resolve({ latitude: null, longitude: null, location_text: null });
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   });
 }

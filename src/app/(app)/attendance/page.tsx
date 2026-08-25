@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/session";
+import { query } from "@/lib/db";
 import {
   getTodayAttendance,
   getAttendanceHistory,
@@ -12,6 +13,17 @@ import {
 import AttendanceView from "@/components/AttendanceView";
 
 export const metadata = { title: "Attendance & Leave — Advrix CRM" };
+
+async function ensureLocationColumns() {
+  try {
+    await query(`
+      ALTER TABLE attendance
+        ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS location_text TEXT
+    `);
+  } catch {}
+}
 
 function monthRange(month: number, year: number) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -28,6 +40,8 @@ export default async function AttendancePage({
 }) {
   const session = (await getSession())!;
   const isAdmin = session.role_key === "SUPER_ADMIN";
+
+  await ensureLocationColumns();
 
   const params = await searchParams;
   const now = new Date();

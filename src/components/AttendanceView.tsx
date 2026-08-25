@@ -143,6 +143,10 @@ export default function AttendanceView({
     start(async () => {
       const loc = await getCurrentPosition();
       setGeoLoc(loc);
+      if (loc.latitude == null || loc.longitude == null) {
+        toast("Location access is required. Please allow location permission in your browser and try again.", "error");
+        return;
+      }
       const res = await punchInAction(loc);
       if (res.error) { toast(res.error, "error"); return; }
       toast("Punched in successfully.", "success");
@@ -165,6 +169,10 @@ export default function AttendanceView({
     start(async () => {
       const loc = await getCurrentPosition();
       setGeoLoc(loc);
+      if (loc.latitude == null || loc.longitude == null) {
+        toast("Location access is required. Please allow location permission in your browser and try again.", "error");
+        return;
+      }
       const res = await punchOutAction(loc);
       if (res.error) { toast(res.error, "error"); return; }
       toast(`Punched out. ${res.hoursWorked}h worked.`, "success");
@@ -245,6 +253,9 @@ export default function AttendanceView({
               </div>
               <p className="text-xs text-slate-400">Punch In</p>
               <p className="text-lg md:text-xl font-bold text-white">{formatTime(todayRecord?.punch_in)}</p>
+              {todayRecord?.latitude != null && todayRecord?.location_text && (
+                <p className="text-[10px] text-slate-600 truncate max-w-full mt-0.5" title={todayRecord.location_text}>📍 {todayRecord.location_text}</p>
+              )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs"
                 disabled={pending || hasPunchedIn}
@@ -260,6 +271,9 @@ export default function AttendanceView({
               </div>
               <p className="text-xs text-slate-400">Punch Out</p>
               <p className="text-lg md:text-xl font-bold text-white">{formatTime(todayRecord?.punch_out)}</p>
+              {todayRecord?.latitude != null && todayRecord?.location_text && (
+                <p className="text-[10px] text-slate-600 truncate max-w-full mt-0.5" title={todayRecord.location_text}>📍 {todayRecord.location_text}</p>
+              )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs bg-emerald-600 hover:bg-emerald-700"
                 disabled={pending || !hasPunchedIn || hasPunchedOut}
