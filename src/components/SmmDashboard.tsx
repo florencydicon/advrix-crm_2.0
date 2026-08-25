@@ -66,13 +66,13 @@ export default function SmmDashboard({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         {metrics.map((m) => (
-          <div key={m.label} className={`card flex items-center gap-3 px-4 py-3 ${m.cls}`}>
-            <m.Icon className="h-5 w-5" />
-            <div>
-              <p className="text-2xl font-bold leading-none">{m.value}</p>
-              <p className="text-[11px] font-medium mt-1 opacity-80">{m.label}</p>
+          <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>
+            <m.Icon className="h-5 w-5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xl md:text-2xl font-bold leading-none">{m.value}</p>
+              <p className="text-[10px] md:text-[11px] font-medium mt-1 opacity-80 truncate">{m.label}</p>
             </div>
           </div>
         ))}
@@ -89,12 +89,12 @@ export default function SmmDashboard({
             className="input !pl-8 !py-1.5 text-xs"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
           {tabCounts.map((tab) => (
             <button
               key={tab.key || "all"}
               onClick={() => setStatusFilter(statusFilter === tab.key ? "" : tab.key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
                 statusFilter === tab.key
                   ? "bg-brand-300 text-night-950 shadow-sm"
                   : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"

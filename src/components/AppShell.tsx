@@ -317,7 +317,7 @@ export default function AppShell({
     <div className="min-h-screen flex bg-paper">
       {/* Return-to-tab alert */}
       {missedToast > 0 && (
-        <div className="fixed top-16 right-4 sm:right-6 z-[60] animate-toast-in">
+        <div className="fixed top-16 right-4 sm:right-6 z-[80] animate-toast-in">
           <div className="flex items-center gap-3 rounded-2xl bg-night-850 ring-1 ring-brand-300/30 shadow-2xl shadow-black/50 px-4 py-3 max-w-sm">
             <span className="relative flex h-2.5 w-2.5 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-300 opacity-75" />
@@ -346,20 +346,22 @@ export default function AppShell({
         {sidebar(false)}
       </aside>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer backdrop */}
       <div
-        className={`fixed inset-0 z-40 bg-black/60 lg:hidden transition-opacity ${mobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm lg:hidden transition-opacity duration-300 ${mobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={() => setMobileOpen(false)}
       />
+      {/* Mobile drawer panel */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 lg:hidden transform transition-transform ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-[70] w-72 max-w-[85vw] lg:hidden transform transition-transform duration-300 ease-out ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         {sidebar(true)}
         <button
-          className="absolute top-4 -right-10 p-2 rounded-full bg-night-700 text-white shadow-lg ring-1 ring-white/10"
+          className="absolute top-3 right-3 p-2.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
           onClick={() => setMobileOpen(false)}
+          aria-label="Close menu"
         >
-          <X className="h-4 w-4" />
+          <X className="h-5 w-5" />
         </button>
       </aside>
 
@@ -367,33 +369,30 @@ export default function AppShell({
       <div
         className={`flex-1 flex flex-col min-h-screen transition-[padding] duration-300 ease-in-out ${collapsed ? "lg:pl-[76px]" : "lg:pl-64"}`}
       >
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-4 bg-paper/80 backdrop-blur-lg border-b border-white/[0.06] px-4 sm:px-6 py-3">
+        {/* ── Mobile header ── */}
+        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-night-950/80 backdrop-blur-xl border-b border-white/[0.06] px-4 py-3 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
-            <button className="lg:hidden p-2 rounded-lg hover:bg-white/5 text-slate-300" onClick={() => setMobileOpen(true)}>
-              <Menu className="h-5 w-5" />
+            {/* Hamburger only on desktop sidebar toggle — hidden on mobile */}
+            <button className="hidden lg:block p-2 rounded-xl hover:bg-white/5 text-slate-400 transition-colors" onClick={toggleCollapsed} aria-label="Toggle sidebar">
+              {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </button>
-            <p className="text-sm font-medium text-slate-300 truncate">
+            <p className="text-[15px] font-semibold text-white tracking-tight truncate">
               {items.find((n) => pathname.startsWith(n.href))?.label || "Dashboard"}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="relative">
               <button
                 onClick={() => setNotifOpen((o) => !o)}
                 className="relative p-2 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
                 aria-label="Notifications"
               >
-                <Bell
-                  className={`h-5 w-5 ${ringing ? "animate-bell-ring text-brand-300" : ""}`}
-                />
-                {missedToast > 0 && unread === 0 && (
-                  <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-brand-300" />
-                )}
+                <Bell className={`h-5 w-5 ${ringing ? "animate-bell-ring text-brand-300" : ""}`} />
                 {unread > 0 && (
                   <>
                     <span className={`absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-brand-300 ${ringing ? "" : "animate-pulse"}`} />
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-300 text-night-950 text-[10px] font-bold flex items-center justify-center shadow">
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-300 text-night-950 text-[10px] font-bold flex items-center justify-center shadow">
                       {unread > 9 ? "9+" : unread}
                     </span>
                   </>
@@ -453,8 +452,9 @@ export default function AppShell({
             </div>
 
             <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-white/[0.06]">
-              <span className="text-xs font-medium text-slate-300">{session.name}</span>
-              <span className="badge bg-white/5 text-slate-400 text-[10px] ring-1 ring-white/10">{session.role_label}</span>
+              <div className={`h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold ${ROLE_STYLES[session.role_key] || "bg-slate-500 !text-white"}`}>
+                {initials}
+              </div>
             </div>
           </div>
         </header>
@@ -467,44 +467,42 @@ export default function AppShell({
         </footer>
       </div>
 
-      {/* Mobile bottom navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-night-950/95 backdrop-blur-lg border-t border-white/[0.08] safe-area-bottom">
-        <div className="flex items-center justify-around h-16 px-1">
+      {/* ── Mobile bottom navigation ── */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-night-950/90 backdrop-blur-2xl border-t border-white/[0.08] safe-area-bottom" role="navigation" aria-label="Mobile navigation">
+        <div className="flex items-stretch justify-around h-[60px] px-0 max-w-lg mx-auto">
           {items.slice(0, 4).map((n) => {
-            const active = pathname.startsWith(n.href);
+            const active = pathname === n.href || pathname.startsWith(n.href + "/");
             const Icon = n.icon;
             return (
               <Link
                 key={n.href}
                 href={n.href}
-                className={`flex flex-col items-center justify-center gap-0.5 w-16 py-1 rounded-xl transition-colors ${
-                  active ? "text-brand-300" : "text-slate-500"
+                className={`relative flex flex-col items-center justify-center gap-1 w-16 transition-colors ${
+                  active ? "text-brand-300" : "text-slate-500 active:text-slate-300"
                 }`}
               >
-                {active && <span className="absolute top-0 h-[3px] w-6 rounded-full bg-brand-300" />}
-                <Icon className="h-5 w-5" />
-                <span className="text-[9px] font-medium leading-none">{n.label.split(" ")[0]}</span>
+                <span className={`flex items-center justify-center h-8 w-12 rounded-xl transition-all ${active ? "bg-brand-300/15" : ""}`}>
+                  <Icon className={`h-[22px] w-[22px]`} />
+                </span>
+                <span className={`text-[10px] leading-none ${active ? "font-semibold" : "font-medium"}`}>
+                  {n.label.split(" ")[0]}
+                </span>
+                {n.href === "/updates" && unread > 0 && (
+                  <span className="absolute top-1 right-3 h-2 w-2 rounded-full bg-brand-300 animate-pulse" />
+                )}
               </Link>
             );
           })}
-          {items.length > 4 ? (
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="flex flex-col items-center justify-center gap-0.5 w-16 py-1 text-slate-500"
-            >
-              <Menu className="h-5 w-5" />
-              <span className="text-[9px] font-medium leading-none">More</span>
-            </button>
-          ) : (
-            <Link
-              href="/dashboard"
-              onClick={() => setMobileOpen(true)}
-              className="flex flex-col items-center justify-center gap-0.5 w-16 py-1 text-slate-500"
-            >
-              <Menu className="h-5 w-5" />
-              <span className="text-[9px] font-medium leading-none">More</span>
-            </Link>
-          )}
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="flex flex-col items-center justify-center gap-1 w-16 text-slate-500 active:text-slate-300 transition-colors"
+            aria-label="More options"
+          >
+            <span className="flex items-center justify-center h-8 w-12 rounded-xl">
+              <Menu className="h-[22px] w-[22px]" />
+            </span>
+            <span className="text-[10px] leading-none font-medium">More</span>
+          </button>
         </div>
       </nav>
     </div>

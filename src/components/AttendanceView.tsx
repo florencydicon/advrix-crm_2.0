@@ -181,7 +181,7 @@ export default function AttendanceView({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold">Attendance & Leave</h1>
           <p className="text-xs text-slate-400">
@@ -190,10 +190,10 @@ export default function AttendanceView({
             {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </p>
         </div>
-        <div className="flex gap-1 bg-white/5 rounded-lg p-1 ring-1 ring-white/10">
+        <div className="flex gap-1 bg-white/5 rounded-xl p-1 ring-1 ring-white/10">
           <button
             onClick={() => setActiveTab("attendance")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
               activeTab === "attendance" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
             }`}
           >
@@ -202,7 +202,7 @@ export default function AttendanceView({
           </button>
           <button
             onClick={() => setActiveTab("leaves")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
               activeTab === "leaves" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
             }`}
           >
@@ -212,7 +212,7 @@ export default function AttendanceView({
           {isAdmin && (
             <button
               onClick={() => setActiveTab("reports")}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                 activeTab === "reports" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
               }`}
             >
@@ -236,13 +236,13 @@ export default function AttendanceView({
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="card p-4 flex flex-col items-center justify-center text-center">
-              <div className="h-12 w-12 rounded-full bg-brand-300/10 flex items-center justify-center mb-2">
-                <LogIn className="h-6 w-6 text-brand-300" />
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-brand-300/10 flex items-center justify-center mb-2">
+                <LogIn className="h-5 w-5 md:h-6 md:w-6 text-brand-300" />
               </div>
               <p className="text-xs text-slate-400">Punch In</p>
-              <p className="text-xl font-bold text-white">{formatTime(todayRecord?.punch_in)}</p>
+              <p className="text-lg md:text-xl font-bold text-white">{formatTime(todayRecord?.punch_in)}</p>
               <button
-                className="btn-primary mt-2 w-full !py-1.5 text-xs"
+                className="btn-primary mt-2 w-full !py-2 text-xs"
                 disabled={pending || hasPunchedIn}
                 onClick={handlePunchIn}
               >
@@ -251,13 +251,13 @@ export default function AttendanceView({
             </div>
 
             <div className="card p-4 flex flex-col items-center justify-center text-center">
-              <div className="h-12 w-12 rounded-full bg-emerald-600/10 flex items-center justify-center mb-2">
-                <LogOut className="h-6 w-6 text-emerald-600" />
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-emerald-600/10 flex items-center justify-center mb-2">
+                <LogOut className="h-5 w-5 md:h-6 md:w-6 text-emerald-600" />
               </div>
               <p className="text-xs text-slate-400">Punch Out</p>
-              <p className="text-xl font-bold text-white">{formatTime(todayRecord?.punch_out)}</p>
+              <p className="text-lg md:text-xl font-bold text-white">{formatTime(todayRecord?.punch_out)}</p>
               <button
-                className="btn-primary mt-2 w-full !py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700"
+                className="btn-primary mt-2 w-full !py-2 text-xs bg-emerald-600 hover:bg-emerald-700"
                 disabled={pending || !hasPunchedIn || hasPunchedOut}
                 onClick={handlePunchOut}
               >
@@ -266,11 +266,11 @@ export default function AttendanceView({
             </div>
 
             <div className="card p-4 flex flex-col items-center justify-center text-center">
-              <div className="h-12 w-12 rounded-full bg-violet-600/10 flex items-center justify-center mb-2">
-                <TrendingUp className="h-6 w-6 text-violet-600" />
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-violet-600/10 flex items-center justify-center mb-2">
+                <TrendingUp className="h-5 w-5 md:h-6 md:w-6 text-violet-600" />
               </div>
               <p className="text-xs text-slate-400">Hours</p>
-              <p className="text-xl font-bold text-white">
+              <p className="text-lg md:text-xl font-bold text-white">
                 {todayRecord?.hours_worked ? `${todayRecord.hours_worked}h` : "—"}
               </p>
               <div className="mt-2">
@@ -295,33 +295,33 @@ export default function AttendanceView({
                 <Users className="h-4 w-4 text-brand-300" />
                 <h2 className="font-semibold text-sm">Today&apos;s Team Overview</h2>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                 <div className="text-center">
-                  <p className="text-xl font-bold text-emerald-600">{stats.presentToday}</p>
-                  <p className="text-xs text-slate-400">Present</p>
+                  <p className="text-lg md:text-xl font-bold text-emerald-600">{stats.presentToday}</p>
+                  <p className="text-[10px] md:text-xs text-slate-400">Present</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xl font-bold text-amber-600">{stats.lateToday}</p>
-                  <p className="text-xs text-slate-400">Late</p>
+                  <p className="text-lg md:text-xl font-bold text-amber-600">{stats.lateToday}</p>
+                  <p className="text-[10px] md:text-xs text-slate-400">Late</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xl font-bold text-rose-600">{stats.absentToday}</p>
-                  <p className="text-xs text-slate-400">Absent</p>
+                  <p className="text-lg md:text-xl font-bold text-rose-600">{stats.absentToday}</p>
+                  <p className="text-[10px] md:text-xs text-slate-400">Absent</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xl font-bold text-violet-600">{stats.onLeaveToday}</p>
-                  <p className="text-xs text-slate-400">On Leave</p>
+                  <p className="text-lg md:text-xl font-bold text-violet-600">{stats.onLeaveToday}</p>
+                  <p className="text-[10px] md:text-xs text-slate-400">On Leave</p>
                 </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold text-white">{stats.avgHoursToday}h</p>
-                  <p className="text-xs text-slate-400">Avg Hours</p>
+                <div className="text-center col-span-3 sm:col-span-1">
+                  <p className="text-lg md:text-xl font-bold text-white">{stats.avgHoursToday}h</p>
+                  <p className="text-[10px] md:text-xs text-slate-400">Avg Hours</p>
                 </div>
               </div>
             </div>
           )}
 
           <div className="card">
-            <div className="px-4 py-3 border-b border-white/10">
+            <div className="px-4 py-3 border-b border-white/[0.06]">
               <h2 className="font-semibold text-sm">Recent Attendance</h2>
             </div>
             {history.length === 0 ? (
@@ -329,10 +329,10 @@ export default function AttendanceView({
             ) : (
               <div className="divide-y divide-white/[0.06]">
                 {history.slice(0, 10).map((h) => (
-                  <div key={h.id} className="flex items-center justify-between px-4 py-2.5">
-                    <div className="flex items-center gap-3">
+                  <div key={h.id} className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className={`h-2 w-2 rounded-full ${
+                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
                           h.status === "present"
                             ? "bg-emerald-500"
                             : h.status === "late"
@@ -342,19 +342,19 @@ export default function AttendanceView({
                             : "bg-slate-300"
                         }`}
                       />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium text-white">{formatDate(h.date)}</p>
                         <p className="text-xs text-slate-500">
                           {formatTime(h.punch_in)} — {formatTime(h.punch_out)}
                         </p>
                         {h.location_text && (
-                          <p className="text-[10px] text-slate-600 truncate max-w-[180px]" title={h.location_text}>📍 {h.location_text}</p>
+                          <p className="text-[10px] text-slate-600 truncate max-w-[200px]" title={h.location_text}>📍 {h.location_text}</p>
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <span
-                        className={`badge ${
+                        className={`badge text-[10px] md:text-xs ${
                           h.status === "present"
                             ? "bg-emerald-400/10 text-emerald-300"
                             : h.status === "late"
@@ -365,7 +365,7 @@ export default function AttendanceView({
                         {h.status}
                       </span>
                       {h.hours_worked > 0 && (
-                        <p className="text-xs text-slate-500 mt-0.5">{h.hours_worked}h</p>
+                        <p className="text-[10px] md:text-xs text-slate-500 mt-0.5">{h.hours_worked}h</p>
                       )}
                     </div>
                   </div>
@@ -378,17 +378,17 @@ export default function AttendanceView({
 
       {activeTab === "leaves" && (
         <>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <h2 className="font-semibold text-sm">Leave Balance</h2>
-            <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => setShowLeaveModal(true)}>
+            <button className="btn-primary !py-2 !px-3 text-xs" onClick={() => setShowLeaveModal(true)}>
               <Plus className="h-3.5 w-3.5" /> Apply Leave
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
             {Object.entries(leaveBalance).map(([type, bal]) => (
               <div key={type} className="card p-3 text-center">
-                <span className={`badge ${LEAVE_TYPE_META[type]?.cls || "bg-white/10 text-slate-300"}`}>
+                <span className={`badge text-[10px] md:text-xs ${LEAVE_TYPE_META[type]?.cls || "bg-white/10 text-slate-300"}`}>
                   {LEAVE_TYPE_META[type]?.label || type}
                 </span>
                 <p className="mt-1 text-lg font-bold text-white">
@@ -408,14 +408,14 @@ export default function AttendanceView({
               <div className="divide-y divide-white/[0.06]">
                 {pendingLeaves.map((l) => (
                   <div key={l.id} className="px-4 py-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-white">{l.full_name}</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{l.full_name}</p>
                         <p className="text-xs text-slate-500">
                           {LEAVE_TYPE_META[l.leave_type]?.label} · {formatDate(l.start_date)} — {formatDate(l.end_date)} · {l.days}d
                         </p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 shrink-0">
                         <button
                           className="btn-primary !py-1 !px-3 text-xs"
                           disabled={pending}
@@ -470,22 +470,22 @@ export default function AttendanceView({
                     value={leaveSearch}
                     onChange={(e) => setLeaveSearch(e.target.value)}
                     placeholder="Search name, type, reason…"
-                    className="input !py-1.5 !pl-8 text-xs"
+                    className="input !py-2 !pl-8 text-xs"
                   />
                 </div>
-                <select value={leaveName} onChange={(e) => setLeaveName(e.target.value)} className="input !py-1.5 text-xs">
+                <select value={leaveName} onChange={(e) => setLeaveName(e.target.value)} className="input !py-2 text-xs">
                   <option value="">All employees</option>
                   {leaveNames.map((n) => (
                     <option key={n} value={n}>{n}</option>
                   ))}
                 </select>
-                <select value={leaveRole} onChange={(e) => setLeaveRole(e.target.value)} className="input !py-1.5 text-xs">
+                <select value={leaveRole} onChange={(e) => setLeaveRole(e.target.value)} className="input !py-2 text-xs">
                   <option value="">All roles</option>
                   {leaveRoles.map((r) => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
-                <select value={leaveStatus} onChange={(e) => setLeaveStatus(e.target.value)} className="input !py-1.5 text-xs">
+                <select value={leaveStatus} onChange={(e) => setLeaveStatus(e.target.value)} className="input !py-2 text-xs">
                   <option value="">All statuses</option>
                   <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
@@ -502,28 +502,30 @@ export default function AttendanceView({
                   const statusMeta = LEAVE_STATUS_META[l.status];
                   const StatusIcon = statusMeta?.icon || AlertCircle;
                   return (
-                    <div key={l.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {isAdmin && (
-                          <p className="text-xs font-medium text-slate-200 shrink-0 w-28 truncate">{l.full_name}</p>
-                        )}
-                        <span className={`badge shrink-0 ${LEAVE_TYPE_META[l.leave_type]?.cls || "bg-white/10 text-slate-300"}`}>
-                          {LEAVE_TYPE_META[l.leave_type]?.label}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-xs text-slate-200 truncate">
+                    <div key={l.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            {isAdmin && (
+                              <p className="text-xs font-medium text-slate-200 shrink-0">{l.full_name}</p>
+                            )}
+                            <span className={`badge shrink-0 text-[10px] ${LEAVE_TYPE_META[l.leave_type]?.cls || "bg-white/10 text-slate-300"}`}>
+                              {LEAVE_TYPE_META[l.leave_type]?.label}
+                            </span>
+                            <span className={`badge shrink-0 text-[10px] ${statusMeta?.cls || "bg-white/10 text-slate-500"}`}>
+                              <StatusIcon className="h-3 w-3" />
+                              {statusMeta?.label}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400">
                             {formatDate(l.start_date)} — {formatDate(l.end_date)} · {l.days}d
                             {isAdmin && l.role_label && <span className="text-slate-500"> · {l.role_label}</span>}
                           </p>
                           {l.rejection_reason && (
-                            <p className="text-[11px] text-rose-500 truncate">Rejected: {l.rejection_reason}</p>
+                            <p className="text-[11px] text-rose-500 mt-0.5">Rejected: {l.rejection_reason}</p>
                           )}
                         </div>
                       </div>
-                      <span className={`badge shrink-0 ${statusMeta?.cls || "bg-white/10 text-slate-500"}`}>
-                        <StatusIcon className="h-3 w-3" />
-                        {statusMeta?.label}
-                      </span>
                     </div>
                   );
                 })}

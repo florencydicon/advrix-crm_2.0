@@ -155,9 +155,9 @@ export function EmptyState({ title, subtitle }: { title: string; subtitle?: stri
 
 export function Stat({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
-    <div className="card card-hover p-5">
-      <p className="text-sm text-slate-400">{label}</p>
-      <p className={`mt-1.5 text-3xl font-bold tracking-tight ${accent || "text-white"}`}>{value}</p>
+    <div className="card card-hover p-3 md:p-5">
+      <p className="text-[11px] md:text-sm text-slate-400">{label}</p>
+      <p className={`mt-1 text-2xl md:text-3xl font-bold tracking-tight ${accent || "text-white"}`}>{value}</p>
     </div>
   );
 }

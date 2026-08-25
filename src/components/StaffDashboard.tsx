@@ -119,13 +119,13 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         {metrics.map((m) => (
-          <div key={m.label} className={`card flex items-center gap-3 px-4 py-3 ${m.cls}`}>
-            <m.Icon className="h-5 w-5" />
-            <div>
-              <p className="text-2xl font-bold leading-none">{m.value}</p>
-              <p className="text-[11px] font-medium mt-1 opacity-80">{m.label}</p>
+          <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>
+            <m.Icon className="h-5 w-5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xl md:text-2xl font-bold leading-none">{m.value}</p>
+              <p className="text-[10px] md:text-[11px] font-medium mt-1 opacity-80">{m.label}</p>
             </div>
           </div>
         ))}
@@ -155,20 +155,21 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                   <span className={`text-slate-500 transition-transform ${isOpen ? "rotate-90" : ""}`}>
                     <ArrowRight className="h-4 w-4" />
                   </span>
-                  <div>
-                    <p className="font-semibold text-sm text-white">{client.client_name}</p>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-white truncate">{client.client_name}</p>
                     <p className="text-[11px] text-slate-500">{client.projects.length} project{client.projects.length === 1 ? "" : "s"}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="badge bg-emerald-400/10 text-emerald-300">{done} done</span>
-                  <span className={`badge ${active > 0 ? "bg-amber-400/10 text-amber-300" : "bg-white/10 text-slate-400"}`}>{active} active</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="badge bg-emerald-400/10 text-emerald-300 text-[10px] md:text-xs">{done} done</span>
+                  <span className={`badge text-[10px] md:text-xs ${active > 0 ? "bg-amber-400/10 text-amber-300" : "bg-white/10 text-slate-400"}`}>{active} active</span>
                 </div>
               </button>
 
               {isOpen && (
                 <div className="border-t border-white/[0.06]">
-                  <div className="overflow-x-auto">
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-white/10 bg-white/[0.03]">
@@ -200,6 +201,34 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  {/* Mobile cards */}
+                  <div className="md:hidden divide-y divide-white/[0.06]">
+                    {client.tasks.map((t) => (
+                      <div key={t.id}>
+                        <button
+                          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors"
+                          onClick={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-xs text-white truncate">{t.title}</p>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              {t.role_label && <span className="badge bg-white/10 text-slate-400 text-[10px]">{t.role_label}</span>}
+                              <PriorityBadge priority={t.priority} />
+                              <StatusBadge status={t.status} />
+                            </div>
+                          </div>
+                          <span className={`text-slate-500 transition-transform shrink-0 ${openTaskId === t.id ? "rotate-90" : ""}`}>
+                            <ArrowRight className="h-4 w-4" />
+                          </span>
+                        </button>
+                        {openTaskId === t.id && (
+                          <div className="px-4 pb-3 pt-2 border-t border-white/[0.04] bg-white/[0.02]">
+                            <TaskDetails task={t} roleKey={roleKey} userId={userId} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
