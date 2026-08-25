@@ -210,7 +210,12 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
 const TASK_SELECT = `
   SELECT t.*, p.name AS project_name, c.name AS client_name,
          u.full_name AS assignee_name, r.label AS role_label,
-         t.due_date::text AS due_date
+         t.due_date::text AS due_date,
+         COALESCE((
+           SELECT json_agg(json_build_object('id', ta.user_id, 'name', ua.full_name) ORDER BY ua.full_name)
+           FROM task_assignees ta JOIN users ua ON ua.id = ta.user_id
+           WHERE ta.task_id = t.id
+         ), '[]'::json) AS assignees
   FROM tasks t
   JOIN projects p ON p.id = t.project_id
   JOIN clients c ON c.id = p.client_id

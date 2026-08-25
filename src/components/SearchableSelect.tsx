@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Search, Check } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Autocomplete, AutocompleteItem } from "@heroui/react";
 
 export interface SearchableOption {
   value: string;
@@ -22,80 +22,59 @@ export function SearchableSelect({
   onChange: (value: string) => void;
   placeholder?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
+  const [inputValue, setInputValue] = useState("");
   const selected = options.find((o) => o.value === value);
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? options.filter(
-        (o) =>
-          o.label.toLowerCase().includes(q) ||
-          (o.search || o.label).toLowerCase().includes(q)
-      )
-    : options;
 
-  function pick(v: string) {
-    onChange(v);
-    setQuery("");
-    setOpen(false);
-  }
+  const filtered = useMemo(() => {
+    const q = inputValue.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(
+      (o) => o.label.toLowerCase().includes(q) || (o.search || o.label).toLowerCase().includes(q)
+    );
+  }, [inputValue, options]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div>
       <input type="hidden" name={name} value={value} />
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`input text-left cursor-pointer ${value ? "" : "text-slate-500"}`}
+      <Autocomplete
+        variant="bordered"
+        radius="lg"
+        size="sm"
+        aria-label={placeholder}
+        placeholder={placeholder}
+        inputValue={inputValue}
+        onInputChange={(v) => setInputValue(v)}
+        selectedKey={value || null}
+        onSelectionChange={(key) => {
+          if (key !== null) {
+            onChange(String(key));
+            setInputValue("");
+          }
+        }}
+        defaultInputValue=""
+        items={filtered}
+        allowsCustomValue={false}
+        menuTrigger="focus"
+        classNames={{
+          popoverContent: "bg-night-850 border border-white/10",
+        }}
+        inputProps={{
+          classNames: {
+            input: "text-xs",
+            inputWrapper:
+              "min-h-8 h-8 bg-white/[0.03] border-white/10 group-data-[hover=true]:bg-white/[0.05]",
+          },
+          placeholder,
+        }}
       >
-        {selected ? selected.label : placeholder}
-      </button>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-
-      {open && (
-        <div className="absolute z-30 mt-1.5 w-full rounded-2xl border border-white/10 bg-night-850 shadow-lg shadow-black/40 overflow-hidden">
-          <div className="relative border-b border-white/10">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type to search…"
-              className="w-full py-2.5 pl-9 pr-3 text-sm outline-none"
-            />
-          </div>
-          <div className="max-h-56 overflow-y-auto py-1">
-            {filtered.length === 0 ? (
-              <p className="px-3 py-3 text-xs text-slate-500">No matches found.</p>
-            ) : (
-              filtered.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => pick(o.value)}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                    o.value === value ? "text-brand-300 bg-brand-300/10" : "text-slate-200 hover:bg-white/[0.06]"
-                  }`}
-                >
-                  <span className="truncate">{o.label}</span>
-                  {o.value === value && <Check className="h-3.5 w-3.5 shrink-0" />}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+        {(option) => (
+          <AutocompleteItem key={option.value} textValue={option.label}>
+            <span className={`text-xs ${option.value === value ? "text-brand-300 font-medium" : "text-slate-200"}`}>
+              {option.label}
+            </span>
+          </AutocompleteItem>
+        )}
+      </Autocomplete>
     </div>
   );
 }

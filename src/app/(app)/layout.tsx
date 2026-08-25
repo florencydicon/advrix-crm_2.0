@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getNotifications, getUnreadNotificationCount } from "@/lib/notifications";
 import AppShell from "@/components/AppShell";
-import { ToastProvider } from "@/components/Toast";
+import NotificationWatcher from "@/components/NotificationWatcher";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -14,10 +14,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   return (
-    <ToastProvider>
-      <AppShell session={session} notifications={notifications} unreadCount={unreadCount}>
-        {children}
-      </AppShell>
-    </ToastProvider>
+    <AppShell session={session} notifications={notifications} unreadCount={unreadCount}>
+      {children}
+      <NotificationWatcher />
+    </AppShell>
   );
 }

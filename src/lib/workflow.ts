@@ -47,9 +47,20 @@ async function assigneeForRole(roleKey: string): Promise<string | null> {
 }
 
 async function allocateTasksForRole(projectId: string, roleKey: string, userId: string | null) {
+  if (!userId) return;
+  // Multi-assignee: every open task of this role gains this member
+  // without ever removing members allotted previously.
+  await query(
+    `INSERT INTO task_assignees (task_id, user_id)
+     SELECT t.id, $3 FROM tasks t
+     WHERE t.project_id = $1 AND t.role_key = $2 AND t.status <> 'completed'
+     ON CONFLICT (task_id, user_id) DO NOTHING`,
+    [projectId, roleKey, userId]
+  );
+  // Primary assignee only fills empty slots — no overwriting.
   await query(
     `UPDATE tasks SET assigned_to = $3
-     WHERE project_id = $1 AND role_key = $2 AND status <> 'completed'`,
+     WHERE project_id = $1 AND role_key = $2 AND status <> 'completed' AND assigned_to IS NULL`,
     [projectId, roleKey, userId]
   );
 }
@@ -196,9 +207,10 @@ if (exists.length === 0) {
         `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
         [projectId, visualRole]
       );
-      await query(
+      const inserted = await query<{ id: string }>(
         `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, content, status, priority, assigned_to, created_by)
-         VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, $9, 'pending', 'medium', $10, NULL)`,
+         VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, $9, 'pending', 'medium', $10, NULL)
+         RETURNING id`,
         [
           projectId,
           visualStepKey,
@@ -212,6 +224,12 @@ if (exists.length === 0) {
           alloc[0]?.user_id ?? null,
         ]
       );
+      if (inserted[0]?.id && alloc[0]?.user_id) {
+        await query(
+          `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [inserted[0].id, alloc[0].user_id]
+        );
+      }
     }
   }
 

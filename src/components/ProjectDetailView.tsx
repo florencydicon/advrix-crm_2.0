@@ -12,6 +12,7 @@ import {
   updateTaskDueDateAction,
   setMemberLeaveAction,
   setTaskAssigneeAction,
+  removeTaskAssigneeAction,
 } from "@/lib/actions/projects";
 import type { PipelineClient } from "@/lib/data";
 import type { Assignment, UserRow } from "@/lib/types";
@@ -210,31 +211,30 @@ export default function ProjectDetailView({
                             <button type="button" onClick={() => setExpandedTaskId(isExpanded ? null : t.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.03] transition-colors">
                               <div className="flex-1 min-w-0">
                                 <p className="text-[12px] font-medium text-white truncate leading-tight">{t.title}</p>
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px] text-slate-500">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-[10px] text-slate-500">
                                   {t.role_label && <span className={`badge !px-1.5 !py-0 text-[10px] ${ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400"}`}>{t.role_label}</span>}
-                                  {t.assignee_name ? (
-                                    <span className="flex items-center gap-1">
-                                      <span className="h-4 w-4 rounded-full bg-white/10 flex items-center justify-center text-[8px] font-bold text-slate-300 shrink-0">{initials(t.assignee_name)}</span>
-                                      <span className="truncate max-w-[100px]">{t.assignee_name}</span>
-                                      {canManage && (
+                                  {(t.assignees?.length ? t.assignees : t.assignee_name ? [{ id: t.assigned_to || "", name: t.assignee_name }] : []).map((m) => (
+                                    <span key={m.id} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 pl-0.5 pr-1 py-0.5">
+                                      <span className="h-4 w-4 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">{initials(m.name)}</span>
+                                      <span className="text-[10px] text-slate-300 max-w-[90px] truncate">{m.name}</span>
+                                      {canManage && t.status !== "completed" && (
                                         <button
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            if (confirm(`Remove ${t.assignee_name} from "${t.title}"?`)) run(() => setTaskAssigneeAction(t.id, ""));
+                                            if (confirm(`Remove ${m.name} from "${t.title}"?`)) run(() => removeTaskAssigneeAction(t.id, m.id));
                                           }}
                                           disabled={pending}
-                                          className="p-0.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors disabled:opacity-40"
-                                          title="Remove assignee"
-                                          aria-label="Remove assignee"
+                                          className="p-0.5 rounded-full text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors disabled:opacity-40"
+                                          title={`Remove ${m.name}`}
+                                          aria-label={`Remove ${m.name}`}
                                         >
-                                          <X className="h-3 w-3" />
+                                          <X className="h-2.5 w-2.5" />
                                         </button>
                                       )}
                                     </span>
-                                  ) : (
-                                    <span className="text-slate-600">Unassigned</span>
-                                  )}
+                                  ))}
+                                  {!t.assignees?.length && !t.assignee_name && <span className="text-slate-600">Unassigned</span>}
                                   <span className={overdue ? "text-rose-300 font-medium" : "text-slate-400"}><CalendarDays className="h-3 w-3 inline-block mr-0.5" />{fmtDate(t.due_date)}{overdue && " · overdue"}</span>
                                   <StatusBadge status={t.status} />
                                 </div>

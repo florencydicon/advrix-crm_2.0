@@ -574,6 +574,12 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
     return { error: "Not authorized." };
   }
   await query(`UPDATE tasks SET assigned_to = $2 WHERE id = $1`, [taskId, assigneeId || null]);
+  if (assigneeId) {
+    await query(
+      `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [taskId, assigneeId]
+    );
+  }
 
   if (assigneeId && assigneeId !== session.sub) {
     const task = await query<{ title: string }>(`SELECT title FROM tasks WHERE id = $1`, [taskId]);
@@ -582,6 +588,44 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
       type: "task",
       title: "New task assigned to you",
       body: task[0]?.title ?? "A new task was assigned to you.",
+      link: "/projects",
+    });
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** Removes one specific member from a task without touching other assignees. */
+export async function removeTaskAssigneeAction(taskId: string, userId: string) {
+  const session = await getSession();
+  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+
+  await query(`DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2`, [taskId, userId]);
+
+  // If the removed member was the primary, promote the next member (alphabetical) or clear.
+  const task = await query<{ assigned_to: string | null; title: string }>(
+    `SELECT assigned_to, title FROM tasks WHERE id = $1`,
+    [taskId]
+  );
+  if (task[0]?.assigned_to === userId) {
+    const next = await query<{ user_id: string }>(
+      `SELECT ta.user_id FROM task_assignees ta JOIN users u ON u.id = ta.user_id
+       WHERE ta.task_id = $1 ORDER BY u.full_name ASC LIMIT 1`,
+      [taskId]
+    );
+    await query(`UPDATE tasks SET assigned_to = $2 WHERE id = $1`, [taskId, next[0]?.user_id ?? null]);
+  }
+
+  if (userId !== session.sub) {
+    await createNotification({
+      userId,
+      type: "task",
+      title: "Removed from a task",
+      body: `You were unassigned from "${task[0]?.title ?? "a task"}".`,
       link: "/projects",
     });
   }

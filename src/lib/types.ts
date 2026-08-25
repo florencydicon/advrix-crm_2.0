@@ -130,6 +130,7 @@ export interface Task {
   priority: string;
   assigned_to: string | null;
   assignee_name: string | null;
+  assignees: { id: string; name: string }[];
   review_comment: string | null;
   client_feedback: string | null;
   platforms: string[];
