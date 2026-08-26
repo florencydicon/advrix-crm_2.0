@@ -48,6 +48,7 @@ export interface Project {
   id: string;
   client_id: string;
   client_name: string;
+  client_company?: string | null;
   name: string;
   status: ProjectStatus;
   brief: string | null;
@@ -118,6 +119,7 @@ export interface Task {
   project_id: string;
   project_name: string;
   client_name: string;
+  client_company: string | null;
   step_key: string;
   group_key: string;
   role_key: RoleKey;

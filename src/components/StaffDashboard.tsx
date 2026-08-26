@@ -9,6 +9,7 @@ import type { Column } from "@/components/SmartTable";
 
 interface GroupedClient {
   client_name: string;
+  client_company: string | null;
   projects: { name: string; tasks: Task[] }[];
   tasks: Task[];
 }
@@ -33,17 +34,19 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
       (t) =>
         t.title.toLowerCase().includes(q) ||
         t.project_name.toLowerCase().includes(q) ||
-        t.client_name.toLowerCase().includes(q)
+        t.client_name.toLowerCase().includes(q) ||
+        (t.client_company || "").toLowerCase().includes(q)
     );
   }, [tasks, search]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, GroupedClient>();
     for (const t of filtered) {
-      if (!map.has(t.client_name)) {
-        map.set(t.client_name, { client_name: t.client_name, projects: [], tasks: [] });
+      const key = t.client_company || t.client_name;
+      if (!map.has(key)) {
+        map.set(key, { client_name: t.client_name, client_company: t.client_company, projects: [], tasks: [] });
       }
-      const client = map.get(t.client_name)!;
+      const client = map.get(key)!;
       client.tasks.push(t);
     }
     for (const client of map.values()) {
@@ -66,7 +69,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
       render: (t) => (
         <div>
           <p className="font-medium text-xs text-white">{t.title}</p>
-          <p className="text-[11px] text-slate-500">{t.project_name} · {t.client_name}</p>
+          <p className="text-[11px] text-slate-500">{t.project_name} · {t.client_company || t.client_name}</p>
         </div>
       ),
     },
@@ -142,22 +145,23 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
           <div className="card py-8 text-center text-xs text-slate-500">No tasks match your search.</div>
         )}
         {grouped.map((client) => {
-          const isOpen = openClient === client.client_name;
+          const key = client.client_company || client.client_name;
+          const isOpen = openClient === key;
           const done = client.tasks.filter((t) => t.status === "completed").length;
           const active = client.tasks.filter((t) => t.status !== "completed").length;
           return (
-            <div key={client.client_name} className="card overflow-hidden">
+            <div key={key} className="card overflow-hidden">
               <button
                 className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left"
-                onClick={() => { setOpenClient(isOpen ? null : client.client_name); setOpenTaskId(null); }}
+                onClick={() => { setOpenClient(isOpen ? null : key); setOpenTaskId(null); }}
               >
                 <div className="flex items-center gap-3">
                   <span className={`text-slate-500 transition-transform ${isOpen ? "rotate-90" : ""}`}>
                     <ArrowRight className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <p className="font-semibold text-sm text-white truncate">{client.client_name}</p>
-                    <p className="text-[11px] text-slate-500">{client.projects.length} project{client.projects.length === 1 ? "" : "s"}</p>
+                    <p className="font-semibold text-sm text-white truncate">{client.client_company || client.client_name}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{client.client_company ? client.client_name : `${client.projects.length} project${client.projects.length === 1 ? "" : "s"}`}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

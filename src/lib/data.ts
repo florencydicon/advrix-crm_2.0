@@ -134,6 +134,7 @@ export async function getProjectsForBoard(): Promise<ProjectRow[]> {
 export interface PipelineClient {
   client_id: string;
   client_name: string;
+  client_company: string | null;
   projects: PipelineProject[];
 }
 
@@ -150,11 +151,11 @@ export interface PipelineProject extends Project {
  */
 export async function getPipelineByClient(): Promise<PipelineClient[]> {
   try {
-    const projects = await query<Project>(
-      `SELECT p.*, c.name AS client_name,
+    const projects = await query<Project & { client_company: string | null }>(
+      `SELECT p.*, c.name AS client_name, c.company AS client_company,
               p.deadline::text AS deadline
        FROM projects p JOIN clients c ON c.id = p.client_id
-       ORDER BY c.name ASC, p.created_at DESC`
+       ORDER BY COALESCE(c.company, c.name) ASC, p.created_at DESC`
     );
     if (projects.length === 0) return [];
 
@@ -201,7 +202,7 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
       };
       if (!byClient.has(p.client_id)) {
         byClient.set(p.client_id, []);
-        clients.push({ client_id: p.client_id, client_name: p.client_name, projects: byClient.get(p.client_id)! });
+        clients.push({ client_id: p.client_id, client_name: p.client_name, client_company: (p as any).client_company, projects: byClient.get(p.client_id)! });
       }
       byClient.get(p.client_id)!.push(pipe);
     }
@@ -214,7 +215,7 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
 }
 
 const TASK_SELECT = `
-  SELECT t.*, p.name AS project_name, c.name AS client_name,
+  SELECT t.*, p.name AS project_name, c.name AS client_name, c.company AS client_company,
          u.full_name AS assignee_name, r.label AS role_label,
          t.due_date::text AS due_date,
          COALESCE((

@@ -131,7 +131,7 @@ export default function SmmDashboard({
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-xs text-white truncate">{t.title}</p>
                   <p className="text-[11px] text-slate-500 truncate">
-                    {t.client_name} · {t.project_name}
+                    {t.client_company || t.client_name} · {t.project_name}
                     {t.due_date ? ` · Due ${new Date(t.due_date).toLocaleDateString()}` : ""}
                   </p>
                 </div>

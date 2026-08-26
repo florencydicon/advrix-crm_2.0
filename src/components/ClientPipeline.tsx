@@ -103,12 +103,12 @@ export default function ClientPipeline({ pipeline }: { pipeline: PipelineClient[
             >
               <div className="flex items-start gap-3">
                 <div className="h-10 w-10 rounded-xl bg-brand-300/10 flex items-center justify-center shrink-0 text-brand-300 font-bold">
-                  {initials(c.client_name)}
+                  {initials(c.client_company || c.client_name)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white truncate">{c.client_name}</p>
-                  <p className="text-[11px] text-slate-500">
-                    {c.projects.length} project{c.projects.length === 1 ? "" : "s"}
+                  <p className="font-semibold text-white truncate">{c.client_company || c.client_name}</p>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {c.client_company ? c.client_name : `${c.projects.length} project${c.projects.length === 1 ? "" : "s"}`}
                     {c.pendingProjects > 0 && (
                       <span className="text-amber-300"> · {c.pendingProjects} awaiting approval</span>
                     )}

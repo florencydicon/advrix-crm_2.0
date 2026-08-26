@@ -349,15 +349,18 @@ async function ensureVisualTasksForAllocation(projectId: string, roleKey: string
     if (deliverables.length === 0) return;
     const types = await query<DeliverableTypeRow>(`SELECT key, content_role, visual_role FROM deliverable_types`);
     const typeMap = new Map(types.map((t) => [t.key, t]));
-    // Fix orphan Writer tasks for video_shoot/video_edit: if no WRITER is allocated on this
-    // project, the pending Writer "Content & Copy" placeholder is stale — convert it to the
-    // correct visual role so the yellow pill shows Videographer/Editor instead of Content Writer.
+    // Fix orphan Writer tasks for any WRITER→visual deliverable (Banner, Reel, Static Post, etc.)
+    // when no WRITER is allocated on this project. The pending Writer "Content & Copy"
+    // placeholder is stale — convert it to the correct visual role so the yellow pill shows
+    // Designer/Editor/Videographer instead of Content Writer, and tasks are assigned directly.
     const hasWriterAlloc = (await query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM assignments WHERE project_id = $1 AND role_key = 'WRITER'`, [projectId]))[0];
     const writerCount = Number(hasWriterAlloc?.c ?? 0);
     if (writerCount === 0) {
       for (const d of deliverables) {
-        if (d.category_key !== 'video_shoot' && d.category_key !== 'video_edit') continue;
+        const t = typeMap.get(d.category_key);
+        if (!t || t.content_role !== 'WRITER' || !t.visual_role) continue;
         const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
+        const targetRole = t.visual_role;
         for (let i = 1; i <= d.quantity; i++) {
           const contentStepKey = `${d.category_key}_c_${i}`;
           const rows = await query<{ id: string; role_key: string; assigned_to: string | null; status: string }>(
@@ -365,16 +368,22 @@ async function ensureVisualTasksForAllocation(projectId: string, roleKey: string
             [projectId, contentStepKey]
           );
           if (rows[0] && rows[0].role_key === 'WRITER' && !rows[0].assigned_to && rows[0].status === 'pending') {
-            const targetRole = d.category_key === 'video_shoot' ? 'VIDEOGRAPHER' : 'EDITOR';
             const visualStepKey = `${d.category_key}_v_${i}`;
-            await query(
-              `UPDATE tasks SET role_key = $2, step_key = $3, title = $4, description = $5 WHERE id = $1`,
-              [rows[0].id, targetRole, visualStepKey, `${label} ${pad(i)} — Visual`, `Produce the visual asset for "${label} ${pad(i)}".`]
-            );
-            // If the current allocation matches the target role, assign it immediately
-            if (targetRole === roleKey) {
-              await query(`INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [rows[0].id, userId]);
-              await query(`UPDATE tasks SET assigned_to = COALESCE(assigned_to, $2) WHERE id = $1`, [rows[0].id, userId]);
+            // Avoid duplicate if visual already exists for this index
+            const vExists = await query<{ id: string }>(`SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`, [projectId, visualStepKey]);
+            if (vExists.length > 0) {
+              // Visual already exists — just delete the stale Writer placeholder
+              await query(`DELETE FROM tasks WHERE id = $1`, [rows[0].id]);
+            } else {
+              await query(
+                `UPDATE tasks SET role_key = $2, step_key = $3, title = $4, description = $5 WHERE id = $1`,
+                [rows[0].id, targetRole, visualStepKey, `${label} ${pad(i)} — Visual`, `Produce the visual asset for "${label} ${pad(i)}".`]
+              );
+              // If the current allocation matches the target role, assign it immediately
+              if (targetRole === roleKey) {
+                await query(`INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [rows[0].id, userId]);
+                await query(`UPDATE tasks SET assigned_to = COALESCE(assigned_to, $2) WHERE id = $1`, [rows[0].id, userId]);
+              }
             }
           }
         }
