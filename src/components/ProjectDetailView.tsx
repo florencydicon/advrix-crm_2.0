@@ -22,6 +22,7 @@ import { StatusBadge, PlatformBadges } from "@/components/ui";
 import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
 import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
 
 function isoDate(v: string | Date | null | undefined): string {
@@ -71,6 +72,7 @@ export default function ProjectDetailView({
   userId: string;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [pending, start] = useTransition();
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [leaveTarget, setLeaveTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
@@ -182,6 +184,7 @@ export default function ProjectDetailView({
                         key={p.id}
                         project={p as unknown as Parameters<typeof DynamicTeamAllotment>[0]["project"]}
                         team={team}
+                        initial={p.assignments.map((a) => ({ role_key: a.role_key, user_id: a.user_id, deadline: a.allotment_deadline }))}
                         onSave={(filled) =>
                           run(() =>
                             assignProjectTeamAction(
@@ -355,7 +358,7 @@ export default function ProjectDetailView({
           onSubmit={(days) =>
             run(async () => {
               const res = await extendPersonDeadlineAction(extendTarget.projectId, extendTarget.assignment.user_id, days);
-              if (res?.error) { alert(res.error); }
+              if (res?.error) toast(res.error, "error");
               else setExtendTarget(null);
             })
           }
@@ -402,6 +405,7 @@ function ExtendPersonModal({
   onSubmit: (days: number) => void;
 }) {
   const [days, setDays] = useState(1);
+  const { toast } = useToast();
   return (
     <Modal open onClose={onClose} title="Extend individual deadline">
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSubmit(days); }}>

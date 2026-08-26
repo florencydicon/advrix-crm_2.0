@@ -248,6 +248,23 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
   const task = taskRows[0];
   if (!task) return { error: "Task not found." };
 
+  // Enforce workflow state machine — only valid transitions allowed
+  const validTransitions: Record<string, string[]> = {
+    pending: ["in_progress"],
+    in_progress: ["submitted"],
+    submitted: ["needs_improvement", "client_review", "completed"],
+    needs_improvement: ["in_progress"],
+    client_review: ["client_feedback", "client_approved"],
+    client_feedback: ["in_progress"],
+    client_approved: ["uploading", "completed"],
+    uploading: ["completed"],
+    completed: [],
+  };
+  const from = validTransitions[task.status];
+  if (from && !from.includes(status)) {
+    return { error: `Cannot move from "${task.status}" to "${status}". Valid next steps: ${from.join(", ")}.` };
+  }
+
   if (status === "completed" && task.deliverable_id && task.status !== "completed") {
     // Content task must have approved copy before it is completed.
     const deliverable = await query<{ category_key: string }>(

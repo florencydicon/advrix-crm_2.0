@@ -31,22 +31,32 @@ function blankRow(): TeamAllocationRow {
 }
 
 /**
- * Fully manual team allotment builder. Always starts completely blank —
- * the Project Manager picks a role, then an employee, then a deadline,
- * and persists the batch with Save. Nothing is ever pre-filled or
- * auto-assigned.
+ * Team allotment builder. Pre-populates existing allocations from the project
+ * so the PM sees what is already saved. New blank rows can be added below.
  */
 export function DynamicTeamAllotment({
   project,
   team,
+  initial,
   onSave,
 }: {
   project: ProjectRow;
   team: UserRow[];
+  initial?: { role_key: string; user_id: string; deadline?: string | null }[];
   onSave?: (rows: TeamAllocationRow[]) => void;
 }) {
   const { toast } = useToast();
-  const [rows, setRows] = useState<TeamAllocationRow[]>([blankRow()]);
+
+  const existingRows: TeamAllocationRow[] = (initial && initial.length > 0)
+    ? initial.map((a) => ({
+        id: uid(),
+        role_key: a.role_key,
+        user_id: a.user_id,
+        deadline: a.deadline || "",
+      }))
+    : [blankRow()];
+
+  const [rows, setRows] = useState<TeamAllocationRow[]>(existingRows);
 
   function addRow() {
     setRows((prev) => [...prev, blankRow()]);
