@@ -247,6 +247,7 @@ export async function handoffVisualTaskToSmm(projectId: string, taskId: string):
     [projectId]
   );
   const smmId = alloc[0]?.user_id ?? null;
+  if (!smmId) return null;
   await query(
     `UPDATE tasks SET assigned_to = $2, status = 'client_review', reviewed_at = now()
      WHERE id = $1`,
@@ -264,6 +265,7 @@ export async function routeVisualTaskToProducer(projectId: string, taskId: strin
     [projectId, visualRole]
   );
   const userId = alloc[0]?.user_id ?? null;
+  if (!userId) return null;
   await query(
     `UPDATE tasks SET assigned_to = $2, status = 'client_feedback', reviewed_at = now()
      WHERE id = $1`,

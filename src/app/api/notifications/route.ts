@@ -7,12 +7,16 @@ export async function GET(_req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const [items, unread] = await Promise.all([
-    getNotifications(session.sub, 15),
-    getUnreadNotificationCount(session.sub),
-  ]);
-  return NextResponse.json(
-    { items, unread },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+  try {
+    const [items, unread] = await Promise.all([
+      getNotifications(session.sub, 15),
+      getUnreadNotificationCount(session.sub),
+    ]);
+    return NextResponse.json(
+      { items, unread },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch {
+    return NextResponse.json({ items: [], unread: 0 }, { headers: { "Cache-Control": "no-store" } });
+  }
 }

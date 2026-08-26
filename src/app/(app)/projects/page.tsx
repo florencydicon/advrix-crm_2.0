@@ -10,7 +10,8 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<{ client?: string }>;
 }) {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   if (!["PROJECT_MANAGER", "SUPER_ADMIN"].includes(session.role_key)) redirect("/dashboard");
 
   const params = await searchParams;

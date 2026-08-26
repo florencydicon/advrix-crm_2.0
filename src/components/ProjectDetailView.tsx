@@ -85,8 +85,13 @@ export default function ProjectDetailView({
 
   function run(fn: () => Promise<unknown>) {
     start(async () => {
-      await fn();
-      router.refresh();
+      try {
+        await fn();
+        router.refresh();
+      } catch (e: any) {
+        if (e?.digest?.startsWith("NEXT_REDIRECT")) throw e;
+        toast("Something went wrong. Please try again.", "error");
+      }
     });
   }
 
@@ -166,7 +171,7 @@ export default function ProjectDetailView({
                       {canManage && p.status === "in_progress" && (
                         <>
                           {p.assignments.some((a) => !a.on_leave) && (
-                            <button className="badge !px-2 !py-0.5 text-[11px] bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 transition-colors cursor-pointer" onClick={() => setLeaveTarget({ projectId: p.id, assignment: p.assignments.find((a) => !a.on_leave)! })}>
+                            <button className="badge !px-2 !py-0.5 text-[11px] bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 transition-colors cursor-pointer" onClick={() => { const a = p.assignments.find((a) => !a.on_leave); if (a) setLeaveTarget({ projectId: p.id, assignment: a }); }}>
                               <Coffee className="h-3 w-3 mr-0.5" /> On leave…
                             </button>
                           )}

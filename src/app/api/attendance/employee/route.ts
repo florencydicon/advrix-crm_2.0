@@ -23,9 +23,9 @@ export async function GET(req: NextRequest) {
   }
 
   const [records, summary, leaves] = await Promise.all([
-    getEmployeeAttendanceDetail(userId, start, end),
-    getEmployeeAttendanceSummary(userId, start, end),
-    getEmployeeLeavesDetail(userId, start, end),
+    getEmployeeAttendanceDetail(userId, start, end).catch(() => []),
+    getEmployeeAttendanceSummary(userId, start, end).catch(() => ({ totalDays: 0, presentDays: 0, lateDays: 0, absentDays: 0, onLeaveDays: 0, totalHours: 0 })),
+    getEmployeeLeavesDetail(userId, start, end).catch(() => []),
   ]);
 
   return NextResponse.json({ records, summary, leaves });

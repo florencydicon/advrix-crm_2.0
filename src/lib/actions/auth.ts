@@ -111,41 +111,51 @@ export async function loginAction(
 
   if (!email || !password) return { error: "Email and password are required." };
 
-  const throttled = await throttleCheck(email, ip);
-  if (throttled) return { error: throttled };
+  try {
+    const throttled = await throttleCheck(email, ip);
+    if (throttled) return { error: throttled };
 
-  const rows = await query<AuthUser>(
-    `SELECT u.id, u.email, u.full_name, u.password_hash, u.is_active,
-            r.key AS role_key, r.label AS role_label, r.dashboard
-     FROM users u JOIN roles r ON r.id = u.role_id
-     WHERE lower(u.email) = lower($1)`,
-    [email]
-  );
+    const rows = await query<AuthUser>(
+      `SELECT u.id, u.email, u.full_name, u.password_hash, u.is_active,
+              r.key AS role_key, r.label AS role_label, r.dashboard
+       FROM users u JOIN roles r ON r.id = u.role_id
+       WHERE lower(u.email) = lower($1)`,
+      [email]
+    );
 
-  const user = rows[0];
-  if (!user || !user.is_active) {
-    await throttleFail(email, ip);
-    return { error: "Invalid credentials or inactive account." };
+    const user = rows[0];
+    if (!user || !user.is_active) {
+      await throttleFail(email, ip);
+      return { error: "Invalid credentials or inactive account." };
+    }
+
+    let ok = false;
+    try {
+      ok = await bcrypt.compare(password, user.password_hash);
+    } catch {
+      return { error: "Invalid email or password." };
+    }
+    if (!ok) {
+      await throttleFail(email, ip);
+      return { error: "Invalid email or password." };
+    }
+
+    await throttleReset(email);
+
+    const token = await createSessionToken({
+      sub: user.id,
+      email: user.email,
+      name: user.full_name,
+      role_key: user.role_key,
+      role_label: user.role_label,
+      dashboard: user.dashboard,
+    });
+    await setSessionCookie(token);
+    redirect("/dashboard");
+  } catch (e: any) {
+    if (e?.digest?.startsWith("NEXT_REDIRECT")) throw e;
+    return { error: "Login failed. Please try again." };
   }
-
-  const ok = await bcrypt.compare(password, user.password_hash);
-  if (!ok) {
-    await throttleFail(email, ip);
-    return { error: "Invalid email or password." };
-  }
-
-  await throttleReset(email);
-
-  const token = await createSessionToken({
-    sub: user.id,
-    email: user.email,
-    name: user.full_name,
-    role_key: user.role_key,
-    role_label: user.role_label,
-    dashboard: user.dashboard,
-  });
-  await setSessionCookie(token);
-  redirect("/dashboard");
 }
 
 export async function logoutAction() {

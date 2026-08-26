@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
 import {
@@ -49,7 +50,8 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<{ month?: string; year?: string }>;
 }) {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   const isAdmin = session.role_key === "SUPER_ADMIN";
 
   await ensureLocationColumns();

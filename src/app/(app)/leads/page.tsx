@@ -6,7 +6,8 @@ import LeadsView from "@/components/LeadsView";
 export const metadata = { title: "Sales Leads — Advrix CRM" };
 
 export default async function LeadsPage() {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   if (!["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) {
     redirect("/dashboard");
   }

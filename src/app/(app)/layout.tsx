@@ -8,8 +8,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect("/login");
 
   const [notifications, unreadCount] = await Promise.all([
-    getNotifications(session.sub, 8),
-    getUnreadNotificationCount(session.sub),
+    getNotifications(session.sub, 8).catch(() => []),
+    getUnreadNotificationCount(session.sub).catch(() => 0),
   ]);
 
   return (

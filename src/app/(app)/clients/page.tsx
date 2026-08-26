@@ -10,7 +10,8 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<{ page?: string; search?: string }>;
 }) {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   if (!["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) redirect("/dashboard");
 
   const params = await searchParams;

@@ -10,7 +10,8 @@ export default async function ClientPipelinePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   if (!["PROJECT_MANAGER", "SUPER_ADMIN"].includes(session.role_key)) redirect("/dashboard");
 
   const { id } = await params;

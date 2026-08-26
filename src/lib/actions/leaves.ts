@@ -56,20 +56,20 @@ export async function approveLeaveAction(leaveId: string) {
     [leaveId]
   );
 
+  if (!leave[0]) return { error: "Leave not found." };
+
   await query(
     `UPDATE leaves SET status = 'approved', approved_by = $1, approved_at = now() WHERE id = $2`,
     [session.sub, leaveId]
   );
 
-  if (leave[0]) {
-    await createNotification({
-      userId: leave[0].user_id,
-      type: "leave",
-      title: "Leave approved",
-      body: `Your ${leave[0].leave_type} leave (${leave[0].start_date} to ${leave[0].end_date}) was approved.`,
-      link: "/attendance",
-    });
-  }
+  await createNotification({
+    userId: leave[0].user_id,
+    type: "leave",
+    title: "Leave approved",
+    body: `Your ${leave[0].leave_type} leave (${leave[0].start_date} to ${leave[0].end_date}) was approved.`,
+    link: "/attendance",
+  });
 
   revalidatePath("/attendance");
   revalidatePath("/leaves");
@@ -90,20 +90,20 @@ export async function rejectLeaveAction(leaveId: string, rejectionReason: string
     [leaveId]
   );
 
+  if (!leave[0]) return { error: "Leave not found." };
+
   await query(
     `UPDATE leaves SET status = 'rejected', approved_by = $1, approved_at = now(), rejection_reason = $2 WHERE id = $3`,
     [session.sub, rejectionReason.trim(), leaveId]
   );
 
-  if (leave[0]) {
-    await createNotification({
-      userId: leave[0].user_id,
-      type: "leave",
-      title: "Leave rejected",
-      body: `Your ${leave[0].leave_type} leave (${leave[0].start_date} to ${leave[0].end_date}) was rejected.`,
-      link: "/attendance",
-    });
-  }
+  await createNotification({
+    userId: leave[0].user_id,
+    type: "leave",
+    title: "Leave rejected",
+    body: `Your ${leave[0].leave_type} leave (${leave[0].start_date} to ${leave[0].end_date}) was rejected.`,
+    link: "/attendance",
+  });
 
   revalidatePath("/attendance");
   revalidatePath("/leaves");

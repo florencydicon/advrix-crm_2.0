@@ -10,7 +10,8 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ page?: string; search?: string; role?: string }>;
 }) {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   if (session.role_key !== "SUPER_ADMIN") redirect("/dashboard");
 
   const params = await searchParams;

@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { redirect } from "next/navigation";
 import { FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase, CalendarDays, Download, Folder } from "lucide-react";
 import { getSession } from "@/lib/session";
 import { getMyTasks, getProjects, getLeadStats, getTaskStatusCounts } from "@/lib/data";
@@ -17,7 +18,8 @@ function greeting() {
 }
 
 export default async function DashboardPage() {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   const firstName = session.name.split(" ")[0];
 
   if (STAFF_ROLES.includes(session.role_key)) {

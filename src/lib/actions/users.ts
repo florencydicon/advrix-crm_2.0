@@ -29,7 +29,7 @@ export async function createUserAction(formData: FormData) {
   const roleExists = await query<{ id: string }>(`SELECT id FROM roles WHERE key = $1`, [role_key]);
   if (!roleExists[0]) return { error: "Invalid role." };
 
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = await bcrypt.hash(password, 10);
   const encrypted = encryptSecret(password);
 
   const existing = await query<{ id: string }>(`SELECT id FROM users WHERE lower(email) = lower($1)`, [email]);
@@ -67,7 +67,7 @@ export async function resetPasswordAction(userId: string, password: string) {
   }
   const passErr = validatePassword(password);
   if (passErr) return { error: passErr };
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = await bcrypt.hash(password, 10);
   const encrypted = encryptSecret(password);
   await query(`UPDATE users SET password_hash = $2, password_enc = $3 WHERE id = $1`, [
     userId,
@@ -104,9 +104,11 @@ export async function changeRoleAction(userId: string, roleKey: string) {
   if (!session || session.role_key !== "SUPER_ADMIN") {
     return { error: "Not authorized." };
   }
+  const roleExists = await query<{ id: string }>(`SELECT id FROM roles WHERE key = $1`, [roleKey]);
+  if (!roleExists[0]) return { error: "Invalid role." };
   await query(
-    `UPDATE users SET role_id = (SELECT id FROM roles WHERE key = $2) WHERE id = $1`,
-    [userId, roleKey]
+    `UPDATE users SET role_id = $2 WHERE id = $1`,
+    [userId, roleExists[0].id]
   );
   revalidatePath("/team");
   revalidatePath("/settings");

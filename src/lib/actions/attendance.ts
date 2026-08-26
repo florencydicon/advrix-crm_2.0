@@ -30,8 +30,6 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
 
-  await ensureLocationColumns();
-
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
 
@@ -68,8 +66,6 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
 export async function punchOutAction(loc: { latitude: number | null; longitude: number | null; location_text: string | null }) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
-
-  await ensureLocationColumns();
 
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();

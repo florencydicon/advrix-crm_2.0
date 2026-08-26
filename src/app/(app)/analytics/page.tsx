@@ -8,7 +8,8 @@ import { Stat, ProjectStatusBadge } from "@/components/ui";
 export const metadata = { title: "Analytics — Advrix CRM" };
 
 export default async function AnalyticsPage() {
-  const session = (await getSession())!;
+  const session = await getSession();
+  if (!session) redirect("/login");
   if (!["SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) redirect("/dashboard");
 
   const [analytics, bottlenecks] = await Promise.all([getAnalytics(), getBottlenecks()]);
