@@ -2,6 +2,7 @@ import "@/lib/env";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, getSigningSecret } from "@/lib/constants";
+import { query } from "@/lib/db";
 
 const SESSION_COOKIE = SESSION_COOKIE_NAME;
 const secret = getSigningSecret();
@@ -52,5 +53,17 @@ export async function getSession(): Promise<SessionPayload | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  return await verifySessionToken(token);
+  const payload = await verifySessionToken(token);
+  if (!payload) return null;
+  // Verify user is still active — catches deactivations before JWT expires.
+  try {
+    const rows = await query<{ is_active: boolean }>(
+      `SELECT is_active FROM users WHERE id = $1`,
+      [payload.sub]
+    );
+    if (rows.length === 0 || !rows[0].is_active) return null;
+  } catch {
+    // DB check is best-effort — if it fails, let the JWT session through.
+  }
+  return payload;
 }

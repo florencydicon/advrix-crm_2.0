@@ -67,13 +67,23 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
 
-  const today = new Date().toISOString().slice(0, 10);
-  const now = new Date().toISOString();
+  const now = new Date();
 
-  const existing = await query<{ id: string; punch_in: string | null; punch_out: string | null }>(
-    `SELECT id, punch_in, punch_out FROM attendance WHERE user_id = $1 AND date = $2`,
-    [session.sub, today]
+  // Look for today's punch-in first, then yesterday's (handles midnight crossover).
+  let existing = await query<{ id: string; punch_in: string | null; punch_out: string | null; date: string }>(
+    `SELECT id, punch_in, punch_out, date::text AS date FROM attendance WHERE user_id = $1 AND date = $2`,
+    [session.sub, now.toISOString().slice(0, 10)]
   );
+
+  if (!existing[0]?.punch_in) {
+    // Check yesterday's record for punch-in around midnight
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    existing = await query<{ id: string; punch_in: string | null; punch_out: string | null; date: string }>(
+      `SELECT id, punch_in, punch_out, date::text AS date FROM attendance WHERE user_id = $1 AND date = $2`,
+      [session.sub, yesterday.toISOString().slice(0, 10)]
+    );
+  }
 
   const record = existing[0];
   if (!record?.punch_in) {
@@ -85,12 +95,12 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
   }
 
   const punchIn = new Date(record.punch_in);
-  const punchOut = new Date(now);
+  const punchOut = now;
   const hours = (punchOut.getTime() - punchIn.getTime()) / 3600000;
 
   await query(
     `UPDATE attendance SET punch_out = $1, hours_worked = $2, latitude = $3, longitude = $4, location_text = $5 WHERE id = $6`,
-    [now, Math.round(hours * 100) / 100, loc.latitude, loc.longitude, loc.location_text, record.id]
+    [punchOut.toISOString(), Math.round(hours * 100) / 100, loc.latitude, loc.longitude, loc.location_text, record.id]
   );
 
   revalidatePath("/attendance");

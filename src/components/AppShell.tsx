@@ -199,7 +199,10 @@ export default function AppShell({
       prevUnread.current = Math.max(0, prevUnread.current - 1);
       await markNotificationReadAction(notif.id);
     }
-    if (notif.link) router.push(notif.link);
+    // Only navigate to known internal routes — prevents phishing via compromised notifications.
+    if (notif.link && notif.link.startsWith("/") && !notif.link.startsWith("//")) {
+      router.push(notif.link);
+    }
   }
 
   async function handleMarkAll() {

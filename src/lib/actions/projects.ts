@@ -241,6 +241,9 @@ export async function updateTaskContentAction(taskId: string, content: string) {
 export async function updateTaskStatusAction(taskId: string, status: string) {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
+  if (!CAN_MANAGE.includes(session.role_key)) {
+    return { error: "Only managers can update task status directly." };
+  }
 
   const allowed = ["pending", "in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading", "completed"];
   if (!allowed.includes(status)) return { error: "Invalid status." };
@@ -373,8 +376,8 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
   if (task.assigned_to !== session.sub && !CAN_REVIEW.includes(session.role_key)) {
     return { error: "Only the assignee can submit this task." };
   }
-  if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) {
-    return { error: "Task is not in an editable state." };
+  if (task.status !== "in_progress") {
+    return { error: "Task is not in progress. Start the task before submitting." };
   }
 
   // Producers may submit with content passed through directly.

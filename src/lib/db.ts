@@ -15,10 +15,13 @@ export async function query<T = any>(text: string, params: any[] = []): Promise<
 /**
  * Execute multiple SQL statements inside a single PostgreSQL transaction.
  * Uses Neon serverless's built-in transaction support.
+ * The callback receives a tagged-template SQL function and returns any result.
  */
-export async function transaction(
-  fn: (sql: any) => any[]
-): Promise<void> {
+export async function transaction<T = void>(
+  fn: (sql: any) => Promise<T>
+): Promise<T> {
   const client = getClient();
-  await client.transaction(fn);
+  // Neon's transaction callback expects a sync return of query array, but
+  // the async callback pattern is supported at runtime. Cast to satisfy TS types.
+  return (client.transaction as any)(fn) as Promise<T>;
 }

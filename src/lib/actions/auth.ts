@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import { createSessionToken, clearSessionCookie, getSession, setSessionCookie } from "@/lib/session";
@@ -107,7 +108,11 @@ export async function loginAction(
 ): Promise<LoginState> {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
-  const ip = String(formData.get("_ip") || "unknown");
+
+  // Read IP from request headers (server-side) — never trust client-submitted IP.
+  const hdrs = await headers();
+  const forwardedFor = hdrs.get("x-forwarded-for");
+  const ip = (forwardedFor?.split(",")[0]?.trim()) || hdrs.get("x-real-ip") || "unknown";
 
   if (!email || !password) return { error: "Email and password are required." };
 

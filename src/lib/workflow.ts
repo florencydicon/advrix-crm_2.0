@@ -333,6 +333,17 @@ export function addWorkingDays(start: Date, days: number): Date {
   return d;
 }
 
+/** Counts the number of working days (Sundays excluded) between two dates. */
+function countWorkingDays(from: Date, to: Date): number {
+  let count = 0;
+  const d = new Date(from.getTime());
+  while (d < to) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0) count += 1;
+  }
+  return Math.max(0, count);
+}
+
 function toISODate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -373,8 +384,8 @@ export async function computeSequentialDeadlines(projectId: string) {
 
     if (deadlineStr) {
       const end = new Date(`${deadlineStr}T12:00:00`);
-      const spanDays = Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
-      const step = totalTasks > 1 ? Math.max(1, Math.floor(spanDays / (totalTasks - 1))) : spanDays;
+      const workDays = countWorkingDays(start, end);
+      const step = totalTasks > 1 ? Math.max(1, Math.floor(workDays / (totalTasks - 1))) : workDays;
       let cursor = new Date(start.getTime());
       for (let i = 0; i < totalTasks; i++) {
         cursor = addWorkingDays(cursor, i === 0 ? 1 : Math.max(1, step));

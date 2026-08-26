@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { query } from "@/lib/db";
+import { query, transaction } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createNotification } from "@/lib/notifications";
 import { validateEmail, validateFullName, validatePhone } from "@/lib/validation";
@@ -147,48 +147,52 @@ export async function deleteLeadAction(leadId: string) {
   return { ok: true };
 }
 
-/** Convert a won lead into a client account. */
+/** Convert a won lead into a client account (atomic via transaction). */
 export async function convertLeadAction(leadId: string) {
   const access = await requireLeadAccess();
   if (!access) return { error: "Not authorized." };
 
-  let sqlTxt = `SELECT id, name, company, email, phone FROM leads WHERE id = $1`;
-  const args: unknown[] = [leadId];
-  if (access.ownerId) {
-    sqlTxt += ` AND owner_id = $2`;
-    args.push(access.ownerId);
+  let clientId = "";
+  let leadName = "";
+
+  try {
+    await transaction(async (txSql) => {
+      // Use Neon's tagged template for the first query to leverage transaction context.
+      let leads;
+      if (access.ownerId) {
+        leads = await txSql`SELECT id, name, company, email, phone
+          FROM leads WHERE id = ${leadId} AND converted_client_id IS NULL AND owner_id = ${access.ownerId}`;
+      } else {
+        leads = await txSql`SELECT id, name, company, email, phone
+          FROM leads WHERE id = ${leadId} AND converted_client_id IS NULL`;
+      }
+      const lead = leads[0];
+      if (!lead) throw new Error("Lead not found or already converted.");
+
+      const clients = await txSql`INSERT INTO clients (name, company, email, phone, created_by)
+        VALUES (${lead.name}, ${lead.company}, ${lead.email}, ${lead.phone}, ${access.session.sub})
+        RETURNING id`;
+      clientId = clients[0].id;
+      leadName = lead.name;
+
+      await txSql`UPDATE leads SET status = 'won', converted_client_id = ${clientId}, updated_at = now()
+        WHERE id = ${leadId}`;
+    });
+  } catch (e: any) {
+    return { error: e?.message || "Conversion failed." };
   }
-  const lead = (
-    await query<{ id: string; name: string; company: string | null; email: string | null; phone: string | null; converted_client_id: string | null }>(
-      sqlTxt,
-      args
-    )
-  )[0];
-  if (!lead) return { error: "Lead not found." };
-  if (lead.converted_client_id) return { error: "This lead was already converted to a client." };
 
-  const client = (
-    await query<{ id: string }>(
-      `INSERT INTO clients (name, company, email, phone, created_by)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [lead.name, lead.company, lead.email, lead.phone, access.session.sub]
-    )
-  )[0];
-
-  await query(
-    `UPDATE leads SET status = 'won', converted_client_id = $2, updated_at = now() WHERE id = $1`,
-    [leadId, client.id]
-  );
+  if (!clientId) return { error: "Conversion failed." };
 
   await createNotification({
     userId: access.session.sub,
     type: "system",
     title: "Lead converted",
-    body: `"${lead.name}" is now a client.`,
+    body: `"${leadName}" is now a client.`,
     link: "/clients",
   });
 
   revalidatePath("/leads");
   revalidatePath("/clients");
-  return { ok: true, clientId: client.id };
+  return { ok: true, clientId };
 }
