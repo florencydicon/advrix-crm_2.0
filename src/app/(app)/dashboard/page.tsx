@@ -1,8 +1,15 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase, CalendarDays, Download, Folder } from "lucide-react";
+import {
+  FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase,
+  CalendarDays, Download, Folder, AlertTriangle, FileCheck, UserCheck,
+  ListTodo,
+} from "lucide-react";
 import { getSession } from "@/lib/session";
-import { getMyTasks, getProjects, getLeadStats, getTaskStatusCounts } from "@/lib/data";
+import {
+  getMyTasks, getProjects, getLeadStats, getTaskStatusCounts,
+  getSubmittedTasks, getAllLeaves, getBottlenecks,
+} from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
@@ -90,13 +97,55 @@ export default async function DashboardPage() {
   }
 
 const isSuperAdmin = session.role_key === "SUPER_ADMIN";
-  const [projects, leadStats, taskCounts] = await Promise.all([
+  const [projects, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
     getProjects(),
     isSuperAdmin ? getLeadStats(null) : Promise.resolve(null as any),
     isSuperAdmin ? getTaskStatusCounts() : Promise.resolve({} as Record<string, number>),
+    getSubmittedTasks(),
+    getAllLeaves({ status: "pending" }),
+    isSuperAdmin ? getBottlenecks() : Promise.resolve([] as any),
   ]);
   const pending = projects.filter((p) => p.status === "pending_approval");
   const active = projects.filter((p) => p.status === "in_progress");
+
+  type ActionItem = {
+    id: string;
+    type: "project" | "task" | "leave" | "bottleneck";
+    title: string;
+    subtitle: string;
+    href: string;
+  };
+  const actionItems: ActionItem[] = [
+    ...pending.map((p): ActionItem => ({
+      id: `proj-${p.id}`,
+      type: "project",
+      title: p.name,
+      subtitle: `Client: ${p.client_name}`,
+      href: `/projects/${p.id}`,
+    })),
+    ...submittedTasks.map((t): ActionItem => ({
+      id: `task-${t.id}`,
+      type: "task",
+      title: t.title,
+      subtitle: `${t.project_name} — ${t.role_label || t.role_key}`,
+      href: `/projects/${t.project_id}?project=${t.project_id}&task=${t.step_key}`,
+    })),
+    ...pendingLeaves.map((l): ActionItem => ({
+      id: `leave-${l.id}`,
+      type: "leave",
+      title: `${l.full_name} — ${l.leave_type.charAt(0).toUpperCase() + l.leave_type.slice(1)} Leave`,
+      subtitle: `${l.days}d  ${l.start_date} to ${l.end_date}`,
+      href: "/attendance",
+    })),
+    ...bottlenecks.map((b: any): ActionItem => ({
+      id: `bn-${b.task_id}`,
+      type: "bottleneck",
+      title: b.title,
+      subtitle: `${b.assignee_name || "Unassigned"} — ${b.days_open}d open`,
+      href: `/projects/${b.project_id}?project=${b.project_id}`,
+    })),
+  ];
+  const totalActionCount = actionItems.length;
 
   // Super Admin — Command Center dashboard
   if (isSuperAdmin) {
@@ -226,31 +275,67 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
             <h2 className="font-semibold text-sm">Action & Approval Center</h2>
-            <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{pending.length}</span>
+            <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{totalActionCount}</span>
           </div>
-          {pending.length === 0 ? (
+
+          {totalActionCount === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
               <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center mb-2">
                 <Folder className="h-5 w-5 text-slate-500" />
               </div>
-              <p className="text-sm text-slate-400">Nothing waiting for approval.</p>
+              <p className="text-sm text-slate-400">Nothing waiting for action.</p>
             </div>
           ) : (
-            <div className="divide-y divide-white/[0.06]">
-              {pending.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3 hover:bg-white/[0.04] transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{p.name}</p>
-                    <p className="text-xs text-slate-500 truncate">{p.client_name}</p>
+            <>
+              {/* summary row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 md:px-5 pt-3">
+                {([
+                  { type: "project", label: "Pending Approval", icon: <FileCheck className="h-3.5 w-3.5 text-amber-400" />, color: "bg-amber-400/10 border-amber-400/20 text-amber-300" },
+                  { type: "task", label: "Submitted Tasks", icon: <ListTodo className="h-3.5 w-3.5 text-sky-400" />, color: "bg-sky-400/10 border-sky-400/20 text-sky-300" },
+                  { type: "leave", label: "Pending Leaves", icon: <UserCheck className="h-3.5 w-3.5 text-violet-400" />, color: "bg-violet-400/10 border-violet-400/20 text-violet-300" },
+                  { type: "bottleneck", label: "Bottlenecks", icon: <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />, color: "bg-rose-400/10 border-rose-400/20 text-rose-300" },
+                ] as const).map((s) => (
+                  <div key={s.type} className={`rounded-xl border p-2.5 flex items-center gap-2 ${s.color}`}>
+                    {s.icon}
+                    <div>
+                      <p className="text-[10px] md:text-[11px] opacity-80 leading-tight">{s.label}</p>
+                      <p className="text-base font-bold text-white">{actionItems.filter((i) => i.type === s.type).length}</p>
+                    </div>
                   </div>
-                  <Link href="/projects" className="btn-secondary !py-1.5 text-xs shrink-0">Review</Link>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+
+              {/* item list */}
+              <div className="divide-y divide-white/[0.06] max-h-72 overflow-y-auto mt-2">
+                {actionItems.map((item) => (
+                  <Link key={item.id} href={item.href} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3 hover:bg-white/[0.04] transition-colors">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
+                          item.type === "project" ? "bg-amber-400" :
+                          item.type === "task" ? "bg-sky-400" :
+                          item.type === "leave" ? "bg-violet-400" :
+                          "bg-rose-400"
+                        }`} />
+                        <p className="text-sm font-medium text-white truncate">{item.title}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 truncate ml-3.5">{item.subtitle}</p>
+                    </div>
+                    <span className="badge text-[10px] shrink-0 whitespace-nowrap capitalize bg-white/[0.06] text-slate-400 border-white/10">
+                      {item.type}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </>
           )}
-          <div className="px-4 md:px-5 py-3 border-t border-white/[0.06]">
-            <Link href="/projects" className="btn-secondary w-full justify-center text-xs">
-              <FolderKanban className="h-3.5 w-3.5" /> Open full pipeline board
+
+          <div className="px-4 md:px-5 py-3 border-t border-white/[0.06] flex gap-2">
+            <Link href="/projects" className="btn-secondary flex-1 justify-center text-xs">
+              <FolderKanban className="h-3.5 w-3.5" /> Projects
+            </Link>
+            <Link href="/attendance" className="btn-secondary flex-1 justify-center text-xs">
+              <CalendarDays className="h-3.5 w-3.5" /> Attendance
             </Link>
           </div>
         </div>
@@ -291,31 +376,65 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">
           <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           <h2 className="font-semibold text-sm">Action & Approval Center</h2>
-          <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{pending.length}</span>
+          <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{totalActionCount}</span>
         </div>
-        {pending.length === 0 ? (
+
+        {totalActionCount === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
             <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center mb-2">
               <Folder className="h-5 w-5 text-slate-500" />
             </div>
-            <p className="text-sm text-slate-400">Nothing waiting for approval.</p>
+            <p className="text-sm text-slate-400">Nothing waiting for action.</p>
           </div>
         ) : (
-          <div className="divide-y divide-white/[0.06]">
-            {pending.map((p) => (
-              <div key={p.id} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3 hover:bg-white/[0.04] transition-colors">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{p.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{p.client_name}</p>
+          <>
+            <div className="grid grid-cols-2 gap-2 px-4 md:px-5 pt-3">
+              {([
+                { type: "project", label: "Pending Approval", icon: <FileCheck className="h-3.5 w-3.5 text-amber-400" />, color: "bg-amber-400/10 border-amber-400/20 text-amber-300" },
+                { type: "task", label: "Submitted Tasks", icon: <ListTodo className="h-3.5 w-3.5 text-sky-400" />, color: "bg-sky-400/10 border-sky-400/20 text-sky-300" },
+                { type: "leave", label: "Pending Leaves", icon: <UserCheck className="h-3.5 w-3.5 text-violet-400" />, color: "bg-violet-400/10 border-violet-400/20 text-violet-300" },
+                { type: "bottleneck", label: "Bottlenecks", icon: <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />, color: "bg-rose-400/10 border-rose-400/20 text-rose-300" },
+              ] as const).map((s) => (
+                <div key={s.type} className={`rounded-xl border p-2.5 flex items-center gap-2 ${s.color}`}>
+                  {s.icon}
+                  <div>
+                    <p className="text-[10px] md:text-[11px] opacity-80 leading-tight">{s.label}</p>
+                    <p className="text-base font-bold text-white">{actionItems.filter((i) => i.type === s.type).length}</p>
+                  </div>
                 </div>
-                <Link href="/projects" className="btn-secondary !py-1.5 text-xs shrink-0">Review</Link>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+
+            <div className="divide-y divide-white/[0.06] max-h-72 overflow-y-auto mt-2">
+              {actionItems.map((item) => (
+                <Link key={item.id} href={item.href} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3 hover:bg-white/[0.04] transition-colors">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
+                        item.type === "project" ? "bg-amber-400" :
+                        item.type === "task" ? "bg-sky-400" :
+                        item.type === "leave" ? "bg-violet-400" :
+                        "bg-rose-400"
+                      }`} />
+                      <p className="text-sm font-medium text-white truncate">{item.title}</p>
+                    </div>
+                    <p className="text-xs text-slate-500 truncate ml-3.5">{item.subtitle}</p>
+                  </div>
+                  <span className="badge text-[10px] shrink-0 whitespace-nowrap capitalize bg-white/[0.06] text-slate-400 border-white/10">
+                    {item.type}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </>
         )}
-        <div className="px-4 md:px-5 py-3 border-t border-white/[0.06]">
-          <Link href="/projects" className="btn-secondary w-full justify-center text-xs">
-            <FolderKanban className="h-3.5 w-3.5" /> Open full pipeline board
+
+        <div className="px-4 md:px-5 py-3 border-t border-white/[0.06] flex gap-2">
+          <Link href="/projects" className="btn-secondary flex-1 justify-center text-xs">
+            <FolderKanban className="h-3.5 w-3.5" /> Projects
+          </Link>
+          <Link href="/attendance" className="btn-secondary flex-1 justify-center text-xs">
+            <CalendarDays className="h-3.5 w-3.5" /> Attendance
           </Link>
         </div>
       </div>
