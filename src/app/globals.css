@@ -97,6 +97,25 @@ h4 {
   animation: fade-in 0.15s ease-out;
 }
 
+/* 3D cube rotation for the Loader3D component */
+@keyframes spin3d {
+  0%   { transform: rotateX(-15deg) rotateY(0deg); }
+  25%  { transform: rotateX(15deg) rotateY(90deg); }
+  50%  { transform: rotateX(-15deg) rotateY(180deg); }
+  75%  { transform: rotateX(15deg) rotateY(270deg); }
+  100% { transform: rotateX(-15deg) rotateY(360deg); }
+}
+.animate-spin3d {
+  animation: spin3d 2.4s cubic-bezier(0.35, 0, 0.25, 1) infinite;
+  transform-style: preserve-3d;
+}
+
+/* Skeleton shimmer overlay — sweeps a highlight across skeleton bars */
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
 @layer components {
   .card {
     @apply bg-night-850 rounded-2xl border border-white/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.3),0_8px_24px_-12px_rgba(0,0,0,0.5)];

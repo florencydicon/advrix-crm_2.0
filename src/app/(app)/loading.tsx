@@ -8,7 +8,11 @@ export default function AppLoading() {
         </div>
         <div className="px-3 space-y-1.5 mt-2">
           {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="h-9 rounded-xl bg-white/[0.04] animate-pulse" style={{ animationDelay: `${i * 60}ms` }} />
+            <div
+              key={i}
+              className="h-9 rounded-xl bg-white/[0.04] animate-pulse"
+              style={{ animationDelay: `${i * 60}ms` }}
+            />
           ))}
         </div>
       </aside>
@@ -28,7 +32,11 @@ export default function AppLoading() {
           <div className="h-24 rounded-2xl bg-white/[0.04] animate-pulse" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-20 rounded-xl bg-white/[0.04] animate-pulse" style={{ animationDelay: `${i * 80}ms` }} />
+              <div
+                key={i}
+                className="h-20 rounded-xl bg-white/[0.04] animate-pulse"
+                style={{ animationDelay: `${i * 80}ms` }}
+              />
             ))}
           </div>
           <div className="h-48 rounded-xl bg-white/[0.04] animate-pulse" />

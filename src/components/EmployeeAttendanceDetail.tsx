@@ -183,7 +183,29 @@ export default function EmployeeAttendanceDetail({ userId, userName, userRole, o
       </p>
 
       {loading ? (
-        <div className="card p-8 text-center text-sm text-slate-500">Loading…</div>
+        <div className="space-y-3">
+          {/* Summary cards skeleton */}
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="card p-3 text-center space-y-1.5" style={{ animationDelay: `${i * 50}ms` }}>
+                <div className="h-6 w-10 mx-auto rounded bg-white/[0.08] animate-pulse" />
+                <div className="h-2.5 w-12 mx-auto rounded bg-white/[0.04] animate-pulse" />
+              </div>
+            ))}
+          </div>
+          {/* Table rows skeleton */}
+          <div className="card divide-y divide-white/[0.06]">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3" style={{ animationDelay: `${i * 60}ms` }}>
+                <div className="h-4 w-16 rounded bg-white/[0.06] animate-pulse" />
+                <div className="h-4 w-14 rounded bg-white/[0.04] animate-pulse" />
+                <div className="h-4 w-14 rounded bg-white/[0.04] animate-pulse" />
+                <div className="h-4 w-12 rounded bg-white/[0.04] animate-pulse" />
+                <div className="h-5 w-14 rounded-full bg-white/[0.06] animate-pulse ml-auto" />
+              </div>
+            ))}
+          </div>
+        </div>
       ) : (
         <>
           {/* Summary cards */}
