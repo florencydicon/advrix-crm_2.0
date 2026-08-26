@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -64,6 +64,23 @@ const NOTIF_STYLES: Record<string, string> = {
 
 const COLLAPSE_KEY = "advrix.sidebar.collapsed";
 
+/** SSR-safe localStorage read — returns `false` on server, matching the server-rendered state. */
+function subscribeCollapse(cb: () => void) {
+  function onStorage() { cb(); }
+  window.addEventListener("storage", onStorage);
+  window.addEventListener("advrix:collapse", onStorage);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("advrix:collapse", onStorage);
+  };
+}
+function getCollapsedSnapshot() {
+  return localStorage.getItem(COLLAPSE_KEY) === "1";
+}
+function getCollapsedServerSnapshot() {
+  return false; // Always expanded on server — matches useState(false)
+}
+
 function timeAgo(dateStr: string) {
   const d = new Date(dateStr);
   const diff = Math.round((Date.now() - d.getTime()) / 1000);
@@ -88,17 +105,13 @@ export default function AppShell({
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useSyncExternalStore(subscribeCollapse, getCollapsedSnapshot, getCollapsedServerSnapshot);
   const [notifs, setNotifs] = useState<Notification[]>(notifications);
   const [unread, setUnread] = useState(unreadCount);
   const [ringing, setRinging] = useState(false);
   const [missedToast, setMissedToast] = useState(0);
   const prevUnread = useRef(unreadCount);
   const awayAt = useRef<number | null>(null);
-
-  useEffect(() => {
-    setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
-  }, []);
 
   const pollNotifications = useCallback(async () => {
     try {
@@ -131,6 +144,7 @@ export default function AppShell({
 
   // Cross-tab "Welcome Back" alert: modal popup for missed notifications.
   useEffect(() => {
+    let lastRefresh = 0;
     function onVisibility() {
       if (document.hidden) {
         awayAt.current = Date.now();
@@ -139,7 +153,9 @@ export default function AppShell({
       const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 10000;
       awayAt.current = null;
       pollNotifications();
-      if (wasAway) {
+      // Throttle router.refresh to at most once per 30s to avoid layout disruption
+      if (wasAway && Date.now() - lastRefresh > 30000) {
+        lastRefresh = Date.now();
         setTimeout(() => {
           pollNotifications();
           setRinging(true);
@@ -157,10 +173,9 @@ export default function AppShell({
   }
 
   function toggleCollapsed() {
-    setCollapsed((c) => {
-      window.localStorage.setItem(COLLAPSE_KEY, c ? "0" : "1");
-      return !c;
-    });
+    const next = localStorage.getItem(COLLAPSE_KEY) === "1" ? "0" : "1";
+    localStorage.setItem(COLLAPSE_KEY, next);
+    window.dispatchEvent(new Event("advrix:collapse"));
   }
 
   const items = NAV.filter((n) => !n.roles || n.roles.includes(session.role_key));

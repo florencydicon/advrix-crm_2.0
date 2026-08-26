@@ -1,10 +1,11 @@
-"use client";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/session";
 
-import { useEffect } from "react";
-
-export default function HomePage() {
-  useEffect(() => {
-    window.location.href = "/dashboard";
-  }, []);
-  return null;
+export default async function HomePage() {
+  const session = await getSession();
+  if (session) {
+    redirect("/dashboard");
+  } else {
+    redirect("/login");
+  }
 }

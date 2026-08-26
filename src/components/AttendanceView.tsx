@@ -102,7 +102,9 @@ export default function AttendanceView({
   const router = useRouter();
   const [pending, start] = useTransition();
   const { toast } = useToast();
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => { setNow(new Date()); }, []);
+  const currentTime = now || new Date("2000-01-01T00:00:00");
   const [activeTab, setActiveTab] = useState("attendance");
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [leaveSearch, setLeaveSearch] = useState("");
@@ -228,9 +230,9 @@ export default function AttendanceView({
         <div>
           <h1 className="text-lg font-bold">Attendance & Leave</h1>
           <p className="text-xs text-slate-400">
-            {now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-            {" · "}
-            {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            {now ? now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : ""}
+            {now ? " · " : ""}
+            {now ? now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}
           </p>
         </div>
         <div className="flex gap-1 bg-white/5 rounded-xl p-1 ring-1 ring-white/10">
