@@ -320,6 +320,7 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
 interface TaskWorkflowRow {
   id: string;
   project_id: string;
+  step_key: string | null;
   role_key: string;
   sequence: number;
   deliverable_id: string | null;
@@ -333,7 +334,7 @@ const CAN_REVIEW = ["PROJECT_MANAGER", "SUPER_ADMIN"];
 
 async function getTaskWorkflowRow(taskId: string): Promise<TaskWorkflowRow | null> {
   const rows = await query<TaskWorkflowRow>(
-    `SELECT id, project_id, role_key, sequence, deliverable_id, title, status, assigned_to, content
+    `SELECT id, project_id, step_key, role_key, sequence, deliverable_id, title, status, assigned_to, content
      FROM tasks WHERE id = $1`,
     [taskId]
   );
@@ -341,7 +342,8 @@ async function getTaskWorkflowRow(taskId: string): Promise<TaskWorkflowRow | nul
 }
 
 function isVisualTask(t: TaskWorkflowRow) {
-  return t.sequence === 2 && (t.role_key === "DESIGNER" || t.role_key === "EDITOR" || t.role_key === "VIDEOGRAPHER");
+  // Visual tasks may be sequence 1 (when no WRITER is allocated) or 2 (after a content task).
+  return t.step_key?.includes("_v_") || (t.role_key === "DESIGNER" || t.role_key === "EDITOR" || t.role_key === "VIDEOGRAPHER");
 }
 
 /** Assignee starts work: pending -> in_progress */
