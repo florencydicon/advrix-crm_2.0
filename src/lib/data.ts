@@ -297,7 +297,7 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
         OR (
           t.assigned_to IS NULL
           AND EXISTS (
-            SELECT 1 FROM project_assignments pa
+            SELECT 1 FROM assignments pa
             JOIN users u2 ON u2.id = pa.user_id
             WHERE pa.project_id = t.project_id
               AND pa.user_id = $1
