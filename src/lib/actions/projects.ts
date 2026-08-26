@@ -481,27 +481,59 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
     }
     await handleDeliverableTaskCompleted(task.project_id, taskId);
   } else if (isVisualTask(task) && decision === "approve") {
-    // Internal approval: hand off to SMM for client approval.
+    // Internal approval: hand off to SMM if SMM allocated, else complete directly (single/multi without SMM).
     const smmId = await handoffVisualTaskToSmm(task.project_id, taskId);
-    await query(
-      `UPDATE tasks SET review_comment = $2, reviewed_by = $3 WHERE id = $1`,
-      [taskId, commentText, session.sub]
-    );
     if (smmId) {
+      await query(
+        `UPDATE tasks SET review_comment = $2, reviewed_by = $3 WHERE id = $1`,
+        [taskId, commentText, session.sub]
+      );
       await createNotification({
         userId: smmId,
         type: "task",
-        title: "Design approved � take to client",
+        title: "Design approved — take to client",
         body: `"${task.title}" passed internal review. Get client approval to proceed.`,
         link: taskDeepLink,
       });
     } else {
-      await notifyRoles(["SMM"], {
-        type: "task",
-        title: "Design approved � take to client",
-        body: `"${task.title}" passed internal review and needs client approval.`,
-        link: taskDeepLink,
-      });
+      // No SMM on project → this pipeline ends at visual (Writer→Designer, Designer-only, etc.)
+      // Mark visual as completed directly instead of leaving it in 'submitted'.
+      const hasSmmAlloc = await query<{ c: string }>(
+        `SELECT COUNT(*)::text AS c FROM assignments WHERE project_id = $1 AND role_key = 'SMM'`,
+        [task.project_id]
+      );
+      const smmCount = Number(hasSmmAlloc[0]?.c ?? 0);
+      if (smmCount === 0) {
+        await query(
+          `UPDATE tasks SET status = 'completed', review_comment = $2, reviewed_by = $3, reviewed_at = now(), completed_at = now() WHERE id = $1`,
+          [taskId, commentText, session.sub]
+        );
+        if (task.assigned_to) {
+          await createNotification({
+            userId: task.assigned_to,
+            type: "task",
+            title: "Task completed",
+            body: `"${task.title}" was approved and marked completed (no SMM on project).`,
+            link: taskDeepLink,
+          });
+        }
+        const open = await query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM tasks WHERE project_id = $1 AND status <> 'completed'`, [task.project_id]);
+        if (Number(open[0]?.c ?? 1) === 0) {
+          await query(`UPDATE projects SET status = 'completed' WHERE id = $1`, [task.project_id]);
+        }
+      } else {
+        // SMM exists but not allocated? Notify pool
+        await query(
+          `UPDATE tasks SET review_comment = $2, reviewed_by = $3 WHERE id = $1`,
+          [taskId, commentText, session.sub]
+        );
+        await notifyRoles(["SMM"], {
+          type: "task",
+          title: "Design approved — take to client",
+          body: `"${task.title}" passed internal review and needs client approval.`,
+          link: taskDeepLink,
+        });
+      }
     }
   } else {
     return { error: "Invalid review decision for this task." };

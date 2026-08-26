@@ -338,9 +338,10 @@ export async function allocateProjectTeam(
 
 async function ensureVisualTasksForAllocation(projectId: string, roleKey: string, userId: string) {
   try {
-    // Live DB patch: Video Shoot / Video Edit are visual-only (no Writer step).
+    // Live DB patch: Video Shoot / Video Edit are visual-only (no Writer step) + ensure Designer-only exists.
     // This auto-heals existing deployments that still have content_role = 'WRITER'.
     await query(`UPDATE deliverable_types SET content_role = NULL WHERE key IN ('video_shoot','video_edit') AND content_role IS NOT NULL`);
+    await query(`INSERT INTO deliverable_types (key, label, content_role, visual_role, default_qty, sort) VALUES ('design_asset','Design Asset',NULL,'DESIGNER',1,80) ON CONFLICT (key) DO NOTHING`);
     const deliverables = await query<DeliverableRow>(
       `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
       [projectId]

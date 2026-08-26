@@ -71,6 +71,7 @@ async function main() {
     { key: "video_edit", label: "Video Edit", content_role: null, visual_role: "EDITOR", default_qty: 1, sort: 50 },
     { key: "banner", label: "Banner", content_role: "WRITER", visual_role: "DESIGNER", default_qty: 1, sort: 60 },
     { key: "content_writing", label: "Content Piece", content_role: "WRITER", visual_role: null, default_qty: 1, sort: 70 },
+    { key: "design_asset", label: "Design Asset", content_role: null, visual_role: "DESIGNER", default_qty: 1, sort: 80 },
   ];
   for (const d of deliverableTypes) {
     await sql`INSERT INTO deliverable_types (key, label, content_role, visual_role, default_qty, sort)
