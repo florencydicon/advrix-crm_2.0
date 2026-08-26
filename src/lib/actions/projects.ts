@@ -368,11 +368,20 @@ export async function startTaskAction(taskId: string) {
 
   const task = await getTaskWorkflowRow(taskId);
   if (!task) return { error: "Task not found." };
-  if (task.assigned_to !== session.sub && !CAN_REVIEW.includes(session.role_key)) {
+  const isAssignee =
+    task.assigned_to === session.sub ||
+    (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
+    (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
+  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) {
     return { error: "Only the assignee can start this task." };
   }
   if (task.status !== "pending") return { error: "Task has already started." };
 
+  // Claim unassigned task for the starter
+  if (!task.assigned_to) {
+    await query(`UPDATE tasks SET assigned_to = $2 WHERE id = $1 AND assigned_to IS NULL`, [taskId, session.sub]);
+    await query(`INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [taskId, session.sub]);
+  }
   await query(`UPDATE tasks SET status = 'in_progress' WHERE id = $1`, [taskId]);
   revalidatePath("/projects");
   return { ok: true };
@@ -389,7 +398,11 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
 
   const task = await getTaskWorkflowRow(taskId);
   if (!task) return { error: "Task not found." };
-  if (task.assigned_to !== session.sub && !CAN_REVIEW.includes(session.role_key)) {
+  const isAssignee =
+    task.assigned_to === session.sub ||
+    (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
+    (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
+  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) {
     return { error: "Only the assignee can submit this task." };
   }
   if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) {

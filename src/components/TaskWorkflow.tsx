@@ -114,7 +114,10 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
 
   const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
   const canManage = roleKey === "SUPER_ADMIN" || roleKey === "PROJECT_MANAGER";
-  const isAssignee = task.assigned_to === userId;
+  const isAssignee =
+    task.assigned_to === userId ||
+    (Array.isArray(task.assignees) && task.assignees.some((a: any) => a.id === userId)) ||
+    task.assigned_to === null;
   const editable =
     isProducer &&
     (isAssignee || canManage) &&
@@ -450,7 +453,10 @@ export function TaskActions({
 
   const isReviewer = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const isSmm = roleKey === "SMM";
-  const isAssignee = task.assigned_to === userId;
+  const isAssignee =
+    task.assigned_to === userId ||
+    (Array.isArray(task.assignees) && task.assignees.some((a: any) => a.id === userId)) ||
+    (task.assigned_to === null && task.status === "pending");
   const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
 
   function run(fn: () => Promise<{ ok?: boolean; error?: string }>, expand = false) {
