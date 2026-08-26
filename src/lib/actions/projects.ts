@@ -579,6 +579,14 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
       `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [taskId, assigneeId]
     );
+
+    // Dynamic role labeling: update the task's role to match the assigned person's role.
+    const assigneeRole = await query<{ role_key: string }>(
+      `SELECT u.role_key FROM users u WHERE u.id = $1`, [assigneeId]
+    );
+    if (assigneeRole[0]) {
+      await query(`UPDATE tasks SET role_key = $2 WHERE id = $1`, [taskId, assigneeRole[0].role_key]);
+    }
   }
 
   if (assigneeId && assigneeId !== session.sub) {
@@ -775,5 +783,78 @@ export async function setMemberLeaveAction(
 
   revalidatePath("/app");
   revalidatePath("/projects");
+  return { ok: true };
+}
+
+/**
+ * Update task remarks — collaborative field for PM, Super Admin, and Sales.
+ */
+export async function updateTaskRemarksAction(taskId: string, remarks: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+  if (!["SUPER_ADMIN", "PROJECT_MANAGER", "SALES"].includes(session.role_key)) {
+    return { error: "Not authorized" };
+  }
+  await query(`UPDATE tasks SET remarks = $1 WHERE id = $2`, [remarks || null, taskId]);
+  revalidatePath("/projects");
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/**
+ * Update a task's role_key dynamically based on the assigned person's role.
+ * When a team member is assigned, the sub-task label updates to reflect their role.
+ */
+export async function updateTaskRoleAction(taskId: string, roleKey: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+  if (!["SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) {
+    return { error: "Not authorized" };
+  }
+  await query(`UPDATE tasks SET role_key = $1 WHERE id = $2`, [roleKey, taskId]);
+  revalidatePath("/projects");
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/**
+ * Extend deadline for a specific person's open tasks in a project.
+ * Does not affect other team members.
+ */
+export async function extendPersonDeadlineAction(
+  projectId: string,
+  userId: string,
+  additionalDays: number
+) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+  if (!["SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) {
+    return { error: "Not authorized" };
+  }
+
+  const { addWorkingDays } = await import("@/lib/workflow");
+
+  const tasks = await query<{ id: string; due_date: string | null }>(
+    `SELECT id, due_date::text FROM tasks WHERE project_id = $1
+     AND assigned_to = $2 AND status NOT IN ('completed') AND due_date IS NOT NULL`,
+    [projectId, userId]
+  );
+
+  if (tasks.length === 0) return { error: "No open tasks found for this person." };
+
+  for (const task of tasks) {
+    const newDeadline = addWorkingDays(new Date(task.due_date!), additionalDays);
+    await query(`UPDATE tasks SET due_date = $1 WHERE id = $2`, [newDeadline.toISOString().slice(0, 10), task.id]);
+  }
+
+  // Also extend assignment deadline
+  await query(
+    `UPDATE assignments SET allotment_deadline = allotment_deadline + INTERVAL '1 day' * $1
+     WHERE project_id = $2 AND user_id = $3 AND allotment_deadline IS NOT NULL`,
+    [additionalDays, projectId, userId]
+  );
+
+  revalidatePath("/projects");
+  revalidatePath("/app");
   return { ok: true };
 }

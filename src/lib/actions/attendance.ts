@@ -5,12 +5,15 @@ import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
 
 async function ensureLocationColumns() {
-  await query(`
-    ALTER TABLE attendance
-      ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
-      ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
-      ADD COLUMN IF NOT EXISTS location_text TEXT
-  `);
+  try {
+    await query(`
+      ALTER TABLE attendance
+        ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS location_text TEXT
+    `);
+    await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remarks TEXT`);
+  } catch {}
 }
 
 export async function punchInAction(loc: { latitude: number | null; longitude: number | null; location_text: string | null }) {

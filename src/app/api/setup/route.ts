@@ -9,7 +9,8 @@ export async function GET() {
         ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
         ADD COLUMN IF NOT EXISTS location_text TEXT
     `);
-    return NextResponse.json({ ok: true, message: "Migration 007 ran successfully — latitude, longitude, location_text columns ensured." });
+    await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remarks TEXT`);
+    return NextResponse.json({ ok: true, message: "Migrations applied: location columns + task remarks." });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

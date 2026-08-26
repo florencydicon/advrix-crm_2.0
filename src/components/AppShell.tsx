@@ -123,31 +123,34 @@ export default function AppShell({
     }
   }, []);
 
-  // Live polling every 25s.
+  // Silent background sync every 3 seconds.
   useEffect(() => {
-    const id = setInterval(pollNotifications, 25000);
+    const id = setInterval(pollNotifications, 3000);
     return () => clearInterval(id);
   }, [pollNotifications]);
 
-  // Return-to-tab alert: surface what was missed while away.
+  // Cross-tab "Welcome Back" alert: modal popup for missed notifications.
   useEffect(() => {
     function onVisibility() {
       if (document.hidden) {
         awayAt.current = Date.now();
         return;
       }
-      const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 15000;
+      const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 10000;
       awayAt.current = null;
       pollNotifications();
-      if (wasAway && missedToast > 0) {
-        setRinging(true);
-        setTimeout(() => setRinging(false), 6000);
-        router.refresh();
+      if (wasAway) {
+        setTimeout(() => {
+          pollNotifications();
+          setRinging(true);
+          setTimeout(() => setRinging(false), 6000);
+          router.refresh();
+        }, 500);
       }
     }
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [pollNotifications, missedToast, router]);
+  }, [pollNotifications, router]);
 
   function dismissMissedToast() {
     setMissedToast(0);
@@ -315,26 +318,35 @@ export default function AppShell({
 
   return (
     <div className="min-h-screen flex bg-paper">
-      {/* Return-to-tab alert */}
+      {/* Return-to-tab popup modal */}
       {missedToast > 0 && (
-        <div className="fixed top-16 right-4 sm:right-6 z-[80] animate-toast-in">
-          <div className="flex items-center gap-3 rounded-2xl bg-night-850 ring-1 ring-brand-300/30 shadow-2xl shadow-black/50 px-4 py-3 max-w-sm">
-            <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-300 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-300" />
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 animate-fade-in">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={dismissMissedToast} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-brand-300/30 p-6 text-center animate-fade-in">
+            <span className="relative inline-flex h-12 w-12 mx-auto mb-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-300 opacity-30" />
+              <span className="relative inline-flex rounded-full h-12 w-12 bg-brand-300/10 items-center justify-center">
+                <Bell className="h-6 w-6 text-brand-300" />
+              </span>
             </span>
-            <p className="text-sm text-slate-200 flex-1">
+            <h3 className="text-base font-bold text-white mb-1">Welcome Back!</h3>
+            <p className="text-sm text-slate-400 mb-4">
               You missed <span className="font-bold text-white">{missedToast}</span> update{missedToast === 1 ? "" : "s"} while you were away.
             </p>
-            <button
-              onClick={() => { setNotifOpen(true); dismissMissedToast(); }}
-              className="text-xs font-semibold text-brand-300 hover:text-brand-200 shrink-0"
-            >
-              View
-            </button>
-            <button onClick={dismissMissedToast} className="text-slate-500 hover:text-white shrink-0" aria-label="Dismiss">
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setNotifOpen(true); dismissMissedToast(); }}
+                className="btn-primary flex-1 !py-2.5 text-sm"
+              >
+                <Bell className="h-4 w-4" /> View Updates
+              </button>
+              <button
+                onClick={dismissMissedToast}
+                className="btn-secondary flex-1 !py-2.5 text-sm"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       )}

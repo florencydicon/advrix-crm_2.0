@@ -13,6 +13,8 @@ import {
   setMemberLeaveAction,
   setTaskAssigneeAction,
   removeTaskAssigneeAction,
+  updateTaskRemarksAction,
+  extendPersonDeadlineAction,
 } from "@/lib/actions/projects";
 import type { PipelineClient } from "@/lib/data";
 import type { Assignment, UserRow } from "@/lib/types";
@@ -74,6 +76,7 @@ export default function ProjectDetailView({
   const [leaveTarget, setLeaveTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [extendTarget, setExtendTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
 
   const canManage = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const canDelete = roleKey === "SUPER_ADMIN";
@@ -194,7 +197,7 @@ export default function ProjectDetailView({
                           <p className="text-[8px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
                             <Users className="h-2.5 w-2.5" /> Active Team — {p.assignments.length} allocated
                           </p>
-                          <div className="flex flex-wrap gap-1.5">
+                           <div className="flex flex-wrap gap-1.5">
                             {p.assignments.map((a) => (
                               <span
                                 key={a.id}
@@ -210,6 +213,16 @@ export default function ProjectDetailView({
                                     <CalendarDays className="h-2.5 w-2.5" /> {fmtDate(a.allotment_deadline)}
                                   </span>
                                 ) : null}
+                                {!a.on_leave && canManage && p.status === "in_progress" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExtendTarget({ projectId: p.id, assignment: a })}
+                                    className="text-[9px] text-emerald-400 hover:text-emerald-300 transition-colors"
+                                    title={`Extend ${a.user_name}'s deadlines`}
+                                  >
+                                    +deadline
+                                  </button>
+                                )}
                               </span>
                             ))}
                           </div>
@@ -289,6 +302,21 @@ export default function ProjectDetailView({
                                       </div>
                                     </div>
                                   )}
+                                  {["SUPER_ADMIN", "PROJECT_MANAGER", "SALES"].includes(roleKey) && (
+                                    <div className="rounded-md border border-white/10 bg-white/5 p-2">
+                                      <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Remarks / Brief</p>
+                                      <textarea
+                                        rows={2}
+                                        defaultValue={t.remarks || ""}
+                                        onBlur={(e) => {
+                                          const val = e.target.value;
+                                          if (val !== (t.remarks || "")) run(() => updateTaskRemarksAction(t.id, val));
+                                        }}
+                                        className="input !text-[11px] !py-1.5"
+                                        placeholder="Add initial content, brief, or remarks for cross-department collaboration…"
+                                      />
+                                    </div>
+                                  )}
                                   <div className="pt-1.5 border-t border-white/10"><TaskActions task={t} roleKey={roleKey} userId={userId} onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)} /></div>
                                   {openTaskId === t.id && (<div className="rounded-md bg-white/5 p-2 animate-fade-in"><TaskDetails task={t} roleKey={roleKey} userId={userId} /></div>)}
                                 </div>
@@ -319,6 +347,20 @@ export default function ProjectDetailView({
           }
         />
       )}
+      {extendTarget && (
+        <ExtendPersonModal
+          assignment={extendTarget.assignment}
+          pending={pending}
+          onClose={() => setExtendTarget(null)}
+          onSubmit={(days) =>
+            run(async () => {
+              const res = await extendPersonDeadlineAction(extendTarget.projectId, extendTarget.assignment.user_id, days);
+              if (res?.error) { alert(res.error); }
+              else setExtendTarget(null);
+            })
+          }
+        />
+      )}
     </div>
   );
 }
@@ -343,6 +385,41 @@ function LeaveModal({
         <div><label className="label">Leave duration (working days)</label><input type="number" min={1} max={90} value={days} onChange={(e) => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))} className="input !w-28" required /></div>
         <div><label className="label">Reason</label><input value={reason} onChange={(e) => setReason(e.target.value)} className="input" placeholder="Family emergency, medical, travel…" required minLength={3} /></div>
         <button type="submit" className="btn-primary w-full" disabled={pending}>{pending ? "Applying…" : "Apply & cascade deadlines"}</button>
+      </form>
+    </Modal>
+  );
+}
+
+function ExtendPersonModal({
+  assignment,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  assignment: Assignment;
+  pending: boolean;
+  onClose: () => void;
+  onSubmit: (days: number) => void;
+}) {
+  const [days, setDays] = useState(1);
+  return (
+    <Modal open onClose={onClose} title="Extend individual deadline">
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSubmit(days); }}>
+        <p className="text-xs text-slate-400">
+          Extend deadlines for <span className="font-semibold text-white">{assignment.user_name}</span> ({assignment.role_label})&apos;s open tasks only. Other team members are not affected.
+        </p>
+        <div>
+          <label className="label">Additional working days</label>
+          <div className="flex items-center gap-2">
+            <input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Math.max(1, Math.min(30, Number(e.target.value) || 1)))} className="input !w-24" required />
+            {[1, 2, 3, 5, 7].map((n) => (
+              <button key={n} type="button" onClick={() => setDays(n)} className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${days === n ? "bg-brand-300 text-night-950" : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50"}`}>{n}d</button>
+            ))}
+          </div>
+        </div>
+        <button type="submit" className="btn-primary w-full" disabled={pending}>
+          {pending ? "Extending…" : `Extend ${days} working day${days === 1 ? "" : "s"}`}
+        </button>
       </form>
     </Modal>
   );

@@ -139,6 +139,7 @@ export interface Task {
    reviewed_at: string | null;
    due_date: string | null;
    on_leave_note: string | null;
+   remarks: string | null;
    created_at: string;
    completed_at: string | null;
 }

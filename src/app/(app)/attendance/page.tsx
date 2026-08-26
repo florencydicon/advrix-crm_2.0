@@ -22,6 +22,7 @@ async function ensureLocationColumns() {
         ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
         ADD COLUMN IF NOT EXISTS location_text TEXT
     `);
+    await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remarks TEXT`);
   } catch {}
 }
 

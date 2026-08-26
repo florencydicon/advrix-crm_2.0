@@ -61,6 +61,12 @@ export function TaskDetails({
 
   return (
     <div className="space-y-2">
+      {task.remarks && (
+        <div className="rounded-lg border border-violet-400/20 bg-violet-400/[0.06] p-2 text-xs">
+          <p className="text-[10px] font-semibold text-violet-300 uppercase tracking-wide">Remarks / Brief</p>
+          <p className="text-slate-300 mt-0.5 whitespace-pre-wrap">{task.remarks}</p>
+        </div>
+      )}
       <ContentEditor task={task} roleKey={roleKey} userId={userId} />
       {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR") && task.content === null && (
         <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
