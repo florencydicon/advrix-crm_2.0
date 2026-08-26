@@ -431,11 +431,16 @@ export default function AppShell({
                   <div className="absolute right-0 z-40 mt-2 w-80 sm:w-96 rounded-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
                       <p className="text-sm font-semibold text-white">Updates</p>
-                      {unread > 0 && (
-                        <button onClick={handleMarkAll} className="text-xs font-medium text-brand-300 hover:text-brand-200">
-                          Mark all read
+                      <div className="flex items-center gap-2">
+                        {unread > 0 && (
+                          <button onClick={handleMarkAll} className="text-xs font-medium text-brand-300 hover:text-brand-200">
+                            Mark all read
+                          </button>
+                        )}
+                        <button onClick={() => setNotifOpen(false)} className="p-0.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-colors" aria-label="Close notifications">
+                          <X className="h-4 w-4" />
                         </button>
-                      )}
+                      </div>
                     </div>
                     <div className="max-h-[60vh] overflow-y-auto divide-y divide-white/[0.04]">
                       {notifs.length === 0 ? (
