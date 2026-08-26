@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import {
   FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase,
-  CalendarDays, Download,
+  Download,
 } from "lucide-react";
 import { getSession } from "@/lib/session";
 import {
@@ -14,15 +14,9 @@ import SmmDashboard from "@/components/SmmDashboard";
 import ActionCenter from "@/components/ActionCenter";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 import { LEAD_STATUSES } from "@/lib/types";
+import { Greeting, TodayBadge } from "@/components/DashboardHeader";
 
 const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM", "VIDEOGRAPHER"];
-
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
-}
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -30,14 +24,14 @@ export default async function DashboardPage() {
   const firstName = session.name.split(" ")[0];
 
   if (STAFF_ROLES.includes(session.role_key)) {
-    const tasks = await getMyTasks(session.sub);
-    const open = tasks.filter((t) => t.status !== "completed");
+    const tasks = await getMyTasks(session.sub).catch(() => [] as import("@/lib/types").Task[]);
+    const open = tasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
       <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
         <div className="rounded-2xl bg-gradient-to-br from-brand-300 to-brand-500 p-5 md:p-6 text-night-950 shadow-lg shadow-brand-300/20">
           <div className="flex items-center gap-2 text-night-950/70">
             <Sparkles className="h-4 w-4" />
-            <p className="text-sm font-medium">{greeting()}, {firstName}</p>
+            <p className="text-sm font-medium"><Greeting firstName={firstName} /></p>
           </div>
           <h1 className="text-xl md:text-2xl font-bold mt-1 tracking-tight">My Workspace</h1>
           <p className="text-sm text-night-950/70 mt-1">
@@ -97,14 +91,25 @@ export default async function DashboardPage() {
   }
 
 const isSuperAdmin = session.role_key === "SUPER_ADMIN";
-  const [projects, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
-    getProjects(),
-    isSuperAdmin ? getLeadStats(null) : Promise.resolve(null as any),
-    isSuperAdmin ? getTaskStatusCounts() : Promise.resolve({} as Record<string, number>),
-    getSubmittedTasks(),
-    getAllLeaves({ status: "pending" }),
-    isSuperAdmin ? getBottlenecks() : Promise.resolve([] as any),
-  ]);
+  let projects: any[] = [];
+  let leadStats: any = null;
+  let taskCounts: Record<string, number> = {};
+  let submittedTasks: any[] = [];
+  let pendingLeaves: any[] = [];
+  let bottlenecks: any[] = [];
+  try {
+    [projects, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
+      getProjects().catch(() => [] as any),
+      isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
+      isSuperAdmin ? getTaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
+      getSubmittedTasks().catch(() => [] as any),
+      getAllLeaves({ status: "pending" }).catch(() => [] as any),
+      isSuperAdmin ? getBottlenecks().catch(() => [] as any) : Promise.resolve([] as any),
+    ]);
+  } catch {
+    // Fallback: individual catches already return safe defaults, this is absolute safety
+    projects = projects || [];
+  }
   const pending = projects.filter((p) => p.status === "pending_approval");
   const active = projects.filter((p) => p.status === "in_progress");
 
@@ -158,7 +163,6 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
       lost: leadStats?.lost || 0,
     };
     const totalTasks = Object.values(taskCounts).reduce((a, b) => a + b, 0);
-    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
     return (
       <div className="space-y-4 md:space-y-5">
@@ -166,14 +170,12 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold tracking-tight">
-              {greeting()}, {firstName}! <span role="img" aria-label="wave">👋</span>
+              <Greeting firstName={firstName} />! <span role="img" aria-label="wave">👋</span>
             </h1>
             <p className="text-sm text-slate-400">Projects, tasks & leads at a glance.</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
-              <CalendarDays className="h-3.5 w-3.5 text-slate-500" /> {today}
-            </span>
+            <TodayBadge />
             <Link href="/settings" className="btn-secondary !py-2 text-xs">
               <Download className="h-3.5 w-3.5" /> Export Report
             </Link>
@@ -284,21 +286,17 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   }
 
   // PROJECT_MANAGER fallback
-  const pmToday = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-
   return (
     <div className="space-y-4 md:space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold tracking-tight">
-            {greeting()}, {firstName}! <span role="img" aria-label="wave">👋</span>
+            <Greeting firstName={firstName} />! <span role="img" aria-label="wave">👋</span>
           </h1>
           <p className="text-sm text-slate-400">Live overview of every active campaign.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
-            <CalendarDays className="h-3.5 w-3.5 text-slate-500" /> {pmToday}
-          </span>
+          <TodayBadge />
           <Link href="/settings" className="btn-secondary !py-2 text-xs">
             <Download className="h-3.5 w-3.5" /> Export Report
           </Link>

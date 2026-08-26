@@ -294,6 +294,7 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
   return query<Task>(
     `${TASK_SELECT}
      WHERE t.assigned_to = $1
+        OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1)
         OR (
           t.assigned_to IS NULL
           AND EXISTS (

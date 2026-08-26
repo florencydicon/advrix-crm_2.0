@@ -329,6 +329,75 @@ export async function allocateProjectTeam(
       [a.user_id, projectId, a.role_key, a.deadline || null]
     );
     await allocateTasksForRole(projectId, a.role_key, a.user_id);
+    // Ensure visual tasks exist for this role even if content is still pending.
+    // This makes team allocation produce immediate work for Videographer / Designer
+    // even when the Writer step hasn't completed yet (separate flow).
+    await ensureVisualTasksForAllocation(projectId, a.role_key, a.user_id);
+  }
+}
+
+async function ensureVisualTasksForAllocation(projectId: string, roleKey: string, userId: string) {
+  try {
+    const deliverables = await query<DeliverableRow>(
+      `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
+      [projectId]
+    );
+    if (deliverables.length === 0) return;
+    const types = await query<DeliverableTypeRow>(`SELECT key, content_role, visual_role FROM deliverable_types`);
+    const typeMap = new Map(types.map((t) => [t.key, t]));
+    for (const d of deliverables) {
+      const type = typeMap.get(d.category_key);
+      if (!type) continue;
+      // Only act when the allocated role matches the visual role for this deliverable.
+      // Custom deliverables default visual to DESIGNER.
+      let visualRole: string | null = null;
+      if (d.is_custom) visualRole = "DESIGNER";
+      else visualRole = type.visual_role;
+      if (visualRole !== roleKey) continue;
+      const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
+      for (let i = 1; i <= d.quantity; i++) {
+        const visualStepKey = `${d.category_key}_v_${i}`;
+        const title = `${label} ${pad(i)}`;
+        const exists = await query<{ id: string }>(
+          `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
+          [projectId, visualStepKey]
+        );
+        if (exists.length > 0) {
+          // Already exists — ensure assignee present
+          await query(
+            `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [exists[0].id, userId]
+          );
+          await query(
+            `UPDATE tasks SET assigned_to = COALESCE(assigned_to, $2) WHERE id = $1 AND status <> 'completed'`,
+            [exists[0].id, userId]
+          );
+          continue;
+        }
+        // Create visual task immediately (sequence 2 if content exists, else 1)
+        const contentStepKey = `${d.category_key}_c_${i}`;
+        const contentExists = await query<{ id: string; content: string | null }>(
+          `SELECT id, content FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
+          [projectId, contentStepKey]
+        );
+        const seq = contentExists.length > 0 ? 2 : 1;
+        const briefCopy = contentExists[0]?.content ?? null;
+        const desc = seq === 2 ? `Visual production for "${title} — Content & Copy". Use the approved copy as reference.` : `Produce the visual asset for "${title}".`;
+        const inserted = await query<{ id: string }>(
+          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, status, priority, assigned_to, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 'medium', $10, NULL) RETURNING id`,
+          [projectId, visualStepKey, d.category_key, visualRole, d.id, seq, `${title} — Visual`, desc, briefCopy, userId]
+        );
+        if (inserted[0]?.id) {
+          await query(
+            `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [inserted[0].id, userId]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error("ensureVisualTasksForAllocation failed for project", projectId, "role", roleKey, ":", err);
   }
 }
 
