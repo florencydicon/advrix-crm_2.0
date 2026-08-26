@@ -113,6 +113,16 @@ export default function AppShell({
   const prevUnread = useRef(unreadCount);
   const awayAt = useRef<number | null>(null);
 
+  // Close notification panel on Escape key.
+  useEffect(() => {
+    if (!notifOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setNotifOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [notifOpen]);
+
   const pollNotifications = useCallback(async () => {
     try {
       const res = await fetch("/api/notifications", { cache: "no-store" });
