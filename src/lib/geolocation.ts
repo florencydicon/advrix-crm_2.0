@@ -36,9 +36,7 @@ export function getCurrentPosition(): Promise<GeoLocation> {
       async (position) => {
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
-        console.log(`Geolocation: got coordinates ${lat}, ${lon}`);
         const locationText = await reverseGeocode(lat, lon);
-        console.log(`Geolocation: resolved address → ${locationText}`);
         resolve({ latitude: lat, longitude: lon, location_text: locationText });
       },
       (error) => {

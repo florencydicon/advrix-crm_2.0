@@ -13,7 +13,6 @@ import {
   X,
   Clock,
   Bell,
-  Check,
   ArrowRight,
   Settings,
   PanelLeftClose,

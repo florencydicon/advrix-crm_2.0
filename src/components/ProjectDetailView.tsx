@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, X, Trash2, Users, CalendarDays, Coffee, ChevronDown, ChevronRight } from "lucide-react";
@@ -10,7 +10,6 @@ import {
   deleteProjectAction,
   assignProjectTeamAction,
   updateTaskDueDateAction,
-  setTaskAssigneeAction,
   removeTaskAssigneeAction,
   updateTaskRemarksAction,
   extendPersonDeadlineAction,
@@ -81,35 +80,36 @@ export default function ProjectDetailView({
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [extendTarget, setExtendTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
-  const highlightedRef = useRef<HTMLDivElement | null>(null);
 
   // Deep-link: auto-expand project + task and scroll to it.
   useEffect(() => {
     if (!highlightProject) return;
-    setExpandedProjectId(highlightProject);
-    if (!highlightTask) return;
-    // Find the task in the pipeline data and expand it.
-    for (const p of client.projects) {
-      if (p.id === highlightProject) {
-        const task = p.tasks.find((t) => t.step_key === highlightTask);
-        if (task) {
-          setExpandedTaskId(task.id);
-          // Scroll to the task after a short delay to allow DOM render.
-          requestAnimationFrame(() => {
-            const el = document.getElementById(`task-${task.id}`);
-            if (el) {
-              el.scrollIntoView({ behavior: "smooth", block: "center" });
-              el.classList.add("animate-highlight");
-              setTimeout(() => {
-                el.classList.remove("animate-highlight");
-              }, 3200);
-            }
-          });
-        }
-        break;
-      }
+    // Validate the project ID exists in our data.
+    const targetProject = client.projects.find((p) => p.id === highlightProject);
+    if (!targetProject) {
+      window.history.replaceState(null, "", `/projects/${client.client_id}`);
+      return;
     }
-    // Clean URL params after applying.
+    setExpandedProjectId(highlightProject);
+    if (!highlightTask) {
+      window.history.replaceState(null, "", `/projects/${client.client_id}`);
+      return;
+    }
+    // Find and expand the target task.
+    const task = targetProject.tasks.find((t) => t.step_key === highlightTask);
+    if (task) {
+      setExpandedTaskId(task.id);
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`task-${task.id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("animate-highlight");
+          setTimeout(() => {
+            el.classList.remove("animate-highlight");
+          }, 3200);
+        }
+      });
+    }
     window.history.replaceState(null, "", `/projects/${client.client_id}`);
   }, [highlightProject, highlightTask, client]);
 

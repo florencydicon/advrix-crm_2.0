@@ -1,10 +1,9 @@
-﻿"use server";
+"use server";
 
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import {
-  runWorkflow,
   generateDeliverableTasks,
   handleDeliverableTaskCompleted,
   allocateProjectTeam,
@@ -23,7 +22,7 @@ import {
   validateDeliverables,
 } from "@/lib/validation";
 
-// ── Deep-link helpers for notifications ──────────────────────────────────────
+// -- Deep-link helpers for notifications --------------------------------------
 
 async function getProjectClientId(projectId: string): Promise<string | null> {
   const rows = await query<{ client_id: string }>(
@@ -136,7 +135,7 @@ export async function createProjectAction(formData: FormData) {
   const deliverableSummary =
     deliverables
       .filter((d) => d.quantity > 0)
-      .map((d) => `${d.quantity} × ${d.isCustom && d.customLabel ? d.customLabel : d.label}`)
+      .map((d) => `${d.quantity} � ${d.isCustom && d.customLabel ? d.customLabel : d.label}`)
       .join(", ") || null;
 
   try {
@@ -189,7 +188,6 @@ export async function approveProjectAction(projectId: string) {
 
   // Deliverable-based projects generate individual tasks; others use the pipeline.
   await generateDeliverableTasks(projectId);
-  await runWorkflow(projectId);
   await computeSequentialDeadlines(projectId);
 
   const creatorId = await getProjectCreatorId(projectId);
@@ -203,7 +201,6 @@ export async function approveProjectAction(projectId: string) {
     });
   }
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -252,7 +249,6 @@ export async function updateTaskContentAction(taskId: string, content: string) {
 
   await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
   revalidatePath("/projects");
-  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -274,7 +270,7 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
   const task = taskRows[0];
   if (!task) return { error: "Task not found." };
 
-  // Enforce workflow state machine — only valid transitions allowed
+  // Enforce workflow state machine � only valid transitions allowed
   const validTransitions: Record<string, string[]> = {
     pending: ["in_progress"],
     in_progress: ["submitted"],
@@ -316,8 +312,6 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
 
   if (task.deliverable_id) {
     await handleDeliverableTaskCompleted(task.project_id, taskId);
-  } else {
-    await runWorkflow(task.project_id);
   }
 
   if (status === "submitted" || status === "completed") {
@@ -332,7 +326,6 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
     }
   }
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -382,13 +375,12 @@ export async function startTaskAction(taskId: string) {
 
   await query(`UPDATE tasks SET status = 'in_progress' WHERE id = $1`, [taskId]);
   revalidatePath("/projects");
-  revalidatePath("/projects");
   return { ok: true };
 }
 
 /**
  * Assignee submits work for review: in_progress -> submitted.
- * Accepts the content text so "Submit for Review" saves + submits in one step —
+ * Accepts the content text so "Submit for Review" saves + submits in one step �
  * no separate "Save draft" click required.
  */
 export async function submitTaskAction(taskId: string, content?: string | null) {
@@ -429,7 +421,6 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
   }
 
   revalidatePath("/projects");
-  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -468,7 +459,7 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
         userId: task.assigned_to,
         type: "task",
         title: "Task needs improvement",
-        body: `"${task.title}" — ${commentText}`,
+        body: `"${task.title}" � ${commentText}`,
         link: taskDeepLink,
       });
     }
@@ -500,14 +491,14 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
       await createNotification({
         userId: smmId,
         type: "task",
-        title: "Design approved — take to client",
+        title: "Design approved � take to client",
         body: `"${task.title}" passed internal review. Get client approval to proceed.`,
         link: taskDeepLink,
       });
     } else {
       await notifyRoles(["SMM"], {
         type: "task",
-        title: "Design approved — take to client",
+        title: "Design approved � take to client",
         body: `"${task.title}" passed internal review and needs client approval.`,
         link: taskDeepLink,
       });
@@ -516,7 +507,6 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
     return { error: "Invalid review decision for this task." };
   }
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -549,11 +539,10 @@ export async function clientFeedbackAction(taskId: string, feedback: string) {
   await notifyRoles(CAN_REVIEW, {
     type: "task",
     title: "Client feedback received",
-    body: `Client gave feedback on "${task.title}" — routed back to ${who}.`,
+    body: `Client gave feedback on "${task.title}" � routed back to ${who}.`,
     link: taskDeepLink,
   });
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -589,7 +578,6 @@ export async function approveClientAction(taskId: string) {
     link: taskDeepLink,
   });
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -627,7 +615,6 @@ export async function completeTaskWithPlatformsAction(taskId: string, platforms:
     });
   }
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -670,7 +657,6 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
     });
   }
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -759,7 +745,6 @@ export async function assignProjectTeamAction(
   }
 
   revalidatePath("/projects");
-  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -800,6 +785,7 @@ export async function deleteClientAction(clientId: string) {
   revalidatePath("/clients");
   revalidatePath("/projects");
   revalidatePath("/dashboard");
+  revalidatePath("/leads");
   return { ok: true, name: client.name };
 }
 
@@ -826,12 +812,11 @@ export async function updateTaskDueDateAction(taskId: string, date: string) {
       userId: task.assigned_to,
       type: "task",
       title: "Deadline updated",
-      body: `"${task.title}" is now due ${date ? new Date(`${date}T00:00:00`).toLocaleDateString() : "—"} (set by ${session.name}).`,
+      body: `"${task.title}" is now due ${date ? new Date(`${date}T00:00:00`).toLocaleDateString() : "�"} (set by ${session.name}).`,
       link: taskDeepLink,
     });
   }
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -858,12 +843,14 @@ export async function setMemberLeaveAction(
 
   await extendForLeave(projectId, userId, days, reason.trim());
 
+  const leaveClientId = await getProjectClientId(projectId);
+
   if (userId !== session.sub) {
     await createNotification({
       userId,
       type: "leave",
       title: "Marked on leave",
-      body: `${session.name} marked you on leave for ${days} day${days === 1 ? "" : "s"} — deadlines extended automatically.`,
+      body: `${session.name} marked you on leave for ${days} day${days === 1 ? "" : "s"} � deadlines extended automatically.`,
       link: "/attendance",
     });
   }
@@ -871,16 +858,16 @@ export async function setMemberLeaveAction(
     type: "leave",
     title: "Deadline cascade applied",
     body: `${session.name} extended deadlines in a project (${days}d leave).`,
-    link: projectLink(await getProjectClientId(projectId) || "", projectId),
+    link: leaveClientId ? projectLink(leaveClientId, projectId) : "/projects",
   });
 
   revalidatePath("/projects");
-  revalidatePath("/projects");
+  revalidatePath("/attendance");
   return { ok: true };
 }
 
 /**
- * Update task remarks — collaborative field for PM, Super Admin, and Sales.
+ * Update task remarks � collaborative field for PM, Super Admin, and Sales.
  */
 export async function updateTaskRemarksAction(taskId: string, remarks: string) {
   const session = await getSession();
@@ -889,7 +876,6 @@ export async function updateTaskRemarksAction(taskId: string, remarks: string) {
     return { error: "Not authorized" };
   }
   await query(`UPDATE tasks SET remarks = $1 WHERE id = $2`, [remarks || null, taskId]);
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -905,7 +891,6 @@ export async function updateTaskRoleAction(taskId: string, roleKey: string) {
     return { error: "Not authorized" };
   }
   await query(`UPDATE tasks SET role_key = $1 WHERE id = $2`, [roleKey, taskId]);
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -947,7 +932,6 @@ export async function extendPersonDeadlineAction(
     [additionalDays, projectId, userId]
   );
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
