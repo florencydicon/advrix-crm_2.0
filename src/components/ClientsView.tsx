@@ -311,11 +311,11 @@ export default function ClientsView({
               >
                 <div className="flex items-start gap-3">
                   <div className="h-9 w-9 rounded-xl bg-brand-300/10 flex items-center justify-center shrink-0 text-brand-300 font-bold text-sm">
-                    {initials(c.name)}
+                    {initials(c.company || c.name)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-white truncate">{c.name}</p>
-                    <p className="text-[11px] text-slate-500 truncate">{c.company || "—"}</p>
+                    <p className="font-semibold text-sm text-white truncate">{c.company || c.name}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{c.company ? c.name : "—"}</p>
                   </div>
                   {canCreate && (
                     <button
@@ -443,7 +443,7 @@ export default function ClientsView({
               name="client_id"
               options={clients.map((c) => ({
                 value: c.id,
-                label: c.name,
+                label: c.company ? `${c.company} — ${c.name}` : c.name,
                 search: `${c.name} ${c.company || ""} ${c.email || ""}`,
               }))}
               value={selectedClient}
