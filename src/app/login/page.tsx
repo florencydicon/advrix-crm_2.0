@@ -1,7 +1,25 @@
+import { query } from "@/lib/db";
 import LoginForm from "@/components/LoginForm";
 import { BrandLogoFull } from "@/components/brand";
 
-export default function LoginPage() {
+async function ensureLoginAttemptsTable() {
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id BIGSERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        ip_address TEXT,
+        locked_until TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_login_attempts_email_time ON login_attempts (lower(email), created_at)`);
+  } catch {}
+}
+
+export default async function LoginPage() {
+  await ensureLoginAttemptsTable();
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-night-950 p-4 relative overflow-hidden">
       <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-brand-300/10 blur-3xl" />

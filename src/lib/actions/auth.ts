@@ -28,64 +28,77 @@ const WINDOW_SECONDS = 600; // 10 minutes
 const MAX_ATTEMPTS = 6;
 const LOCK_SECONDS = 600;
 
-async function throttleCheck(email: string, ip: string): Promise<string | null> {
-  // Clean old records periodically
-  await query(`DELETE FROM login_attempts WHERE created_at < now() - interval '1 hour'`);
+async function throttleCheck(email: string, _ip: string): Promise<string | null> {
+  try {
+    // Clean old records periodically
+    await query(`DELETE FROM login_attempts WHERE created_at < now() - interval '1 hour'`);
 
-  const rows = await query<{ attempt_count: string; locked_until: string | null }>(
-    `SELECT
-       COUNT(*)::text AS attempt_count,
-       MAX(locked_until)::text AS locked_until
-     FROM login_attempts
-     WHERE lower(email) = lower($1)
-       AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
-    [email]
-  );
-
-  const rec = rows[0];
-  if (!rec) return null;
-
-  if (rec.locked_until) {
-    const lockedUntil = new Date(rec.locked_until).getTime();
-    const now = Date.now();
-    if (lockedUntil > now) {
-      const mins = Math.ceil((lockedUntil - now) / 60000);
-      return `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
-    }
-  }
-
-  return null;
-}
-
-async function throttleFail(email: string, ip: string) {
-  // Record this attempt
-  await query(
-    `INSERT INTO login_attempts (email, ip_address) VALUES (lower($1), $2)`,
-    [email, ip]
-  );
-
-  // Count recent attempts and lock if exceeded
-  const rows = await query<{ cnt: string }>(
-    `SELECT COUNT(*)::text AS cnt
-     FROM login_attempts
-     WHERE lower(email) = lower($1)
-       AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
-    [email]
-  );
-  const count = Number(rows[0]?.cnt || 0);
-  if (count >= MAX_ATTEMPTS) {
-    await query(
-      `UPDATE login_attempts SET locked_until = now() + interval '${LOCK_SECONDS} seconds'
+    const rows = await query<{ attempt_count: string; locked_until: string | null }>(
+      `SELECT
+         COUNT(*)::text AS attempt_count,
+         MAX(locked_until)::text AS locked_until
+       FROM login_attempts
        WHERE lower(email) = lower($1)
-         AND locked_until IS NULL
          AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
       [email]
     );
+
+    const rec = rows[0];
+    if (!rec) return null;
+
+    if (rec.locked_until) {
+      const lockedUntil = new Date(rec.locked_until).getTime();
+      const now = Date.now();
+      if (lockedUntil > now) {
+        const mins = Math.ceil((lockedUntil - now) / 60000);
+        return `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
+      }
+    }
+
+    return null;
+  } catch {
+    // Table may not exist yet — allow login, throttle is best-effort
+    return null;
+  }
+}
+
+async function throttleFail(email: string, ip: string) {
+  try {
+    // Record this attempt
+    await query(
+      `INSERT INTO login_attempts (email, ip_address) VALUES (lower($1), $2)`,
+      [email, ip]
+    );
+
+    // Count recent attempts and lock if exceeded
+    const rows = await query<{ cnt: string }>(
+      `SELECT COUNT(*)::text AS cnt
+       FROM login_attempts
+       WHERE lower(email) = lower($1)
+         AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
+      [email]
+    );
+    const count = Number(rows[0]?.cnt || 0);
+    if (count >= MAX_ATTEMPTS) {
+      await query(
+        `UPDATE login_attempts SET locked_until = now() + interval '${LOCK_SECONDS} seconds'
+         WHERE lower(email) = lower($1)
+           AND locked_until IS NULL
+           AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
+        [email]
+      );
+    }
+  } catch {
+    // Table may not exist yet — throttle is best-effort
   }
 }
 
 async function throttleReset(email: string) {
-  await query(`DELETE FROM login_attempts WHERE lower(email) = lower($1)`, [email]);
+  try {
+    await query(`DELETE FROM login_attempts WHERE lower(email) = lower($1)`, [email]);
+  } catch {
+    // Table may not exist yet
+  }
 }
 
 export async function loginAction(
