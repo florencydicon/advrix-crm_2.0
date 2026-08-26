@@ -392,12 +392,12 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
   if (task.assigned_to !== session.sub && !CAN_REVIEW.includes(session.role_key)) {
     return { error: "Only the assignee can submit this task." };
   }
-  if (task.status !== "in_progress") {
-    return { error: "Task is not in progress. Start the task before submitting." };
+  if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) {
+    return { error: "Task is not in a submittable state." };
   }
 
   // Producers may submit with content passed through directly.
-  if (["WRITER", "DESIGNER", "EDITOR"].includes(task.role_key)) {
+  if (["WRITER", "DESIGNER", "EDITOR", "VIDEOGRAPHER"].includes(task.role_key)) {
     const text = content != null ? String(content).trim() : task.content?.trim() || "";
     if (!text) {
       return { error: "Add your work (copy, notes or asset links) before submitting." };
