@@ -256,7 +256,7 @@ export function ReviewPanel({ task }: { task: Task }) {
   const [comment, setComment] = useState("");
   const [decision, setDecision] = useState<"needs_improvement" | "final" | "approve" | null>(null);
 
-  const isVisual = task.sequence === 2 && (task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER");
+  const isVisual = task.step_key?.includes("_v_") || task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
   const isWriter = task.role_key === "WRITER";
 
   function decide(choice: "needs_improvement" | "final" | "approve") {

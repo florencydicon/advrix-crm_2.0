@@ -342,6 +342,10 @@ async function ensureVisualTasksForAllocation(projectId: string, roleKey: string
     // This auto-heals existing deployments that still have content_role = 'WRITER'.
     await query(`UPDATE deliverable_types SET content_role = NULL WHERE key IN ('video_shoot','video_edit') AND content_role IS NOT NULL`);
     await query(`INSERT INTO deliverable_types (key, label, content_role, visual_role, default_qty, sort) VALUES ('design_asset','Design Asset',NULL,'DESIGNER',1,80) ON CONFLICT (key) DO NOTHING`);
+    // Heal mismatched visual roles (e.g., Video Shoot visual showing as Video Editor) from pre-migration data.
+    await query(`UPDATE tasks SET role_key = 'VIDEOGRAPHER' WHERE group_key = 'video_shoot' AND step_key LIKE '%_v_%' AND role_key != 'VIDEOGRAPHER'`);
+    await query(`UPDATE tasks SET role_key = 'EDITOR' WHERE group_key = 'video_edit' AND step_key LIKE '%_v_%' AND role_key != 'EDITOR'`);
+    await query(`UPDATE tasks SET role_key = 'DESIGNER' WHERE group_key = 'design_asset' AND step_key LIKE '%_v_%' AND role_key != 'DESIGNER'`);
     const deliverables = await query<DeliverableRow>(
       `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
       [projectId]
