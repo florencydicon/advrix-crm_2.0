@@ -17,6 +17,7 @@ import { useToast } from "@/components/Toast";
 import { PLATFORMS } from "@/components/ui";
 
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
+const CONTENT_ROLES = ["WRITER", "DESIGNER"];
 
 /**
  * Read-only content preview. Shown for completed tasks, and inside review /
@@ -123,6 +124,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
 
   const isWriter = task.role_key === "WRITER";
   const isVisual = task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
+  const isContentRole = CONTENT_ROLES.includes(task.role_key);
   const hasDraft = draft.trim().length > 0;
 
   function save() {
@@ -141,6 +143,58 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
     });
   }
 
+  // Non-content roles (EDITOR, VIDEOGRAPHER): simplified panel — no copywriting Description block.
+  if (!isContentRole) {
+    return (
+      <div className="space-y-2">
+        {task.brief_copy && (
+          <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <FileText className="h-3.5 w-3.5 text-brand-300" />
+              <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">
+                Approved copy — reference
+              </p>
+            </div>
+            <p className="text-[10px] text-slate-500 mb-1">Approved copy from the content team — use as reference.</p>
+            <p className="text-xs text-slate-300 whitespace-pre-wrap">{task.brief_copy}</p>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">Asset Notes / Links</p>
+            {saved && <span className="text-[10px] text-emerald-400">Saved</span>}
+          </div>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={3}
+            className="input text-xs"
+            placeholder="Paste design/video file links, or add asset notes…"
+          />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending}>
+              <Save className="h-3 w-3" /> {pending ? "Saving…" : "Save draft"}
+            </button>
+            <button
+              className="btn-primary !py-1 text-[11px]"
+              onClick={submit}
+              disabled={pending || !hasDraft}
+              title={hasDraft ? undefined : "Add your work before submitting."}
+            >
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+              {pending ? "Submitting…" : "Submit for Review"}
+            </button>
+          </div>
+          {!hasDraft && (
+            <p className="text-[10px] text-slate-500">Add your work, then submit.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Content roles (WRITER, DESIGNER): full content editor.
   return (
     <div className="space-y-2">
       {/* Approved copy reference for the design/editing team */}

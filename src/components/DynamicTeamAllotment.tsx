@@ -79,8 +79,8 @@ export function DynamicTeamAllotment({
       <div className="flex items-center gap-1.5 mb-1 px-0.5">
         <span className="w-[30%] text-[8px] font-semibold uppercase tracking-wider text-slate-500">Role</span>
         <span className="flex-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">Employee</span>
-        <span className="w-[26%] text-[8px] font-semibold uppercase tracking-wider text-slate-500">Deadline</span>
-        <span className="w-[22px] shrink-0" />
+        <span className="w-[28%] text-[8px] font-semibold uppercase tracking-wider text-slate-500">Deadline</span>
+        <span className="w-[18px] shrink-0" />
       </div>
 
       <div className="space-y-1.5">
@@ -111,7 +111,7 @@ export function DynamicTeamAllotment({
                   <div className="input !py-1.5 h-8 text-[10px] text-slate-600 bg-white/[0.02] text-center">{row.role_key ? "No members" : "—"}</div>
                 )}
               </div>
-              <div className={`w-[26%] min-w-0 transition-opacity ${row.role_key && row.user_id ? "" : "opacity-40 pointer-events-none"}`}>
+              <div className={`w-[32%] min-w-0 transition-opacity ${row.role_key && row.user_id ? "" : "opacity-40 pointer-events-none"}`}>
                 <DatePicker
                   value={row.deadline || undefined}
                   onChange={(v) => updateRow(row.id, { deadline: v })}

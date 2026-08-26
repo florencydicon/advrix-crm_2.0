@@ -294,6 +294,17 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
   return query<Task>(
     `${TASK_SELECT}
      WHERE t.assigned_to = $1
+        OR (
+          t.assigned_to IS NULL
+          AND EXISTS (
+            SELECT 1 FROM project_assignments pa
+            JOIN users u2 ON u2.id = pa.user_id
+            WHERE pa.project_id = t.project_id
+              AND pa.user_id = $1
+              AND pa.role_key = t.role_key
+              AND u2.is_active = true
+          )
+        )
      ORDER BY t.created_at ASC`,
     [userId]
   );
