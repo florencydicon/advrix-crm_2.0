@@ -21,44 +21,71 @@ export interface LoginState {
 }
 
 /**
- * Brute-force throttle (best-effort per server instance): max 6 failed
- * attempts per email within 10 minutes, then a cooldown.
+ * Database-backed brute-force throttle. Survives cold starts and works
+ * across all server instances. Max 6 failed attempts per 10-minute window.
  */
-const attempts = new Map<string, { count: number; firstAt: number; lockedUntil: number }>();
-const WINDOW_MS = 10 * 60 * 1000;
+const WINDOW_SECONDS = 600; // 10 minutes
 const MAX_ATTEMPTS = 6;
+const LOCK_SECONDS = 600;
 
-function throttleCheck(email: string): string | null {
-  const key = email.toLowerCase();
-  const rec = attempts.get(key);
-  const now = Date.now();
+async function throttleCheck(email: string, ip: string): Promise<string | null> {
+  // Clean old records periodically
+  await query(`DELETE FROM login_attempts WHERE created_at < now() - interval '1 hour'`);
+
+  const rows = await query<{ attempt_count: string; locked_until: string | null }>(
+    `SELECT
+       COUNT(*)::text AS attempt_count,
+       MAX(locked_until)::text AS locked_until
+     FROM login_attempts
+     WHERE lower(email) = lower($1)
+       AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
+    [email]
+  );
+
+  const rec = rows[0];
   if (!rec) return null;
-  if (rec.lockedUntil > now) {
-    const mins = Math.ceil((rec.lockedUntil - now) / 60000);
-    return `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
+
+  if (rec.locked_until) {
+    const lockedUntil = new Date(rec.locked_until).getTime();
+    const now = Date.now();
+    if (lockedUntil > now) {
+      const mins = Math.ceil((lockedUntil - now) / 60000);
+      return `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
+    }
   }
-  if (now - rec.firstAt > WINDOW_MS) {
-    attempts.delete(key);
-  }
+
   return null;
 }
 
-function throttleFail(email: string) {
-  const key = email.toLowerCase();
-  const now = Date.now();
-  const rec = attempts.get(key);
-  if (!rec || now - rec.firstAt > WINDOW_MS) {
-    attempts.set(key, { count: 1, firstAt: now, lockedUntil: 0 });
-    return;
-  }
-  rec.count += 1;
-  if (rec.count >= MAX_ATTEMPTS) {
-    rec.lockedUntil = now + WINDOW_MS;
+async function throttleFail(email: string, ip: string) {
+  // Record this attempt
+  await query(
+    `INSERT INTO login_attempts (email, ip_address) VALUES (lower($1), $2)`,
+    [email, ip]
+  );
+
+  // Count recent attempts and lock if exceeded
+  const rows = await query<{ cnt: string }>(
+    `SELECT COUNT(*)::text AS cnt
+     FROM login_attempts
+     WHERE lower(email) = lower($1)
+       AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
+    [email]
+  );
+  const count = Number(rows[0]?.cnt || 0);
+  if (count >= MAX_ATTEMPTS) {
+    await query(
+      `UPDATE login_attempts SET locked_until = now() + interval '${LOCK_SECONDS} seconds'
+       WHERE lower(email) = lower($1)
+         AND locked_until IS NULL
+         AND created_at > now() - interval '${WINDOW_SECONDS} seconds'`,
+      [email]
+    );
   }
 }
 
-function throttleReset(email: string) {
-  attempts.delete(email.toLowerCase());
+async function throttleReset(email: string) {
+  await query(`DELETE FROM login_attempts WHERE lower(email) = lower($1)`, [email]);
 }
 
 export async function loginAction(
@@ -67,10 +94,11 @@ export async function loginAction(
 ): Promise<LoginState> {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
+  const ip = String(formData.get("_ip") || "unknown");
 
   if (!email || !password) return { error: "Email and password are required." };
 
-  const throttled = throttleCheck(email);
+  const throttled = await throttleCheck(email, ip);
   if (throttled) return { error: throttled };
 
   const rows = await query<AuthUser>(
@@ -83,17 +111,17 @@ export async function loginAction(
 
   const user = rows[0];
   if (!user || !user.is_active) {
-    throttleFail(email);
+    await throttleFail(email, ip);
     return { error: "Invalid credentials or inactive account." };
   }
 
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) {
-    throttleFail(email);
+    await throttleFail(email, ip);
     return { error: "Invalid email or password." };
   }
 
-  throttleReset(email);
+  await throttleReset(email);
 
   const token = await createSessionToken({
     sub: user.id,
