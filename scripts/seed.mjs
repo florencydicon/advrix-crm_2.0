@@ -39,6 +39,7 @@ async function main() {
     ["DESIGNER", "Graphic Designer", ["tasks:execute"], "staff"],
     ["EDITOR", "Video Editor", ["tasks:execute"], "staff"],
     ["SMM", "Social Media Manager", ["tasks:execute"], "staff"],
+    ["VIDEOGRAPHER", "Videographer", ["tasks:execute"], "staff"],
   ];
   for (const [key, label, perms, dash] of roles) {
     await sql`INSERT INTO roles (key, label, permissions, dashboard)
@@ -51,7 +52,7 @@ async function main() {
     { key: "static_post", label: "Static Post", content_role: "WRITER", visual_role: "DESIGNER", default_qty: 1, sort: 10 },
     { key: "reel", label: "Reel", content_role: "WRITER", visual_role: "EDITOR", default_qty: 1, sort: 20 },
     { key: "story", label: "Story", content_role: "WRITER", visual_role: "DESIGNER", default_qty: 1, sort: 30 },
-    { key: "video_shoot", label: "Video Shoot", content_role: "WRITER", visual_role: "EDITOR", default_qty: 1, sort: 40 },
+    { key: "video_shoot", label: "Video Shoot", content_role: "WRITER", visual_role: "VIDEOGRAPHER", default_qty: 1, sort: 40 },
     { key: "video_edit", label: "Video Edit", content_role: "WRITER", visual_role: "EDITOR", default_qty: 1, sort: 50 },
     { key: "banner", label: "Banner", content_role: "WRITER", visual_role: "DESIGNER", default_qty: 1, sort: 60 },
     { key: "content_writing", label: "Content Piece", content_role: "WRITER", visual_role: null, default_qty: 1, sort: 70 },
@@ -93,6 +94,7 @@ async function main() {
     ["Kabir Singh", "designer@advrix.agency", "DESIGNER"],
     ["Maya Iyer", "editor@advrix.agency", "EDITOR"],
     ["Dev Malhotra", "smm@advrix.agency", "SMM"],
+    ["Vikram Joshi", "videographer@advrix.agency", "VIDEOGRAPHER"],
   ];
   for (const [name, email, roleKey] of users) {
     await sql`INSERT INTO users (full_name, email, password_hash, role_id)
@@ -132,7 +134,7 @@ async function main() {
 
   console.log("Done. Demo logins (password123):");
   console.log("  admin@advrix.agency, pm@advrix.agency, sales@advrix.agency");
-  console.log("  writer@advrix.agency, designer@advrix.agency, editor@advrix.agency, smm@advrix.agency");
+  console.log("  writer@advrix.agency, designer@advrix.agency, editor@advrix.agency, smm@advrix.agency, videographer@advrix.agency");
 }
 
 main().catch((e) => {

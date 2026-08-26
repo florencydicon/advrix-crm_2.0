@@ -133,6 +133,7 @@ async function run() {
     EDITOR: [],
     WRITER: [],
     SMM: [],
+    VIDEOGRAPHER: [],
   };
 
   // 20 Designers
@@ -183,7 +184,19 @@ async function run() {
     );
   }
 
-  console.log(`  - 20 Designers, 15 Editors, 15 Writers, 5 SMM`);
+  // 5 Videographers
+  for (let i = 0; i < 5; i++) {
+    const first = pick(firstNames);
+    const last = pick(lastNames);
+    const email = `videographer${i + 1}@advrix.agency`;
+    roleGroups.VIDEOGRAPHER.push({ first, last, email });
+    await pool.query(
+      `INSERT INTO users (full_name, email, password_hash, role_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+      [`${first} ${last}`, email, "hashed_password_123", roleMap["VIDEOGRAPHER"]]
+    );
+  }
+
+  console.log(`  - 20 Designers, 15 Editors, 15 Writers, 5 SMM, 5 Videographers`);
 
   // ---------- Seed clients (160) ----------
   console.log("\nSeeding 160 clients...");
@@ -209,7 +222,7 @@ async function run() {
       ('static_post', 'Static Post', 'WRITER', 'DESIGNER', 5, 1),
       ('reel', 'Reel', 'WRITER', 'EDITOR', 3, 2),
       ('story', 'Story', 'WRITER', 'DESIGNER', 5, 3),
-      ('video_shoot', 'Video Shoot', NULL, 'EDITOR', 2, 4),
+      ('video_shoot', 'Video Shoot', NULL, 'VIDEOGRAPHER', 2, 4),
       ('video_edit', 'Video Edit', NULL, 'EDITOR', 2, 5),
       ('banner', 'Banner', 'WRITER', 'DESIGNER', 3, 6),
       ('content_piece', 'Content Piece', 'WRITER', NULL, 4, 7)

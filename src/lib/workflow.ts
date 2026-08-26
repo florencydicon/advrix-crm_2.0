@@ -88,6 +88,18 @@ export async function generateDeliverableTasks(projectId: string) {
 
     const types = await query<DeliverableTypeRow>(`SELECT key, content_role, visual_role FROM deliverable_types`);
 
+    // Determine which roles are allocated to this project.
+    // If WRITER is allocated, create content tasks first (sequence 1).
+    // If WRITER is NOT allocated but a visual role IS, skip content and create visual directly.
+    // If no allocations exist yet, default to creating both (backward compat).
+    const allocs = await query<{ role_key: string }>(
+      `SELECT DISTINCT role_key FROM assignments WHERE project_id = $1`,
+      [projectId]
+    );
+    const allocatedRoles = new Set(allocs.map((a) => a.role_key));
+    const hasWriter = allocatedRoles.has("WRITER");
+    const hasNoAllocations = allocatedRoles.size === 0;
+
     for (const d of deliverables) {
       const type = types.find((t) => t.key === d.category_key);
       const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
@@ -96,49 +108,60 @@ export async function generateDeliverableTasks(projectId: string) {
       for (let i = 1; i <= d.quantity; i++) {
         const title = `${label} ${pad(i)}`;
         const contentStepKey = `${d.category_key}_c_${i}`;
-        if (contentRole) {
+        const visualStepKey = `${d.category_key}_v_${i}`;
+
+        // Decide: create content task or skip straight to visual?
+        const createContentTask = contentRole && (hasWriter || hasNoAllocations);
+
+        if (createContentTask) {
           const existing = await query<{ id: string }>(
             `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
             [projectId, contentStepKey]
           );
-          if (existing.length > 0) continue;
-
-          await query(
-            `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-             VALUES ($1, $2, $3, $4, $5, 1, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
-            [
-              projectId,
-              contentStepKey,
-              d.category_key,
-              contentRole,
-              d.id,
-              `${title} — Content & Copy`,
-              `Draft the copy, captions and script for "${title}". Final copy must be brand-aligned before visual production begins.`,
-            ]
-          );
+          if (existing.length === 0) {
+            await query(
+              `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
+               VALUES ($1, $2, $3, $4, $5, 1, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
+              [
+                projectId,
+                contentStepKey,
+                d.category_key,
+                contentRole,
+                d.id,
+                `${title} — Content & Copy`,
+                `Draft the copy, captions and script for "${title}". Final copy must be brand-aligned before visual production begins.`,
+              ]
+            );
+          }
         } else {
-          const visualRole: RoleKey | null = d.is_custom ? "DESIGNER" : (type?.visual_role as RoleKey | null) || null;
+          // No WRITER allocated — create visual task directly as sequence 1.
+          let visualRole: RoleKey | null = null;
+          if (d.is_custom) {
+            visualRole = "DESIGNER";
+          } else {
+            // Use the visual_role from the type, which may be DESIGNER, EDITOR, or VIDEOGRAPHER.
+            visualRole = (type?.visual_role as RoleKey | null) || null;
+          }
           if (visualRole) {
-            const visualStepKey = `${d.category_key}_v_${i}`;
             const existing = await query<{ id: string }>(
               `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
               [projectId, visualStepKey]
             );
-            if (existing.length > 0) continue;
-
-            await query(
-              `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-               VALUES ($1, $2, $3, $4, $5, 2, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
-              [
-                projectId,
-                visualStepKey,
-                d.category_key,
-                visualRole,
-                d.id,
-                `${title} — Visual`,
-                `Produce the visual asset for "${title}".`,
-              ]
-            );
+            if (existing.length === 0) {
+              await query(
+                `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
+                 VALUES ($1, $2, $3, $4, $5, 1, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
+                [
+                  projectId,
+                  visualStepKey,
+                  d.category_key,
+                  visualRole,
+                  d.id,
+                  `${title} — Visual`,
+                  `Produce the visual asset for "${title}".`,
+                ]
+              );
+            }
           }
         }
       }
@@ -171,7 +194,13 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
         [taskId]
       )
     )[0];
-    if (!task || task.sequence !== 1) {
+    if (!task) {
+      await maybeCompleteProject(projectId);
+      return;
+    }
+    // If this is already a visual task (step_key contains _v_) or not sequence 1,
+    // there is no downstream visual task to create — just check project completion.
+    if (task.step_key.includes("_v_") || task.sequence !== 1) {
       await maybeCompleteProject(projectId);
       return;
     }

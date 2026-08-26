@@ -68,12 +68,15 @@ export function TaskDetails({
         </div>
       )}
       <ContentEditor task={task} roleKey={roleKey} userId={userId} />
-      {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR") && task.content === null && (
+      {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER") && (
         <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <FileText className="h-3.5 w-3.5 text-brand-300" />
-            <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">Approved copy — design reference</p>
+            <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">
+              Sub Task — {task.title.replace(/\s*[—–-]\s*Visual\s*$/i, "").trim()} Content Reference
+            </p>
           </div>
+          <p className="text-[10px] text-slate-500 mb-1">Approved copy from the content writer — use as reference.</p>
           <p className="text-xs text-slate-300 whitespace-pre-wrap">{task.brief_copy}</p>
         </div>
       )}
@@ -108,7 +111,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   const [draft, setDraft] = useState(task.content || "");
   const [saved, setSaved] = useState(false);
 
-  const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR";
+  const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
   const canManage = roleKey === "SUPER_ADMIN" || roleKey === "PROJECT_MANAGER";
   const isAssignee = task.assigned_to === userId;
   const editable =
@@ -119,7 +122,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   if (!editable) return null;
 
   const isWriter = task.role_key === "WRITER";
-  const isVisual = task.role_key === "DESIGNER" || task.role_key === "EDITOR";
+  const isVisual = task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
   const hasDraft = draft.trim().length > 0;
 
   function save() {
@@ -199,7 +202,7 @@ export function ReviewPanel({ task }: { task: Task }) {
   const [comment, setComment] = useState("");
   const [decision, setDecision] = useState<"needs_improvement" | "final" | "approve" | null>(null);
 
-  const isVisual = task.sequence === 2 && (task.role_key === "DESIGNER" || task.role_key === "EDITOR");
+  const isVisual = task.sequence === 2 && (task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER");
   const isWriter = task.role_key === "WRITER";
 
   function decide(choice: "needs_improvement" | "final" | "approve") {
@@ -394,7 +397,7 @@ export function TaskActions({
   const isReviewer = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const isSmm = roleKey === "SMM";
   const isAssignee = task.assigned_to === userId;
-  const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR";
+  const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
 
   function run(fn: () => Promise<{ ok?: boolean; error?: string }>, expand = false) {
     start(async () => {

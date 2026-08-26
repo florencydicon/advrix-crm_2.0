@@ -8,7 +8,7 @@ import SmmDashboard from "@/components/SmmDashboard";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 import { LEAD_STATUSES } from "@/lib/types";
 
-const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM"];
+const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM", "VIDEOGRAPHER"];
 
 function greeting() {
   const h = new Date().getHours();

@@ -23,6 +23,16 @@ async function ensureLocationColumns() {
       )
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_login_attempts_email_time ON login_attempts (lower(email), created_at)`);
+    // Migration 010: Add VIDEOGRAPHER role + update deliverable_types
+    await query(`
+      INSERT INTO roles (key, label, permissions, dashboard)
+      VALUES ('VIDEOGRAPHER', 'Videographer', ARRAY['tasks:execute'], 'staff')
+      ON CONFLICT (key) DO NOTHING
+    `);
+    await query(`
+      UPDATE deliverable_types SET visual_role = 'VIDEOGRAPHER'
+      WHERE key = 'video_shoot' AND visual_role = 'EDITOR'
+    `);
   } catch {}
 }
 

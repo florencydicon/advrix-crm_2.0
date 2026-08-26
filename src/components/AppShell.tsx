@@ -52,6 +52,7 @@ const ROLE_STYLES: Record<string, string> = {
   DESIGNER: "bg-pink-400/90 !text-night-950",
   EDITOR: "bg-cyan-400/90 !text-night-950",
   SMM: "bg-indigo-400/90 !text-night-950",
+  VIDEOGRAPHER: "bg-orange-400/90 !text-night-950",
 };
 
 const NOTIF_STYLES: Record<string, string> = {
