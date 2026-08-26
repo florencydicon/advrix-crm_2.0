@@ -182,7 +182,7 @@ export async function approveProjectAction(projectId: string) {
   }
 
   revalidatePath("/projects");
-  revalidatePath("/app");
+  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -229,7 +229,7 @@ export async function updateTaskContentAction(taskId: string, content: string) {
   if (text.length > 5000) return { error: "Content is too long (max 5000 characters)." };
 
   await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -303,7 +303,7 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
     });
   }
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -350,7 +350,7 @@ export async function startTaskAction(taskId: string) {
   if (task.status !== "pending") return { error: "Task has already started." };
 
   await query(`UPDATE tasks SET status = 'in_progress' WHERE id = $1`, [taskId]);
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -394,7 +394,7 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
     link: "/projects",
   });
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -478,7 +478,7 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
     return { error: "Invalid review decision for this task." };
   }
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -511,7 +511,7 @@ export async function clientFeedbackAction(taskId: string, feedback: string) {
     link: "/projects",
   });
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -544,7 +544,7 @@ export async function approveClientAction(taskId: string) {
     link: "/projects",
   });
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -580,7 +580,7 @@ export async function completeTaskWithPlatformsAction(taskId: string, platforms:
     });
   }
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -617,7 +617,7 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
     });
   }
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -655,7 +655,7 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
     });
   }
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -687,7 +687,7 @@ export async function assignProjectTeamAction(
   }
 
   revalidatePath("/projects");
-  revalidatePath("/app");
+  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -755,7 +755,7 @@ export async function updateTaskDueDateAction(taskId: string, date: string) {
     });
   }
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -798,7 +798,7 @@ export async function setMemberLeaveAction(
     link: "/projects",
   });
 
-  revalidatePath("/app");
+  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }
@@ -814,7 +814,7 @@ export async function updateTaskRemarksAction(taskId: string, remarks: string) {
   }
   await query(`UPDATE tasks SET remarks = $1 WHERE id = $2`, [remarks || null, taskId]);
   revalidatePath("/projects");
-  revalidatePath("/app");
+  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -830,7 +830,7 @@ export async function updateTaskRoleAction(taskId: string, roleKey: string) {
   }
   await query(`UPDATE tasks SET role_key = $1 WHERE id = $2`, [roleKey, taskId]);
   revalidatePath("/projects");
-  revalidatePath("/app");
+  revalidatePath("/projects");
   return { ok: true };
 }
 
@@ -872,6 +872,6 @@ export async function extendPersonDeadlineAction(
   );
 
   revalidatePath("/projects");
-  revalidatePath("/app");
+  revalidatePath("/projects");
   return { ok: true };
 }

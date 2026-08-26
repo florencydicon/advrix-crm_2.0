@@ -405,7 +405,6 @@ function ExtendPersonModal({
   onSubmit: (days: number) => void;
 }) {
   const [days, setDays] = useState(1);
-  const { toast } = useToast();
   return (
     <Modal open onClose={onClose} title="Extend individual deadline">
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSubmit(days); }}>

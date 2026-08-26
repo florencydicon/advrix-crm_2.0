@@ -1,18 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
-import { SESSION_COOKIE_NAME } from "@/lib/constants";
+import { SESSION_COOKIE_NAME, getSigningSecret } from "@/lib/constants";
 
-function signingSecret(): Uint8Array {
-  const explicit = process.env.JWT_SECRET;
-  if (explicit && explicit.length >= 16) {
-    return new TextEncoder().encode(explicit);
-  }
-  const derived = `advrix|${process.env.DATABASE_URL || "local"}|session-signing`;
-  return new TextEncoder().encode(derived);
-}
-
-const secret = signingSecret();
+const secret = getSigningSecret();
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

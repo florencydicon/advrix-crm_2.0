@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/session";
 
 export async function GET(req: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   const lat = req.nextUrl.searchParams.get("lat");
   const lon = req.nextUrl.searchParams.get("lon");
 
   if (!lat || !lon) {
     return NextResponse.json({ error: "lat and lon are required" }, { status: 400 });
+  }
+
+  const latNum = parseFloat(lat);
+  const lonNum = parseFloat(lon);
+  if (isNaN(latNum) || isNaN(lonNum) || latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) {
+    return NextResponse.json({ error: "Invalid coordinates." }, { status: 400 });
   }
 
   // Try Nominatim first with proper User-Agent
