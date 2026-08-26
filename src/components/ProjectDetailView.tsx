@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useRef, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, X, Trash2, Users, CalendarDays, Coffee, ChevronDown, ChevronRight } from "lucide-react";
@@ -64,11 +64,15 @@ export default function ProjectDetailView({
   team,
   roleKey,
   userId,
+  highlightProject,
+  highlightTask,
 }: {
   client: PipelineClient;
   team: UserRow[];
   roleKey: string;
   userId: string;
+  highlightProject?: string | null;
+  highlightTask?: string | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -77,6 +81,37 @@ export default function ProjectDetailView({
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [extendTarget, setExtendTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
+  const highlightedRef = useRef<HTMLDivElement | null>(null);
+
+  // Deep-link: auto-expand project + task and scroll to it.
+  useEffect(() => {
+    if (!highlightProject) return;
+    setExpandedProjectId(highlightProject);
+    if (!highlightTask) return;
+    // Find the task in the pipeline data and expand it.
+    for (const p of client.projects) {
+      if (p.id === highlightProject) {
+        const task = p.tasks.find((t) => t.step_key === highlightTask);
+        if (task) {
+          setExpandedTaskId(task.id);
+          // Scroll to the task after a short delay to allow DOM render.
+          requestAnimationFrame(() => {
+            const el = document.getElementById(`task-${task.id}`);
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              el.classList.add("animate-highlight");
+              setTimeout(() => {
+                el.classList.remove("animate-highlight");
+              }, 3200);
+            }
+          });
+        }
+        break;
+      }
+    }
+    // Clean URL params after applying.
+    window.history.replaceState(null, "", `/projects/${client.client_id}`);
+  }, [highlightProject, highlightTask, client]);
 
   const canManage = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
   const canDelete = roleKey === "SUPER_ADMIN";
@@ -220,7 +255,7 @@ export default function ProjectDetailView({
                         const isExpanded = expandedTaskId === t.id;
                         const overdue = t.due_date && t.status !== "completed" && new Date(isoDate(t.due_date) + "T23:59:59") < new Date();
                         return (
-                          <div key={t.id} className="rounded-md border border-white/10 overflow-hidden bg-night-850/60">
+                          <div key={t.id} id={`task-${t.id}`} className="rounded-md border border-white/10 overflow-hidden bg-night-850/60 transition-all duration-500">
                             <button type="button" onClick={() => setExpandedTaskId(isExpanded ? null : t.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.03] transition-colors">
                               <div className="flex-1 min-w-0">
                                 <p className="text-[12px] font-medium text-white truncate leading-tight">{t.title}</p>

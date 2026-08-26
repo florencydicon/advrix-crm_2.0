@@ -56,7 +56,7 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
       setReadIds((prev) => new Set(prev).add(n.id));
       await markNotificationReadAction(n.id);
     }
-    if (n.link) router.push(n.link);
+    if (n.link && n.link.startsWith("/") && !n.link.startsWith("//")) router.push(n.link);
   }
 
   async function handleMarkAll() {

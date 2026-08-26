@@ -23,6 +23,24 @@ import {
   validateDeliverables,
 } from "@/lib/validation";
 
+// ── Deep-link helpers for notifications ──────────────────────────────────────
+
+async function getProjectClientId(projectId: string): Promise<string | null> {
+  const rows = await query<{ client_id: string }>(
+    `SELECT client_id FROM projects WHERE id = $1`,
+    [projectId]
+  );
+  return rows[0]?.client_id ?? null;
+}
+
+function projectLink(clientId: string, projectId: string) {
+  return `/projects/${clientId}?project=${projectId}`;
+}
+
+function taskLink(clientId: string, projectId: string, stepKey: string) {
+  return `/projects/${clientId}?project=${projectId}&task=${encodeURIComponent(stepKey)}`;
+}
+
 interface DeliverableInput {
   key: string;
   label: string;
@@ -142,7 +160,7 @@ export async function createProjectAction(formData: FormData) {
       type: "project",
       title: "New project awaiting approval",
       body: `${name} submitted by ${session.name}.`,
-      link: "/projects",
+      link: projectLink(client_id, project[0].id),
     });
     return { ok: true, id: project[0].id };
   } catch (err) {
@@ -157,8 +175,8 @@ export async function approveProjectAction(projectId: string) {
     return { error: "Not authorized." };
   }
 
-  const project = await query<{ id: string; name: string }>(
-    `SELECT id, name FROM projects WHERE id = $1 AND status = 'pending_approval'`,
+  const project = await query<{ id: string; name: string; client_id: string }>(
+    `SELECT id, name, client_id FROM projects WHERE id = $1 AND status = 'pending_approval'`,
     [projectId]
   );
   if (!project[0]) return { error: "Project not found or already processed." };
@@ -181,7 +199,7 @@ export async function approveProjectAction(projectId: string) {
       type: "project",
       title: "Project approved",
       body: `"${project[0].name}" was approved and is now in production.`,
-      link: "/projects",
+      link: projectLink(project[0].client_id, projectId),
     });
   }
 
@@ -196,8 +214,8 @@ export async function rejectProjectAction(projectId: string) {
     return { error: "Not authorized." };
   }
 
-  const project = await query<{ id: string; name: string; created_by: string | null }>(
-    `SELECT id, name, created_by FROM projects WHERE id = $1`,
+  const project = await query<{ id: string; name: string; created_by: string | null; client_id: string }>(
+    `SELECT id, name, created_by, client_id FROM projects WHERE id = $1`,
     [projectId]
   );
   await query(`UPDATE projects SET status = 'rejected' WHERE id = $1`, [projectId]);
@@ -208,7 +226,7 @@ export async function rejectProjectAction(projectId: string) {
       type: "project",
       title: "Project rejected",
       body: `"${project[0]?.name ?? "Project"}" was rejected. Contact your manager for details.`,
-      link: "/projects",
+      link: projectLink(project[0].client_id, projectId),
     });
   }
   revalidatePath("/projects");
@@ -248,8 +266,9 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
   const allowed = ["pending", "in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading", "completed"];
   if (!allowed.includes(status)) return { error: "Invalid status." };
 
-  const taskRows = await query<{ project_id: string; deliverable_id: string | null; content: string | null; status: string }>(
-    `SELECT project_id, deliverable_id, content, status FROM tasks WHERE id = $1`,
+  const taskRows = await query<{ project_id: string; deliverable_id: string | null; content: string | null; status: string; step_key: string }>(
+    `SELECT t.project_id, t.deliverable_id, t.content, t.status, t.step_key
+     FROM tasks t WHERE t.id = $1`,
     [taskId]
   );
   const task = taskRows[0];
@@ -302,12 +321,15 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
   }
 
   if (status === "submitted" || status === "completed") {
-    await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
-      type: "task",
-      title: status === "completed" ? "Task completed" : "Task ready for review",
-      body: `${session.name} submitted a task for review.`,
-      link: "/projects",
-    });
+    const clientId = await getProjectClientId(task.project_id);
+    if (clientId && task.step_key) {
+      await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
+        type: "task",
+        title: status === "completed" ? "Task completed" : "Task ready for review",
+        body: `${session.name} submitted a task for review.`,
+        link: taskLink(clientId, task.project_id, task.step_key),
+      });
+    }
   }
 
   revalidatePath("/projects");
@@ -396,12 +418,15 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
 
   await query(`UPDATE tasks SET status = 'submitted', reviewed_at = now() WHERE id = $1`, [taskId]);
 
-  await notifyRoles(CAN_REVIEW, {
-    type: "task",
-    title: "Task ready for review",
-    body: `${session.name} submitted "${task.title}" for review.`,
-    link: "/projects",
-  });
+  const clientId = await getProjectClientId(task.project_id);
+  if (clientId && task.step_key) {
+    await notifyRoles(CAN_REVIEW, {
+      type: "task",
+      title: "Task ready for review",
+      body: `${session.name} submitted "${task.title}" for review.`,
+      link: taskLink(clientId, task.project_id, task.step_key),
+    });
+  }
 
   revalidatePath("/projects");
   revalidatePath("/projects");
@@ -428,6 +453,10 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
 
   const commentText = comment?.trim() || null;
 
+  // Pre-fetch clientId for deep-linking notifications.
+  const clientId = await getProjectClientId(task.project_id);
+  const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+
   if (decision === "needs_improvement") {
     await query(
       `UPDATE tasks SET status = 'needs_improvement', review_comment = $2, reviewed_by = $3, reviewed_at = now()
@@ -440,7 +469,7 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
         type: "task",
         title: "Task needs improvement",
         body: `"${task.title}" — ${commentText}`,
-        link: "/projects",
+        link: taskDeepLink,
       });
     }
   } else if (task.role_key === "WRITER" && decision === "final") {
@@ -456,7 +485,7 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
         type: "task",
         title: "Content approved",
         body: `Your copy for "${task.title}" was approved.`,
-        link: "/projects",
+        link: taskDeepLink,
       });
     }
     await handleDeliverableTaskCompleted(task.project_id, taskId);
@@ -473,14 +502,14 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
         type: "task",
         title: "Design approved — take to client",
         body: `"${task.title}" passed internal review. Get client approval to proceed.`,
-        link: "/projects",
+        link: taskDeepLink,
       });
     } else {
       await notifyRoles(["SMM"], {
         type: "task",
         title: "Design approved — take to client",
         body: `"${task.title}" passed internal review and needs client approval.`,
-        link: "/projects",
+        link: taskDeepLink,
       });
     }
   } else {
@@ -513,11 +542,15 @@ export async function clientFeedbackAction(taskId: string, feedback: string) {
   const who = producerId
     ? (await query<{ full_name: string }>(`SELECT full_name FROM users WHERE id = $1`, [producerId]))[0]?.full_name
     : "the design team";
+
+  const clientId = await getProjectClientId(task.project_id);
+  const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+
   await notifyRoles(CAN_REVIEW, {
     type: "task",
     title: "Client feedback received",
     body: `Client gave feedback on "${task.title}" — routed back to ${who}.`,
-    link: "/projects",
+    link: taskDeepLink,
   });
 
   revalidatePath("/projects");
@@ -536,6 +569,9 @@ export async function approveClientAction(taskId: string) {
 
   await query(`UPDATE tasks SET status = 'uploading', reviewed_at = now() WHERE id = $1`, [taskId]);
 
+  const clientId = await getProjectClientId(task.project_id);
+  const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+
   const creatorId = await getProjectCreatorId(task.project_id);
   if (creatorId) {
     await createNotification({
@@ -543,14 +579,14 @@ export async function approveClientAction(taskId: string) {
       type: "task",
       title: "Client approved",
       body: `Client approved "${task.title}".`,
-      link: "/projects",
+      link: taskDeepLink,
     });
   }
   await notifyRoles(CAN_REVIEW, {
     type: "task",
     title: "Client approved",
     body: `Client approved "${task.title}".`,
-    link: "/projects",
+    link: taskDeepLink,
   });
 
   revalidatePath("/projects");
@@ -580,12 +616,14 @@ export async function completeTaskWithPlatformsAction(taskId: string, platforms:
 
   const creatorId = await getProjectCreatorId(task.project_id);
   if (creatorId) {
+    const clientId = await getProjectClientId(task.project_id);
+    const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
     await createNotification({
       userId: creatorId,
       type: "task",
       title: "Deliverable published",
       body: `"${task.title}" was published to ${clean.join(", ")}.`,
-      link: "/projects",
+      link: taskDeepLink,
     });
   }
 
@@ -616,13 +654,19 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
   }
 
   if (assigneeId && assigneeId !== session.sub) {
-    const task = await query<{ title: string }>(`SELECT title FROM tasks WHERE id = $1`, [taskId]);
+    const taskRow = await query<{ title: string; project_id: string; step_key: string }>(
+      `SELECT title, project_id, step_key FROM tasks WHERE id = $1`, [taskId]
+    );
+    const clientId = taskRow[0] ? await getProjectClientId(taskRow[0].project_id) : null;
+    const taskDeepLink = clientId && taskRow[0]?.step_key
+      ? taskLink(clientId, taskRow[0].project_id, taskRow[0].step_key)
+      : "/projects";
     await createNotification({
       userId: assigneeId,
       type: "task",
       title: "New task assigned to you",
-      body: task[0]?.title ?? "A new task was assigned to you.",
-      link: "/projects",
+      body: taskRow[0]?.title ?? "A new task was assigned to you.",
+      link: taskDeepLink,
     });
   }
 
@@ -667,12 +711,19 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
   }
 
   if (userId !== session.sub) {
+    const taskRow = await query<{ title: string; project_id: string; step_key: string }>(
+      `SELECT title, project_id, step_key FROM tasks WHERE id = $1`, [taskId]
+    );
+    const clientId = taskRow[0] ? await getProjectClientId(taskRow[0].project_id) : null;
+    const taskDeepLink = clientId && taskRow[0]?.step_key
+      ? taskLink(clientId, taskRow[0].project_id, taskRow[0].step_key)
+      : "/projects";
     await createNotification({
       userId,
       type: "task",
       title: "Removed from a task",
-      body: `You were unassigned from "${task[0]?.title ?? "a task"}".`,
-      link: "/projects",
+      body: `You were unassigned from "${taskRow[0]?.title ?? "a task"}".`,
+      link: taskDeepLink,
     });
   }
 
@@ -692,8 +743,9 @@ export async function assignProjectTeamAction(
   const clean = allocations.filter((a) => a.role_key && a.user_id);
   await allocateProjectTeam(projectId, clean);
 
-  const project = await query<{ name: string }>(`SELECT name FROM projects WHERE id = $1`, [projectId]);
+  const project = await query<{ name: string; client_id: string }>(`SELECT name, client_id FROM projects WHERE id = $1`, [projectId]);
   const projectName = project[0]?.name ?? "Project";
+  const projectClientId = project[0]?.client_id;
   for (const a of clean) {
     if (a.user_id && a.user_id !== session.sub) {
       await createNotification({
@@ -701,7 +753,7 @@ export async function assignProjectTeamAction(
         type: "project",
         title: "You're on a new project team",
         body: `You've been assigned to "${projectName}".`,
-        link: "/projects",
+        link: projectClientId ? projectLink(projectClientId, projectId) : "/projects",
       });
     }
   }
@@ -760,18 +812,22 @@ export async function updateTaskDueDateAction(taskId: string, date: string) {
   await setTaskDeadline(taskId, date);
 
   const task = (
-    await query<{ title: string; assigned_to: string | null }>(
-      `SELECT title, assigned_to FROM tasks WHERE id = $1`,
+    await query<{ title: string; assigned_to: string | null; project_id: string; step_key: string }>(
+      `SELECT title, assigned_to, project_id, step_key FROM tasks WHERE id = $1`,
       [taskId]
     )
   )[0];
   if (task?.assigned_to && task.assigned_to !== session.sub) {
+    const clientId = await getProjectClientId(task.project_id);
+    const taskDeepLink = clientId && task.step_key
+      ? taskLink(clientId, task.project_id, task.step_key)
+      : "/projects";
     await createNotification({
       userId: task.assigned_to,
       type: "task",
       title: "Deadline updated",
       body: `"${task.title}" is now due ${date ? new Date(`${date}T00:00:00`).toLocaleDateString() : "—"} (set by ${session.name}).`,
-      link: "/dashboard",
+      link: taskDeepLink,
     });
   }
 
@@ -808,14 +864,14 @@ export async function setMemberLeaveAction(
       type: "leave",
       title: "Marked on leave",
       body: `${session.name} marked you on leave for ${days} day${days === 1 ? "" : "s"} — deadlines extended automatically.`,
-      link: "/dashboard",
+      link: "/attendance",
     });
   }
   await notifyRoles(["SUPER_ADMIN", "PROJECT_MANAGER"], {
     type: "leave",
     title: "Deadline cascade applied",
     body: `${session.name} extended deadlines in a project (${days}d leave).`,
-    link: "/projects",
+    link: projectLink(await getProjectClientId(projectId) || "", projectId),
   });
 
   revalidatePath("/projects");

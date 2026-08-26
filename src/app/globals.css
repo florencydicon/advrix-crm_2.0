@@ -116,6 +116,16 @@ h4 {
   100% { transform: translateX(100%); }
 }
 
+/* Task highlight flash — used when deep-linking from notifications */
+@keyframes highlight-flash {
+  0%   { box-shadow: 0 0 0 2px rgba(133, 222, 133, 0.6), 0 0 20px rgba(133, 222, 133, 0.25); }
+  50%  { box-shadow: 0 0 0 3px rgba(133, 222, 133, 0.4), 0 0 30px rgba(133, 222, 133, 0.15); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.animate-highlight {
+  animation: highlight-flash 3s ease-out forwards;
+}
+
 @layer components {
   .card {
     @apply bg-night-850 rounded-2xl border border-white/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.3),0_8px_24px_-12px_rgba(0,0,0,0.5)];
