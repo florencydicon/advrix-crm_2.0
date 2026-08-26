@@ -108,7 +108,6 @@ export async function createProjectAction(formData: FormData) {
 
   const nameErr = validateText(name, "Project name", 3, 120);
   if (nameErr) return { error: nameErr };
-  // Task details are optional — deliverables drive task generation.
   if (brief && brief.length > 2000) {
     return { error: "Task details are too long (max 2000 characters)." };
   }
@@ -122,29 +121,34 @@ export async function createProjectAction(formData: FormData) {
       .map((d) => `${d.quantity} × ${d.isCustom && d.customLabel ? d.customLabel : d.label}`)
       .join(", ") || null;
 
-  const project = await query<{ id: string }>(
-    `INSERT INTO projects (client_id, name, status, brief, deliverables, deadline, created_by)
-     VALUES ($1, $2, 'pending_approval', $3, $4, $5, $6) RETURNING id`,
-    [client_id, name, brief, deliverableSummary, deadline, session.sub]
-  );
-
-  for (const d of deliverables.filter((x) => x.quantity > 0)) {
-    await query(
-      `INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [project[0].id, d.key, d.isCustom && d.customLabel ? d.customLabel : d.label, d.quantity, d.isCustom, d.customLabel]
+  try {
+    const project = await query<{ id: string }>(
+      `INSERT INTO projects (client_id, name, status, brief, deliverables, deadline, created_by)
+       VALUES ($1, $2, 'pending_approval', $3, $4, $5, $6) RETURNING id`,
+      [client_id, name, brief, deliverableSummary, deadline, session.sub]
     );
-  }
 
-  revalidatePath("/projects");
-  revalidatePath("/clients");
-  await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
-    type: "project",
-    title: "New project awaiting approval",
-    body: `${name} submitted by ${session.name}.`,
-    link: "/projects",
-  });
-  return { ok: true, id: project[0].id };
+    for (const d of deliverables.filter((x) => x.quantity > 0)) {
+      await query(
+        `INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [project[0].id, d.key, d.isCustom && d.customLabel ? d.customLabel : d.label, d.quantity, d.isCustom, d.customLabel]
+      );
+    }
+
+    revalidatePath("/projects");
+    revalidatePath("/clients");
+    await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
+      type: "project",
+      title: "New project awaiting approval",
+      body: `${name} submitted by ${session.name}.`,
+      link: "/projects",
+    });
+    return { ok: true, id: project[0].id };
+  } catch (err) {
+    console.error("createProjectAction failed:", err);
+    return { error: "Failed to create project. Please try again." };
+  }
 }
 
 export async function approveProjectAction(projectId: string) {
@@ -334,7 +338,7 @@ async function getTaskWorkflowRow(taskId: string): Promise<TaskWorkflowRow | nul
 }
 
 function isVisualTask(t: TaskWorkflowRow) {
-  return t.sequence === 2 && (t.role_key === "DESIGNER" || t.role_key === "EDITOR");
+  return t.sequence === 2 && (t.role_key === "DESIGNER" || t.role_key === "EDITOR" || t.role_key === "VIDEOGRAPHER");
 }
 
 /** Assignee starts work: pending -> in_progress */
@@ -629,9 +633,12 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
     return { error: "Not authorized." };
   }
 
-  await query(`DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2`, [taskId, userId]);
+  try {
+    await query(`DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2`, [taskId, userId]);
+  } catch {
+    return { error: "Failed to remove team member." };
+  }
 
-  // If the removed member was the primary, promote the next member (alphabetical) or clear.
   const task = await query<{ assigned_to: string | null; title: string }>(
     `SELECT assigned_to, title FROM tasks WHERE id = $1`,
     [taskId]
@@ -645,6 +652,15 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
     await query(`UPDATE tasks SET assigned_to = $2 WHERE id = $1`, [taskId, next[0]?.user_id ?? null]);
   }
 
+  // If no assignees remain, reset role_key to avoid stale role labeling.
+  const remaining = await query<{ c: string }>(
+    `SELECT COUNT(*)::text AS c FROM task_assignees WHERE task_id = $1`,
+    [taskId]
+  );
+  if (Number(remaining[0]?.c ?? 0) === 0) {
+    await query(`UPDATE tasks SET assigned_to = NULL, role_key = NULL WHERE id = $1`, [taskId]);
+  }
+
   if (userId !== session.sub) {
     await createNotification({
       userId,
@@ -655,7 +671,6 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
     });
   }
 
-  revalidatePath("/projects");
   revalidatePath("/projects");
   return { ok: true };
 }

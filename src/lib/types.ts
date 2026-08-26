@@ -5,7 +5,8 @@ export type RoleKey =
   | "WRITER"
   | "DESIGNER"
   | "EDITOR"
-  | "SMM";
+  | "SMM"
+  | "VIDEOGRAPHER";
 
 export type DashboardKey = "admin" | "pm" | "sales" | "staff";
 

@@ -79,81 +79,83 @@ export async function runWorkflow(_projectId: string) {
  * tasks are created later, when the corresponding content task is completed.
  */
 export async function generateDeliverableTasks(projectId: string) {
-  const deliverables = await query<DeliverableRow>(
-    `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
-    [projectId]
-  );
-  if (deliverables.length === 0) return;
+  try {
+    const deliverables = await query<DeliverableRow>(
+      `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
+      [projectId]
+    );
+    if (deliverables.length === 0) return;
 
-  const types = await query<DeliverableTypeRow>(`SELECT key, content_role, visual_role FROM deliverable_types`);
+    const types = await query<DeliverableTypeRow>(`SELECT key, content_role, visual_role FROM deliverable_types`);
 
-  for (const d of deliverables) {
-    const type = types.find((t) => t.key === d.category_key);
-    const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
-    const contentRole: RoleKey | null = d.is_custom ? null : (type?.content_role as RoleKey | null) || null;
+    for (const d of deliverables) {
+      const type = types.find((t) => t.key === d.category_key);
+      const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
+      const contentRole: RoleKey | null = d.is_custom ? null : (type?.content_role as RoleKey | null) || null;
 
-    for (let i = 1; i <= d.quantity; i++) {
-      const title = `${label} ${pad(i)}`;
-      const contentStepKey = `${d.category_key}_c_${i}`;
-      if (contentRole) {
-        const existing = await query<{ id: string }>(
-          `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-          [projectId, contentStepKey]
-        );
-        if (existing.length > 0) continue;
-
-        await query(
-          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-           VALUES ($1, $2, $3, $4, $5, 1, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
-          [
-            projectId,
-            contentStepKey,
-            d.category_key,
-            contentRole,
-            d.id,
-            `${title} — Content & Copy`,
-            `Draft the copy, captions and script for "${title}". Final copy must be brand-aligned before visual production begins.`,
-          ]
-        );
-      } else {
-        // Deliverable with no content stage → create its visual task directly.
-        const visualRole: RoleKey | null = d.is_custom ? "DESIGNER" : (type?.visual_role as RoleKey | null) || null;
-        if (visualRole) {
-          const visualStepKey = `${d.category_key}_v_${i}`;
+      for (let i = 1; i <= d.quantity; i++) {
+        const title = `${label} ${pad(i)}`;
+        const contentStepKey = `${d.category_key}_c_${i}`;
+        if (contentRole) {
           const existing = await query<{ id: string }>(
             `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-            [projectId, visualStepKey]
+            [projectId, contentStepKey]
           );
           if (existing.length > 0) continue;
 
           await query(
             `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-             VALUES ($1, $2, $3, $4, $5, 2, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
+             VALUES ($1, $2, $3, $4, $5, 1, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
             [
               projectId,
-              visualStepKey,
+              contentStepKey,
               d.category_key,
-              visualRole,
+              contentRole,
               d.id,
-              `${title} — Visual`,
-              `Produce the visual asset for "${title}".`,
+              `${title} — Content & Copy`,
+              `Draft the copy, captions and script for "${title}". Final copy must be brand-aligned before visual production begins.`,
             ]
           );
+        } else {
+          const visualRole: RoleKey | null = d.is_custom ? "DESIGNER" : (type?.visual_role as RoleKey | null) || null;
+          if (visualRole) {
+            const visualStepKey = `${d.category_key}_v_${i}`;
+            const existing = await query<{ id: string }>(
+              `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
+              [projectId, visualStepKey]
+            );
+            if (existing.length > 0) continue;
+
+            await query(
+              `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
+               VALUES ($1, $2, $3, $4, $5, 2, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
+              [
+                projectId,
+                visualStepKey,
+                d.category_key,
+                visualRole,
+                d.id,
+                `${title} — Visual`,
+                `Produce the visual asset for "${title}".`,
+              ]
+            );
+          }
         }
       }
     }
-  }
 
-  // Auto-assign from any existing allocations.
-  const allocations = await query<{ role_key: string; user_id: string }>(
-    `SELECT role_key, user_id FROM assignments WHERE project_id = $1`,
-    [projectId]
-  );
-  for (const a of allocations) {
-    await allocateTasksForRole(projectId, a.role_key, a.user_id);
-  }
+    const allocations = await query<{ role_key: string; user_id: string }>(
+      `SELECT role_key, user_id FROM assignments WHERE project_id = $1`,
+      [projectId]
+    );
+    for (const a of allocations) {
+      await allocateTasksForRole(projectId, a.role_key, a.user_id);
+    }
 
-  await maybeCompleteProject(projectId);
+    await maybeCompleteProject(projectId);
+  } catch (err) {
+    console.error("generateDeliverableTasks failed for project", projectId, ":", err);
+  }
 }
 
 /**
@@ -162,78 +164,81 @@ export async function generateDeliverableTasks(projectId: string) {
  * transitions to the Designer / Video Editor automatically.
  */
 export async function handleDeliverableTaskCompleted(projectId: string, taskId: string) {
-  const task = (
-    await query<{ id: string; deliverable_id: string; group_key: string; title: string; step_key: string; sequence: number; content: string | null }>(
-      `SELECT id, deliverable_id, group_key, title, step_key, sequence, content FROM tasks WHERE id = $1 AND deliverable_id IS NOT NULL`,
-      [taskId]
-    )
-  )[0];
-  if (!task || task.sequence !== 1) {
-    await maybeCompleteProject(projectId);
-    return;
-  }
-
-  const d = (
-    await query<DeliverableRow>(
-      `SELECT * FROM project_deliverables WHERE id = $1`,
-      [task.deliverable_id]
-    )
-  )[0];
-
-  let visualRole: RoleKey | null = null;
-  if (d) {
-    if (d.is_custom) {
-      visualRole = "DESIGNER";
-    } else {
-      const type = (
-        await query<DeliverableTypeRow>(
-          `SELECT key, content_role, visual_role FROM deliverable_types WHERE key = $1`,
-          [d.category_key]
-        )
-      )[0];
-      visualRole = (type?.visual_role as RoleKey | null) || null;
+  try {
+    const task = (
+      await query<{ id: string; deliverable_id: string; group_key: string; title: string; step_key: string; sequence: number; content: string | null }>(
+        `SELECT id, deliverable_id, group_key, title, step_key, sequence, content FROM tasks WHERE id = $1 AND deliverable_id IS NOT NULL`,
+        [taskId]
+      )
+    )[0];
+    if (!task || task.sequence !== 1) {
+      await maybeCompleteProject(projectId);
+      return;
     }
-  }
 
-  if (visualRole) {
-    // Unique per item: the content task's step_key is "<category>_c_<n>".
-    const visualStepKey = task.step_key.replace(/_c_\d+$/, "") + "_v_" + (task.step_key.match(/_c_(\d+)$/)?.[1] ?? "1");
-    const exists = await query<{ id: string }>(
-      `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-      [projectId, visualStepKey]
-    );
-if (exists.length === 0) {
-      const alloc = await query<{ user_id: string }>(
-        `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
-        [projectId, visualRole]
-      );
-      const inserted = await query<{ id: string }>(
-        `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, content, status, priority, assigned_to, created_by)
-         VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, $9, 'pending', 'medium', $10, NULL)
-         RETURNING id`,
-        [
-          projectId,
-          visualStepKey,
-          task.group_key,
-          visualRole,
-          task.deliverable_id,
-          `${task.title.replace(/— Content & Copy\s*$/, "").trim()} — Visual`,
-          `Visual production for "${task.title}". Use the approved copy as reference.`,
-          task.content,
-          task.title,
-          alloc[0]?.user_id ?? null,
-        ]
-      );
-      if (inserted[0]?.id && alloc[0]?.user_id) {
-        await query(
-          `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [inserted[0].id, alloc[0].user_id]
-        );
+    const d = (
+      await query<DeliverableRow>(
+        `SELECT * FROM project_deliverables WHERE id = $1`,
+        [task.deliverable_id]
+      )
+    )[0];
+
+    let visualRole: RoleKey | null = null;
+    if (d) {
+      if (d.is_custom) {
+        visualRole = "DESIGNER";
+      } else {
+        const type = (
+          await query<DeliverableTypeRow>(
+            `SELECT key, content_role, visual_role FROM deliverable_types WHERE key = $1`,
+            [d.category_key]
+          )
+        )[0];
+        visualRole = (type?.visual_role as RoleKey | null) || null;
       }
     }
-  }
 
-  await maybeCompleteProject(projectId);
+    if (visualRole) {
+      const visualStepKey = task.step_key.replace(/_c_\d+$/, "") + "_v_" + (task.step_key.match(/_c_(\d+)$/)?.[1] ?? "1");
+      const exists = await query<{ id: string }>(
+        `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
+        [projectId, visualStepKey]
+      );
+      if (exists.length === 0) {
+        const alloc = await query<{ user_id: string }>(
+          `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
+          [projectId, visualRole]
+        );
+        const inserted = await query<{ id: string }>(
+          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, content, status, priority, assigned_to, created_by)
+           VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, $9, 'pending', 'medium', $10, NULL)
+           RETURNING id`,
+          [
+            projectId,
+            visualStepKey,
+            task.group_key,
+            visualRole,
+            task.deliverable_id,
+            `${task.title.replace(/— Content & Copy\s*$/, "").trim()} — Visual`,
+            `Visual production for "${task.title}". Use the approved copy as reference.`,
+            task.content,
+            task.title,
+            alloc[0]?.user_id ?? null,
+          ]
+        );
+        if (inserted[0]?.id && alloc[0]?.user_id) {
+          await query(
+            `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [inserted[0].id, alloc[0].user_id]
+          );
+        }
+      }
+    }
+
+    await maybeCompleteProject(projectId);
+  } catch (err) {
+    console.error("handleDeliverableTaskCompleted failed for project", projectId, "task", taskId, ":", err);
+  }
 }
 
 /**
@@ -342,59 +347,59 @@ function toISODate(d: Date): string {
  * the available working days instead.
  */
 export async function computeSequentialDeadlines(projectId: string) {
-  const tasks = await query<{ id: string; due_date: string | null }>(
-    `SELECT id, due_date::text AS due_date FROM tasks WHERE project_id = $1 ORDER BY created_at ASC, id ASC`,
-    [projectId]
-  );
-  if (tasks.length === 0) return;
-
-  const project = (
-    await query<{ deadline: string | null }>(
-      `SELECT deadline::text AS deadline FROM projects WHERE id = $1`,
+  try {
+    const tasks = await query<{ id: string; due_date: string | null }>(
+      `SELECT id, due_date::text AS due_date FROM tasks WHERE project_id = $1 ORDER BY created_at ASC, id ASC`,
       [projectId]
-    )
-  )[0];
+    );
+    if (tasks.length === 0) return;
 
-  const start = new Date();
-  start.setHours(12, 0, 0, 0);
+    const project = (
+      await query<{ deadline: string | null }>(
+        `SELECT deadline::text AS deadline FROM projects WHERE id = $1`,
+        [projectId]
+      )
+    )[0];
 
-  const missing = tasks.filter((t) => !t.due_date);
-  if (missing.length === 0) return;
+    const start = new Date();
+    start.setHours(12, 0, 0, 0);
 
-  let dates: Date[] = [];
-  const totalTasks = tasks.length;
-  const deadlineStr = project?.deadline || null;
+    const missing = tasks.filter((t) => !t.due_date);
+    if (missing.length === 0) return;
 
-  if (deadlineStr) {
-    // Spread evenly across working days from today up to the deadline.
-    const end = new Date(`${deadlineStr}T12:00:00`);
-    const spanDays = Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
-    const step = totalTasks > 1 ? Math.max(1, Math.floor(spanDays / (totalTasks - 1))) : spanDays;
-    let cursor = new Date(start.getTime());
+    let dates: Date[] = [];
+    const totalTasks = tasks.length;
+    const deadlineStr = project?.deadline || null;
+
+    if (deadlineStr) {
+      const end = new Date(`${deadlineStr}T12:00:00`);
+      const spanDays = Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+      const step = totalTasks > 1 ? Math.max(1, Math.floor(spanDays / (totalTasks - 1))) : spanDays;
+      let cursor = new Date(start.getTime());
+      for (let i = 0; i < totalTasks; i++) {
+        cursor = addWorkingDays(cursor, i === 0 ? 1 : Math.max(1, step));
+        dates.push(new Date(cursor.getTime()));
+      }
+      for (let i = 1; i < dates.length; i++) {
+        if (dates[i] < dates[i - 1]) dates[i] = addWorkingDays(dates[i - 1], 1);
+        while (dates[i].getDay() === 0) dates[i].setDate(dates[i].getDate() + 1);
+      }
+    } else {
+      let cursor = new Date(start.getTime());
+      for (let i = 0; i < totalTasks; i++) {
+        cursor = addWorkingDays(cursor, 2);
+        dates.push(new Date(cursor.getTime()));
+      }
+    }
+
     for (let i = 0; i < totalTasks; i++) {
-      cursor = addWorkingDays(cursor, i === 0 ? 1 : Math.max(1, step));
-      dates.push(new Date(cursor.getTime()));
+      const t = tasks[i];
+      if (!t.due_date) {
+        await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [t.id, toISODate(dates[i])]);
+      }
     }
-    // Ensure monotonic non-decreasing dates.
-    for (let i = 1; i < dates.length; i++) {
-      if (dates[i] < dates[i - 1]) dates[i] = addWorkingDays(dates[i - 1], 1);
-      while (dates[i].getDay() === 0) dates[i].setDate(dates[i].getDate() + 1);
-    }
-  } else {
-    // Sequential: first due in 2 working days, then +2 per task.
-    let cursor = new Date(start.getTime());
-    for (let i = 0; i < totalTasks; i++) {
-      cursor = addWorkingDays(cursor, 2);
-      dates.push(new Date(cursor.getTime()));
-    }
-  }
-
-  // Only fill in the missing ones, preserving their order position.
-  for (let i = 0; i < totalTasks; i++) {
-    const t = tasks[i];
-    if (!t.due_date) {
-      await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [t.id, toISODate(dates[i])]);
-    }
+  } catch (err) {
+    console.error("computeSequentialDeadlines failed for project", projectId, ":", err);
   }
 }
 

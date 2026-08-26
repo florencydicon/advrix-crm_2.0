@@ -149,63 +149,68 @@ export interface PipelineProject extends Project {
  * Used for the accordion drill-down on the projects page.
  */
 export async function getPipelineByClient(): Promise<PipelineClient[]> {
-  const projects = await query<Project>(
-    `SELECT p.*, c.name AS client_name,
-            p.deadline::text AS deadline
-     FROM projects p JOIN clients c ON c.id = p.client_id
-     ORDER BY c.name ASC, p.created_at DESC`
-  );
-  if (projects.length === 0) return [];
+  try {
+    const projects = await query<Project>(
+      `SELECT p.*, c.name AS client_name,
+              p.deadline::text AS deadline
+       FROM projects p JOIN clients c ON c.id = p.client_id
+       ORDER BY c.name ASC, p.created_at DESC`
+    );
+    if (projects.length === 0) return [];
 
-  const projectIds = projects.map((p) => p.id);
+    const projectIds = projects.map((p) => p.id);
 
-  const [tasks, assignments] = await Promise.all([
-    query<Task>(
-      `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
-      [projectIds]
-    ),
-    query<Assignment>(
-      `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
-              a.allotment_deadline::text AS allotment_deadline
-       FROM assignments a
-       JOIN users u ON u.id = a.user_id
-       JOIN roles r ON r.key = a.role_key
-       WHERE a.project_id = ANY($1)
-       ORDER BY r.key`,
-      [projectIds]
-    ),
-  ]);
+    const [tasks, assignments] = await Promise.all([
+      query<Task>(
+        `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
+        [projectIds]
+      ),
+      query<Assignment>(
+        `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
+                a.allotment_deadline::text AS allotment_deadline
+         FROM assignments a
+         JOIN users u ON u.id = a.user_id
+         JOIN roles r ON r.key = a.role_key
+         WHERE a.project_id = ANY($1)
+         ORDER BY r.key`,
+        [projectIds]
+      ),
+    ]);
 
-  const tasksByProject = new Map<string, Task[]>();
-  for (const t of tasks) {
-    if (!tasksByProject.has(t.project_id)) tasksByProject.set(t.project_id, []);
-    tasksByProject.get(t.project_id)!.push(t);
-  }
-  const assignmentsByProject = new Map<string, Assignment[]>();
-  for (const a of assignments) {
-    if (!assignmentsByProject.has(a.project_id)) assignmentsByProject.set(a.project_id, []);
-    assignmentsByProject.get(a.project_id)!.push(a);
-  }
-
-  const clients: PipelineClient[] = [];
-  const byClient = new Map<string, PipelineProject[]>();
-  for (const p of projects) {
-    const projectTasks = tasksByProject.get(p.id) || [];
-    const pipe: PipelineProject = {
-      ...p,
-      tasks: projectTasks,
-      assignments: assignmentsByProject.get(p.id) || [],
-      total_tasks: projectTasks.length,
-      completed_tasks: projectTasks.filter((t) => t.status === "completed").length,
-    };
-    if (!byClient.has(p.client_id)) {
-      byClient.set(p.client_id, []);
-      clients.push({ client_id: p.client_id, client_name: p.client_name, projects: byClient.get(p.client_id)! });
+    const tasksByProject = new Map<string, Task[]>();
+    for (const t of tasks) {
+      if (!tasksByProject.has(t.project_id)) tasksByProject.set(t.project_id, []);
+      tasksByProject.get(t.project_id)!.push(t);
     }
-    byClient.get(p.client_id)!.push(pipe);
-  }
+    const assignmentsByProject = new Map<string, Assignment[]>();
+    for (const a of assignments) {
+      if (!assignmentsByProject.has(a.project_id)) assignmentsByProject.set(a.project_id, []);
+      assignmentsByProject.get(a.project_id)!.push(a);
+    }
 
-  return clients;
+    const clients: PipelineClient[] = [];
+    const byClient = new Map<string, PipelineProject[]>();
+    for (const p of projects) {
+      const projectTasks = tasksByProject.get(p.id) || [];
+      const pipe: PipelineProject = {
+        ...p,
+        tasks: projectTasks,
+        assignments: assignmentsByProject.get(p.id) || [],
+        total_tasks: projectTasks.length,
+        completed_tasks: projectTasks.filter((t) => t.status === "completed").length,
+      };
+      if (!byClient.has(p.client_id)) {
+        byClient.set(p.client_id, []);
+        clients.push({ client_id: p.client_id, client_name: p.client_name, projects: byClient.get(p.client_id)! });
+      }
+      byClient.get(p.client_id)!.push(pipe);
+    }
+
+    return clients;
+  } catch (err) {
+    console.error("getPipelineByClient failed:", err);
+    return [];
+  }
 }
 
 const TASK_SELECT = `

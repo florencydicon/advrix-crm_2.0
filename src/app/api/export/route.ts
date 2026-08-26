@@ -59,7 +59,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const csv = await DATASETS[dataset](from, to);
+  let csv: string;
+  try {
+    csv = await DATASETS[dataset](from, to);
+  } catch (err) {
+    console.error(`Export dataset "${dataset}" failed:`, err);
+    csv = "Error generating export. Please try again later.";
+  }
   const suffix =
     mode === "all"
       ? "all"

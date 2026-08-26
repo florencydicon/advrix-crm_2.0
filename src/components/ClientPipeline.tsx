@@ -46,7 +46,7 @@ export default function ClientPipeline({ pipeline }: { pipeline: PipelineClient[
         c.projects.some(
           (p) =>
             p.name.toLowerCase().includes(q) ||
-            p.tasks.some((t) => t.title.toLowerCase().includes(q))
+            p.tasks.some((t) => t.title?.toLowerCase().includes(q))
         )
     );
   }, [enriched, query]);

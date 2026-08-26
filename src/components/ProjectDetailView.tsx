@@ -10,7 +10,6 @@ import {
   deleteProjectAction,
   assignProjectTeamAction,
   updateTaskDueDateAction,
-  setMemberLeaveAction,
   setTaskAssigneeAction,
   removeTaskAssigneeAction,
   updateTaskRemarksAction,
@@ -75,7 +74,6 @@ export default function ProjectDetailView({
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
-  const [leaveTarget, setLeaveTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [extendTarget, setExtendTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
@@ -156,32 +154,6 @@ export default function ProjectDetailView({
 
               {isProjectOpen && (
                 <div className="animate-slide-down border-t border-white/[0.06]">
-                  {p.assignments.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-white/[0.04] bg-white/[0.015]">
-                      <Users className="h-3 w-3 text-slate-400 shrink-0" />
-                      {p.assignments.map((a) =>
-                        a.on_leave ? (
-                          <span key={a.id} title={`On leave${a.leave_days ? ` (${a.leave_days}d)` : ""}`} className="badge !px-2 !py-0.5 text-[11px] bg-amber-400/10 text-amber-300 ring-1 ring-amber-400/30">
-                            <Coffee className="h-3 w-3 mr-0.5" />{a.role_label}: {a.user_name} · leave{a.leave_days ? ` ${a.leave_days}d` : ""}
-                          </span>
-                        ) : (
-                          <span key={a.id} className="badge !px-2 !py-0.5 text-[11px] bg-white/10 text-slate-400">{a.role_label}: {a.user_name}</span>
-                        )
-                      )}
-                      {canManage && p.status === "in_progress" && (
-                        <>
-                          {p.assignments.some((a) => !a.on_leave) && (
-                            <button className="badge !px-2 !py-0.5 text-[11px] bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 transition-colors cursor-pointer" onClick={() => { const a = p.assignments.find((a) => !a.on_leave); if (a) setLeaveTarget({ projectId: p.id, assignment: a }); }}>
-                              <Coffee className="h-3 w-3 mr-0.5" /> On leave…
-                            </button>
-                          )}
-                          <button className="badge !px-2 !py-0.5 text-[11px] bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20 cursor-pointer" onClick={() => { const onLeave = p.assignments.filter((a) => a.on_leave); if (onLeave.length) setLeaveTarget({ projectId: p.id, assignment: onLeave[0] }); }}>
-                            Manage leave
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
 
                   {canManage && p.status === "in_progress" && (
                     <div className="px-3 pt-2.5 space-y-1.5">
@@ -224,11 +196,12 @@ export default function ProjectDetailView({
                                 {!a.on_leave && canManage && p.status === "in_progress" && (
                                   <button
                                     type="button"
-                                    onClick={() => setExtendTarget({ projectId: p.id, assignment: a })}
-                                    className="text-[9px] text-emerald-400 hover:text-emerald-300 transition-colors"
+                                    onClick={(e) => { e.stopPropagation(); setExtendTarget({ projectId: p.id, assignment: a }); }}
+                                    className="p-0.5 rounded text-slate-500 hover:text-emerald-400 hover:bg-emerald-400/10 transition-colors"
                                     title={`Extend ${a.user_name}'s deadlines`}
+                                    aria-label={`Extend ${a.user_name}'s deadlines`}
                                   >
-                                    +deadline
+                                    <CalendarDays className="h-2.5 w-2.5" />
                                   </button>
                                 )}
                               </span>
@@ -342,19 +315,6 @@ export default function ProjectDetailView({
         })}
       </div>
 
-      {leaveTarget && (
-        <LeaveModal
-          assignment={leaveTarget.assignment}
-          pending={pending}
-          onClose={() => setLeaveTarget(null)}
-          onSubmit={(days, reason) =>
-            run(async () => {
-              const res = await setMemberLeaveAction(leaveTarget.projectId, leaveTarget.assignment.user_id, days, reason);
-              if (!res?.error) setLeaveTarget(null);
-            })
-          }
-        />
-      )}
       {extendTarget && (
         <ExtendPersonModal
           assignment={extendTarget.assignment}
@@ -370,31 +330,6 @@ export default function ProjectDetailView({
         />
       )}
     </div>
-  );
-}
-
-function LeaveModal({
-  assignment,
-  pending,
-  onClose,
-  onSubmit,
-}: {
-  assignment: Assignment;
-  pending: boolean;
-  onClose: () => void;
-  onSubmit: (days: number, reason: string) => void;
-}) {
-  const [days, setDays] = useState(1);
-  const [reason, setReason] = useState("");
-  return (
-    <Modal open onClose={onClose} title="Emergency leave — cascade deadlines">
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onSubmit(days, reason); }}>
-        <p className="text-xs text-slate-400">Marking <span className="font-semibold text-white">{assignment.user_name}</span> ({assignment.role_label}) on leave extends their open task deadlines by the given working days (Sundays excluded) and shifts every later task accordingly.</p>
-        <div><label className="label">Leave duration (working days)</label><input type="number" min={1} max={90} value={days} onChange={(e) => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))} className="input !w-28" required /></div>
-        <div><label className="label">Reason</label><input value={reason} onChange={(e) => setReason(e.target.value)} className="input" placeholder="Family emergency, medical, travel…" required minLength={3} /></div>
-        <button type="submit" className="btn-primary w-full" disabled={pending}>{pending ? "Applying…" : "Apply & cascade deadlines"}</button>
-      </form>
-    </Modal>
   );
 }
 
