@@ -321,18 +321,31 @@ export async function allocateProjectTeam(
   projectId: string,
   allocations: { role_key: string; user_id: string | null; deadline?: string | null }[]
 ) {
+  // Ensure position column exists (handles production DB that hasn't run migration 015 yet)
+  try { await query(`ALTER TABLE assignments ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0`); } catch {}
   // Priority ordering: allocations array order is the priority (top = first assigned).
   // This removes fixed Writer->Designer flow — auto-chain now follows this order.
   for (let idx = 0; idx < allocations.length; idx++) {
     const a = allocations[idx];
     if (!a.user_id) continue;
-    await query(
-      `INSERT INTO assignments (user_id, project_id, role_key, allotment_deadline, position)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (user_id, project_id, role_key)
-       DO UPDATE SET allotment_deadline = EXCLUDED.allotment_deadline, position = EXCLUDED.position`,
-      [a.user_id, projectId, a.role_key, a.deadline || null, idx]
-    );
+    try {
+      await query(
+        `INSERT INTO assignments (user_id, project_id, role_key, allotment_deadline, position)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, project_id, role_key)
+         DO UPDATE SET allotment_deadline = EXCLUDED.allotment_deadline, position = EXCLUDED.position`,
+        [a.user_id, projectId, a.role_key, a.deadline || null, idx]
+      );
+    } catch {
+      // Fallback if position column still missing (older DB)
+      await query(
+        `INSERT INTO assignments (user_id, project_id, role_key, allotment_deadline)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, project_id, role_key)
+         DO UPDATE SET allotment_deadline = EXCLUDED.allotment_deadline`,
+        [a.user_id, projectId, a.role_key, a.deadline || null]
+      );
+    }
     await allocateTasksForRole(projectId, a.role_key, a.user_id);
     await ensureVisualTasksForAllocation(projectId, a.role_key, a.user_id);
   }

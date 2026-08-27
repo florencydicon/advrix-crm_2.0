@@ -149,8 +149,16 @@ export interface PipelineProject extends Project {
  * Grouped pipeline: every client -> their projects -> their tasks + assignments.
  * Used for the accordion drill-down on the projects page.
  */
+let _positionEnsured = false;
+async function ensureAssignmentPosition() {
+  if (_positionEnsured) return;
+  try { await query(`ALTER TABLE assignments ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0`); } catch {}
+  _positionEnsured = true;
+}
+
 export async function getPipelineByClient(): Promise<PipelineClient[]> {
   try {
+    await ensureAssignmentPosition();
     const projects = await query<Project & { client_company: string | null }>(
       `SELECT p.*, c.name AS client_name, c.company AS client_company,
               p.deadline::text AS deadline
@@ -161,12 +169,9 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
 
     const projectIds = projects.map((p) => p.id);
 
-    const [tasks, assignments] = await Promise.all([
-      query<Task>(
-        `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
-        [projectIds]
-      ),
-      query<Assignment>(
+    let assignments: Assignment[];
+    try {
+      assignments = await query<Assignment>(
         `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
                 a.allotment_deadline::text AS allotment_deadline, a.position
          FROM assignments a
@@ -175,8 +180,23 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
          WHERE a.project_id = ANY($1)
          ORDER BY a.position ASC, r.key`,
         [projectIds]
-      ),
-    ]);
+      );
+    } catch {
+      assignments = await query<Assignment>(
+        `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
+                a.allotment_deadline::text AS allotment_deadline
+         FROM assignments a
+         JOIN users u ON u.id = a.user_id
+         JOIN roles r ON r.key = a.role_key
+         WHERE a.project_id = ANY($1)
+         ORDER BY r.key`,
+        [projectIds]
+      );
+    }
+    const tasks = await query<Task>(
+      `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
+      [projectIds]
+    );
 
     const tasksByProject = new Map<string, Task[]>();
     for (const t of tasks) {
@@ -245,16 +265,30 @@ export async function getProjectDeliverables(projectId: string): Promise<Project
 }
 
 export async function getProjectAssignments(projectId: string): Promise<Assignment[]> {
-  return query<Assignment>(
-    `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
-            a.allotment_deadline::text AS allotment_deadline, a.position
-     FROM assignments a
-     JOIN users u ON u.id = a.user_id
-     JOIN roles r ON r.key = a.role_key
-     WHERE a.project_id = $1
-     ORDER BY a.position ASC, r.key`,
-    [projectId]
-  );
+  await ensureAssignmentPosition();
+  try {
+    return await query<Assignment>(
+      `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
+              a.allotment_deadline::text AS allotment_deadline, a.position
+       FROM assignments a
+       JOIN users u ON u.id = a.user_id
+       JOIN roles r ON r.key = a.role_key
+       WHERE a.project_id = $1
+       ORDER BY a.position ASC, r.key`,
+      [projectId]
+    );
+  } catch {
+    return query<Assignment>(
+      `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
+              a.allotment_deadline::text AS allotment_deadline
+       FROM assignments a
+       JOIN users u ON u.id = a.user_id
+       JOIN roles r ON r.key = a.role_key
+       WHERE a.project_id = $1
+       ORDER BY r.key`,
+      [projectId]
+    );
+  }
 }
 
 export async function getProjectDetail(projectId: string): Promise<ProjectDetail | null> {
@@ -322,6 +356,7 @@ export async function getSubmittedTasks(): Promise<Task[]> {
 }
 
 export async function getBoard(): Promise<ProjectDetail[]> {
+  await ensureAssignmentPosition();
   const projects = await query<Project>(
     `SELECT p.*, c.name AS client_name
      FROM projects p JOIN clients c ON c.id = p.client_id
@@ -331,16 +366,17 @@ export async function getBoard(): Promise<ProjectDetail[]> {
 
   const projectIds = projects.map((p) => p.id);
 
-  const [allTasks, allDeliverables, allAssignments] = await Promise.all([
-    query<Task>(
-      `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
-      [projectIds]
-    ),
-    query<ProjectDeliverable>(
-      `SELECT * FROM project_deliverables WHERE project_id = ANY($1) ORDER BY created_at`,
-      [projectIds]
-    ),
-    query<Assignment>(
+  const allTasks = await query<Task>(
+    `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
+    [projectIds]
+  );
+  const allDeliverables = await query<ProjectDeliverable>(
+    `SELECT * FROM project_deliverables WHERE project_id = ANY($1) ORDER BY created_at`,
+    [projectIds]
+  );
+  let allAssignments: Assignment[];
+  try {
+    allAssignments = await query<Assignment>(
       `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label, a.position
        FROM assignments a
        JOIN users u ON u.id = a.user_id
@@ -348,8 +384,18 @@ export async function getBoard(): Promise<ProjectDetail[]> {
        WHERE a.project_id = ANY($1)
        ORDER BY a.position ASC, r.key`,
       [projectIds]
-    ),
-  ]);
+    );
+  } catch {
+    allAssignments = await query<Assignment>(
+      `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label
+       FROM assignments a
+       JOIN users u ON u.id = a.user_id
+       JOIN roles r ON r.key = a.role_key
+       WHERE a.project_id = ANY($1)
+       ORDER BY r.key`,
+      [projectIds]
+    );
+  }
 
   const tasksByProject = new Map<string, Task[]>();
   for (const t of allTasks) {
