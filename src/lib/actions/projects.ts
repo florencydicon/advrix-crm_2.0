@@ -419,6 +419,13 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
     if (content != null && text !== task.content) {
       await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
     }
+    // Auto-rename Content task to its actual copy for clarity (e.g., "Static Post 01 — Content & Copy" -> "JB Enterprise solutions post 1")
+    if (task.role_key === "WRITER" && text.length >= 3) {
+      const newTitle = text.split("\n")[0].trim().slice(0, 80);
+      if (newTitle && newTitle !== task.title) {
+        await query(`UPDATE tasks SET title = $2 WHERE id = $1`, [taskId, newTitle]);
+      }
+    }
   }
 
   await query(`UPDATE tasks SET status = 'submitted', reviewed_at = now() WHERE id = $1`, [taskId]);

@@ -366,19 +366,7 @@ export default function AppShell({
               </div>
             )}
           </div>
-          {/* Download as App — mobile More drawer, before Sign out */}
-          {!isStandalone && (
-            <button
-              onClick={() => { setMobileOpen(false); handleInstall(); }}
-              title="Download as App — install like a native mobile app"
-              className={`w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors border ${
-                mini ? "justify-center px-0" : "justify-start"
-              } bg-brand-300/10 text-brand-300 hover:bg-brand-300/20 border-brand-300/20`}
-            >
-              <Download className="h-[18px] w-[18px] shrink-0" />
-              {!mini && <span className="flex items-center gap-1.5">Download as App <Smartphone className="h-3.5 w-3.5 opacity-70" /></span>}
-            </button>
-          )}
+
           <button
             onClick={handleLogout}
             title="Sign out"

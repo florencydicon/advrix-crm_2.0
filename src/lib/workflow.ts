@@ -234,10 +234,18 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
         [projectId, visualStepKey]
       );
       if (exists.length === 0) {
-        const alloc = await query<{ user_id: string }>(
-          `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 ORDER BY position ASC LIMIT 1`,
-          [projectId, visualRole]
-        );
+        let alloc: { user_id: string }[] = [];
+        try {
+          alloc = await query<{ user_id: string }>(
+            `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 ORDER BY position ASC LIMIT 1`,
+            [projectId, visualRole]
+          );
+        } catch {
+          alloc = await query<{ user_id: string }>(
+            `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
+            [projectId, visualRole]
+          );
+        }
         // Content-title swap: if Writer provided content (e.g., "Premium Living, Premium Interior"),
         // the next visual task title becomes that content so Designer/Editor sees the actual copy as task name.
         const rawContent = (task.content || "").split("\n")[0].trim();
@@ -280,10 +288,18 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
  * no SMM is allocated on the project.
  */
 export async function handoffVisualTaskToSmm(projectId: string, taskId: string): Promise<string | null> {
-  const alloc = await query<{ user_id: string }>(
-    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = 'SMM' ORDER BY position ASC LIMIT 1`,
-    [projectId]
-  );
+  let alloc: { user_id: string }[] = [];
+  try {
+    alloc = await query<{ user_id: string }>(
+      `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = 'SMM' ORDER BY position ASC LIMIT 1`,
+      [projectId]
+    );
+  } catch {
+    alloc = await query<{ user_id: string }>(
+      `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = 'SMM' LIMIT 1`,
+      [projectId]
+    );
+  }
   const smmId = alloc[0]?.user_id ?? null;
   if (!smmId) return null;
   await query(
@@ -298,10 +314,18 @@ export async function handoffVisualTaskToSmm(projectId: string, taskId: string):
  * Routes a visual task back to the Design / Edit team after client feedback.
  */
 export async function routeVisualTaskToProducer(projectId: string, taskId: string, visualRole: string): Promise<string | null> {
-  const alloc = await query<{ user_id: string }>(
-    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 ORDER BY position ASC LIMIT 1`,
-    [projectId, visualRole]
-  );
+  let alloc: { user_id: string }[] = [];
+  try {
+    alloc = await query<{ user_id: string }>(
+      `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 ORDER BY position ASC LIMIT 1`,
+      [projectId, visualRole]
+    );
+  } catch {
+    alloc = await query<{ user_id: string }>(
+      `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
+      [projectId, visualRole]
+    );
+  }
   const userId = alloc[0]?.user_id ?? null;
   if (!userId) return null;
   await query(
