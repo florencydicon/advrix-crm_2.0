@@ -106,7 +106,7 @@ export function DynamicTeamAllotment({
         <span className="w-[18px] shrink-0" />
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {rows.map((row, idx) => {
           const roleMembers = row.role_key
             ? team.filter((u) => u.role_key === row.role_key && u.is_active)
@@ -119,15 +119,55 @@ export function DynamicTeamAllotment({
               onDragStart={() => onDragStart(row.id)}
               onDragOver={(e) => onDragOver(e, row.id)}
               onDragEnd={onDragEnd}
-              className="flex items-center gap-1.5 rounded-lg p-0.5 hover:bg-white/[0.03] transition-colors"
+              className="flex flex-col sm:flex-row sm:items-center gap-1.5 rounded-xl border border-white/5 sm:border-0 bg-white/[0.02] sm:bg-transparent p-2 sm:p-0.5 hover:bg-white/[0.03] transition-colors"
             >
-              <span
-                className="w-5 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 shrink-0"
-                title={`Priority ${idx + 1} — drag to reorder`}
-              >
+              <div className="hidden sm:flex w-5 h-8 items-center justify-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 shrink-0" title={`Priority ${idx + 1} — drag to reorder`}>
                 <GripVertical className="h-3.5 w-3.5" />
-              </span>
-              <div className="w-[30%] min-w-0">
+              </div>
+              <div className="flex items-center gap-1.5 sm:contents">
+                <span className="sm:hidden w-6 h-6 rounded bg-white/5 flex items-center justify-center text-[10px] font-bold text-slate-400 shrink-0">{idx + 1}</span>
+                <span className="sm:hidden text-[10px] text-slate-500">Priority {idx + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (idx > 0) {
+                      setRows((prev) => {
+                        const next = [...prev];
+                        const [m] = next.splice(idx, 1);
+                        next.splice(idx - 1, 0, m);
+                        return next;
+                      });
+                    }
+                  }}
+                  disabled={idx === 0}
+                  className="sm:hidden ml-auto p-1 rounded text-slate-500 hover:text-white disabled:opacity-30"
+                  aria-label="Move up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (idx < rows.length - 1) {
+                      setRows((prev) => {
+                        const next = [...prev];
+                        const [m] = next.splice(idx, 1);
+                        next.splice(idx + 1, 0, m);
+                        return next;
+                      });
+                    }
+                  }}
+                  disabled={idx === rows.length - 1}
+                  className="sm:hidden p-1 rounded text-slate-500 hover:text-white disabled:opacity-30"
+                  aria-label="Move down"
+                >
+                  ↓
+                </button>
+                <span className="sm:hidden flex items-center gap-1 ml-1 cursor-grab text-slate-500" title="Drag to reorder">
+                  <GripVertical className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <div className="w-full sm:w-[30%] min-w-0">
                 <SearchableSelect
                   options={AVAILABLE_ROLES.map((r) => ({ value: r.key, label: r.label }))}
                   value={row.role_key}
@@ -135,7 +175,7 @@ export function DynamicTeamAllotment({
                   placeholder="Role…"
                 />
               </div>
-              <div className={`flex-1 min-w-0 transition-opacity ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
+              <div className={`w-full sm:flex-1 min-w-0 transition-opacity ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
                 {roleMembers.length > 0 ? (
                   <SearchableSelect
                     options={roleMembers.map((u) => ({ value: u.id, label: u.full_name, search: `${u.full_name} ${u.email || ""}` }))}
@@ -147,7 +187,7 @@ export function DynamicTeamAllotment({
                   <div className="input !py-1.5 h-8 text-[10px] text-slate-600 bg-white/[0.02] text-center">{row.role_key ? "No members" : "—"}</div>
                 )}
               </div>
-              <div className={`w-[32%] min-w-0 transition-opacity ${row.role_key && row.user_id ? "" : "opacity-40 pointer-events-none"}`}>
+              <div className={`w-full sm:w-[32%] min-w-0 transition-opacity ${row.role_key && row.user_id ? "" : "opacity-40 pointer-events-none"}`}>
                 <DatePicker
                   value={row.deadline || undefined}
                   onChange={(v) => updateRow(row.id, { deadline: v })}
@@ -157,11 +197,11 @@ export function DynamicTeamAllotment({
               <button
                 type="button"
                 onClick={() => removeRow(row.id)}
-                className="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors shrink-0 self-center"
+                className="p-2 sm:p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors shrink-0 self-center"
                 title="Remove"
                 aria-label="Remove row"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
               </button>
             </div>
           );

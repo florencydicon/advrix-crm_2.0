@@ -1,0 +1,61 @@
+{
+  "name": "Advrix CRM",
+  "short_name": "Advrix",
+  "description": "Advrix Media Pvt Ltd — Creative Agency Workflow",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "any",
+  "background_color": "#1D2A32",
+  "theme_color": "#1D2A32",
+  "categories": ["business", "productivity"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/logo-mark.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-mark-wt.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo-full.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Open workspace",
+      "icons": [{ "src": "/logo-mark.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Project Pipeline",
+      "url": "/projects",
+      "description": "Manage projects",
+      "icons": [{ "src": "/logo-mark.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Attendance",
+      "url": "/attendance",
+      "description": "Mark attendance",
+      "icons": [{ "src": "/logo-mark.png", "sizes": "96x96" }]
+    }
+  ],
+  "screenshots": []
+}

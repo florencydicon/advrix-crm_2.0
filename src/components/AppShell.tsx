@@ -18,6 +18,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Target,
+  Download,
+  Smartphone,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -110,8 +112,46 @@ export default function AppShell({
   const [unread, setUnread] = useState(unreadCount);
   const [ringing, setRinging] = useState(false);
   const [missedToast, setMissedToast] = useState(0);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
   const prevUnread = useRef(unreadCount);
   const awayAt = useRef<number | null>(null);
+
+  // PWA: register service worker + capture install prompt
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+    const mql = window.matchMedia("(display-mode: standalone)");
+    const checkStandalone = () => setIsStandalone(mql.matches || (window.navigator as any).standalone === true);
+    checkStandalone();
+    mql.addEventListener?.("change", checkStandalone);
+    function onBeforeInstall(e: any) {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    }
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", () => setDeferredPrompt(null));
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+    };
+  }, []);
+
+  async function handleInstall() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") setDeferredPrompt(null);
+      return;
+    }
+    // iOS fallback — show manual Add to Home Screen instructions
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+      alert("To install Advrix as an app:\n\n1. Tap the Share button in Safari\n2. Tap 'Add to Home Screen'\n3. Tap 'Add'");
+    } else {
+      alert("To install:\n\nChrome: Menu (⋮) → Install app / Add to Home Screen\nEdge: Menu (⋯) → Apps → Install");
+    }
+  }
 
   // Close notification panel on Escape key.
   useEffect(() => {
@@ -326,6 +366,19 @@ export default function AppShell({
               </div>
             )}
           </div>
+          {/* Download as App — mobile More drawer, before Sign out */}
+          {!isStandalone && (
+            <button
+              onClick={() => { setMobileOpen(false); handleInstall(); }}
+              title="Download as App — install like a native mobile app"
+              className={`w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors border ${
+                mini ? "justify-center px-0" : "justify-start"
+              } bg-brand-300/10 text-brand-300 hover:bg-brand-300/20 border-brand-300/20`}
+            >
+              <Download className="h-[18px] w-[18px] shrink-0" />
+              {!mini && <span className="flex items-center gap-1.5">Download as App <Smartphone className="h-3.5 w-3.5 opacity-70" /></span>}
+            </button>
+          )}
           <button
             onClick={handleLogout}
             title="Sign out"
