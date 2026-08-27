@@ -238,6 +238,10 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
           `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
           [projectId, visualRole]
         );
+        // Content-title swap: if Writer provided content (e.g., "Premium Living, Premium Interior"),
+        // the next visual task title becomes that content so Designer/Editor sees the actual copy as task name.
+        const rawContent = (task.content || "").split("\n")[0].trim();
+        const visualTitle = rawContent.length >= 3 ? rawContent.slice(0, 80) : `${task.title.replace(/— Content & Copy\s*$/, "").trim()} — Visual`;
         const inserted = await query<{ id: string }>(
           `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, content, status, priority, assigned_to, created_by)
            VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, $9, 'pending', 'medium', $10, NULL)
@@ -248,7 +252,7 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
             task.group_key,
             visualRole,
             task.deliverable_id,
-            `${task.title.replace(/— Content & Copy\s*$/, "").trim()} — Visual`,
+            visualTitle,
             `Visual production for "${task.title}". Use the approved copy as reference.`,
             task.content,
             task.title,
@@ -338,9 +342,10 @@ export async function allocateProjectTeam(
 
 async function ensureVisualTasksForAllocation(projectId: string, roleKey: string, userId: string) {
   try {
-    // Live DB patch: Video Shoot / Video Edit are visual-only (no Writer step) + ensure Designer-only exists.
-    // This auto-heals existing deployments that still have content_role = 'WRITER'.
-    await query(`UPDATE deliverable_types SET content_role = NULL WHERE key IN ('video_shoot','video_edit') AND content_role IS NOT NULL`);
+    // Live DB patch: ensure deliverable_types support all 3 scenarios (1→2→5, 1→3→5, 1→4) + single-role direct
+    // video_shoot and video_edit are WRITER->visual so Writer→Videographer/Editor chains work;
+    // single-role direct when no Writer allocated is healed via orphan deletion below.
+    await query(`UPDATE deliverable_types SET content_role = 'WRITER' WHERE key IN ('video_shoot','video_edit') AND content_role IS DISTINCT FROM 'WRITER'`);
     await query(`INSERT INTO deliverable_types (key, label, content_role, visual_role, default_qty, sort) VALUES ('design_asset','Design Asset',NULL,'DESIGNER',1,80) ON CONFLICT (key) DO NOTHING`);
     // Heal mismatched visual roles (e.g., Video Shoot visual showing as Video Editor) from pre-migration data.
     await query(`UPDATE tasks SET role_key = 'VIDEOGRAPHER' WHERE group_key = 'video_shoot' AND step_key LIKE '%_v_%' AND role_key != 'VIDEOGRAPHER'`);

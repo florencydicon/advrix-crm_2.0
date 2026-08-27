@@ -16,10 +16,20 @@ interface GroupedClient {
 
 export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task[]; roleKey: string; userId: string }) {
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [openClient, setOpenClient] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading"];
+
+  const FILTERS = [
+    { key: "", label: "All" },
+    { key: "in_progress", label: "Active" },
+    { key: "pending", label: "Pending" },
+    { key: "submitted", label: "Awaiting Review" },
+    { key: "needs_improvement", label: "Improvement Needed" },
+    { key: "completed", label: "Done" },
+  ];
 
   const metrics = [
     { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
@@ -28,16 +38,23 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
   ];
 
   const filtered = useMemo(() => {
-    if (!search) return tasks;
-    const q = search.toLowerCase();
-    return tasks.filter(
-      (t) =>
+    const q = search.trim().toLowerCase();
+    return tasks.filter((t) => {
+      if (statusFilter && t.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
         t.title.toLowerCase().includes(q) ||
         t.project_name.toLowerCase().includes(q) ||
         t.client_name.toLowerCase().includes(q) ||
         (t.client_company || "").toLowerCase().includes(q)
-    );
-  }, [tasks, search]);
+      );
+    });
+  }, [tasks, search, statusFilter]);
+
+  const tabCounts = FILTERS.map((f) => ({
+    ...f,
+    count: f.key ? tasks.filter((t) => t.status === f.key).length : tasks.length,
+  }));
 
   const grouped = useMemo(() => {
     const map = new Map<string, GroupedClient>();
@@ -134,9 +151,29 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
         ))}
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 w-full sm:max-w-xs">
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, projects, clients…" className="input !py-1.5 text-xs" />
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 w-full sm:max-w-xs">
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, projects, clients…" className="input !py-1.5 text-xs" />
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          {tabCounts.map((tab) => (
+            <button
+              key={tab.key || "all"}
+              onClick={() => setStatusFilter(statusFilter === tab.key ? "" : tab.key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+                statusFilter === tab.key
+                  ? "bg-brand-300 text-night-950 shadow-sm"
+                  : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
+              }`}
+            >
+              {tab.label}
+              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${statusFilter === tab.key ? "bg-brand-300/20 text-brand-300" : "bg-white/10 text-slate-400"}`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
