@@ -344,9 +344,12 @@ export default function ClientsView({
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 mt-auto pt-2 border-t border-white/10">
+                  <span className="text-[10px] text-slate-600 whitespace-nowrap">
+                    Added {new Date(c.created_at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} · {new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
                   {(c.email || c.phone) && (
-                    <span className="text-slate-500 truncate max-w-[180px]">
-                      {c.email || c.phone}
+                    <span className="text-slate-500 truncate max-w-[140px] hidden sm:inline">
+                      · {c.email || c.phone}
                     </span>
                   )}
                   <span className="ml-auto flex items-center gap-1.5">

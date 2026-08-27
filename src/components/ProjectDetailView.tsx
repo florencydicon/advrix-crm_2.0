@@ -140,7 +140,8 @@ export default function ProjectDetailView({
           <Link href="/projects" className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-brand-300 transition-colors mb-0.5">
             <ArrowLeft className="h-3 w-3" /> All clients
           </Link>
-          <h1 className="text-base font-bold tracking-tight leading-tight">{client.client_name}</h1>
+          <h1 className="text-base font-bold tracking-tight leading-tight">{client.client_company || client.client_name}</h1>
+          {client.client_company && <p className="text-[11px] text-slate-500 truncate">{client.client_name}</p>}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-slate-400">
             <span><span className="font-semibold text-white">{client.projects.length}</span> project{client.projects.length === 1 ? "" : "s"}</span>
             <span><span className="font-semibold text-brand-300">{activeProjects}</span> in prod.</span>
@@ -260,6 +261,7 @@ export default function ProjectDetailView({
                               <div className="flex-1 min-w-0">
                                 <p className="text-[12px] font-medium text-white truncate leading-tight">{t.title}</p>
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-[10px] text-slate-500">
+                                  <span className="text-slate-600">{fmtDate(t.created_at)} · {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                                   {t.role_label && <span className={`badge !px-1.5 !py-0 text-[10px] ${ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400"}`}>{t.role_label}</span>}
                                   {(t.assignees?.length ? t.assignees : t.assignee_name ? [{ id: t.assigned_to || "", name: t.assignee_name }] : []).map((m) => (
                                     <span key={m.id} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 pl-0.5 pr-1 py-0.5">

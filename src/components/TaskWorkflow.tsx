@@ -62,6 +62,10 @@ export function TaskDetails({
 
   return (
     <div className="space-y-2">
+      <p className="text-[9px] text-slate-600 flex items-center gap-2">
+        <span>Added {new Date(task.created_at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} · {new Date(task.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+        {task.due_date && <span className="text-slate-500">Due {new Date(task.due_date).toLocaleDateString([], { day: "numeric", month: "short" })}</span>}
+      </p>
       {task.remarks && (
         <div className="rounded-lg border border-violet-400/20 bg-violet-400/[0.06] p-2 text-xs">
           <p className="text-[10px] font-semibold text-violet-300 uppercase tracking-wide">Remarks / Brief</p>
