@@ -83,36 +83,37 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
     {
       key: "task",
       label: "Task",
+      className: "min-w-[200px]",
       render: (t) => (
-        <div>
-          <p className="font-medium text-xs text-white">{t.title}</p>
-          <p className="text-[11px] text-slate-500">{t.project_name} · {t.client_company || t.client_name}</p>
-          <p className="text-[9px] text-slate-600">{new Date(t.created_at).toLocaleDateString([], { day: "numeric", month: "short" })} · {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+        <div className="pl-2 border-l-2 border-brand-300/60">
+          <p className="font-medium text-xs text-white truncate">{t.title}</p>
+          <p className="text-[11px] text-slate-500 truncate">{t.project_name} · {t.client_company || t.client_name}</p>
+          <p className="text-[9px] text-slate-600 truncate">{new Date(t.created_at).toLocaleDateString([], { day: "numeric", month: "short" })} · {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
         </div>
       ),
     },
     {
       key: "role",
       label: "Role",
-      className: "w-[80px]",
-      render: (t) => t.role_label ? <span className="badge bg-white/10 text-slate-400">{t.role_label}</span> : null,
+      className: "w-[110px] text-left",
+      render: (t) => t.role_label ? <span className="badge bg-white/10 text-slate-400 text-[10px] leading-none px-2 py-1">{t.role_label}</span> : null,
     },
     {
       key: "priority",
       label: "Priority",
-      className: "w-[70px]",
+      className: "w-[90px] text-left",
       render: (t) => <PriorityBadge priority={t.priority} />,
     },
     {
       key: "status",
       label: "Status",
-      className: "w-[110px]",
+      className: "w-[130px] text-left",
       render: (t) => <StatusBadge status={t.status} />,
     },
     {
       key: "platforms",
       label: "Published on",
-      className: "w-[130px]",
+      className: "w-[120px] text-left",
       render: (t) => <PlatformBadges platforms={t.platforms} />,
     },
     {
@@ -253,15 +254,16 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                       {/* Mobile cards per project */}
                       <div className="md:hidden divide-y divide-white/[0.06]">
                         {project.tasks.map((t) => (
-                          <div key={t.id}>
+                          <div key={t.id} className="border-l-2 border-brand-300/50 ml-1">
                             <button
                               className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors"
                               onClick={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}
                             >
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium text-xs text-white truncate">{t.title}</p>
+                                <p className="text-[10px] text-slate-500 truncate">{project.name} · {new Date(t.created_at).toLocaleDateString([], { day: "numeric", month: "short" })}</p>
                                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                  {t.role_label && <span className="badge bg-white/10 text-slate-400 text-[10px]">{t.role_label}</span>}
+                                  {t.role_label && <span className="badge bg-white/10 text-slate-400 text-[10px] leading-none px-2 py-1">{t.role_label}</span>}
                                   <PriorityBadge priority={t.priority} />
                                   <StatusBadge status={t.status} />
                                 </div>

@@ -386,6 +386,10 @@ async function ensureVisualTasksForAllocation(projectId: string, roleKey: string
     await query(`UPDATE tasks SET role_key = 'VIDEOGRAPHER' WHERE group_key = 'video_shoot' AND step_key LIKE '%_v_%' AND role_key != 'VIDEOGRAPHER'`);
     await query(`UPDATE tasks SET role_key = 'EDITOR' WHERE group_key = 'video_edit' AND step_key LIKE '%_v_%' AND role_key != 'EDITOR'`);
     await query(`UPDATE tasks SET role_key = 'DESIGNER' WHERE group_key = 'design_asset' AND step_key LIKE '%_v_%' AND role_key != 'DESIGNER'`);
+    // Backfill old Writer tasks that were completed before title-swap fix: rename generic "Static Post 01 — Content & Copy" to actual content first line
+    try {
+      await query(`UPDATE tasks SET title = LEFT(TRIM(SPLIT_PART(content, E'\n', 1)), 80) WHERE role_key='WRITER' AND title LIKE '% — Content & Copy' AND content IS NOT NULL AND LENGTH(TRIM(content)) >=3`);
+    } catch {}
     const deliverables = await query<DeliverableRow>(
       `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
       [projectId]
