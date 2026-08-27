@@ -1,4 +1,4 @@
-const CACHE = "advrix-v2";
+const CACHE = "advrix-v3";
 const CORE = ["/", "/dashboard", "/manifest.json"];
 
 self.addEventListener("install", (e) => {
