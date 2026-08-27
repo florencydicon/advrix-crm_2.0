@@ -25,13 +25,13 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/logo-mark-wt.png",
+      "src": "/logo-mark.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/logo-full.png",
+      "src": "/logo-mark.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
