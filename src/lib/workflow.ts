@@ -235,7 +235,7 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
       );
       if (exists.length === 0) {
         const alloc = await query<{ user_id: string }>(
-          `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
+          `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 ORDER BY position ASC LIMIT 1`,
           [projectId, visualRole]
         );
         // Content-title swap: if Writer provided content (e.g., "Premium Living, Premium Interior"),
@@ -281,7 +281,7 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
  */
 export async function handoffVisualTaskToSmm(projectId: string, taskId: string): Promise<string | null> {
   const alloc = await query<{ user_id: string }>(
-    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = 'SMM' LIMIT 1`,
+    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = 'SMM' ORDER BY position ASC LIMIT 1`,
     [projectId]
   );
   const smmId = alloc[0]?.user_id ?? null;
@@ -299,7 +299,7 @@ export async function handoffVisualTaskToSmm(projectId: string, taskId: string):
  */
 export async function routeVisualTaskToProducer(projectId: string, taskId: string, visualRole: string): Promise<string | null> {
   const alloc = await query<{ user_id: string }>(
-    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
+    `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 ORDER BY position ASC LIMIT 1`,
     [projectId, visualRole]
   );
   const userId = alloc[0]?.user_id ?? null;
@@ -321,21 +321,19 @@ export async function allocateProjectTeam(
   projectId: string,
   allocations: { role_key: string; user_id: string | null; deadline?: string | null }[]
 ) {
-  // Additive sync: never wipe existing allocations (multiple members per
-  // role are supported); upsert deadline per member.
-  for (const a of allocations) {
+  // Priority ordering: allocations array order is the priority (top = first assigned).
+  // This removes fixed Writer->Designer flow — auto-chain now follows this order.
+  for (let idx = 0; idx < allocations.length; idx++) {
+    const a = allocations[idx];
     if (!a.user_id) continue;
     await query(
-      `INSERT INTO assignments (user_id, project_id, role_key, allotment_deadline)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO assignments (user_id, project_id, role_key, allotment_deadline, position)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, project_id, role_key)
-       DO UPDATE SET allotment_deadline = EXCLUDED.allotment_deadline`,
-      [a.user_id, projectId, a.role_key, a.deadline || null]
+       DO UPDATE SET allotment_deadline = EXCLUDED.allotment_deadline, position = EXCLUDED.position`,
+      [a.user_id, projectId, a.role_key, a.deadline || null, idx]
     );
     await allocateTasksForRole(projectId, a.role_key, a.user_id);
-    // Ensure visual tasks exist for this role even if content is still pending.
-    // This makes team allocation produce immediate work for Videographer / Designer
-    // even when the Writer step hasn't completed yet (separate flow).
     await ensureVisualTasksForAllocation(projectId, a.role_key, a.user_id);
   }
 }

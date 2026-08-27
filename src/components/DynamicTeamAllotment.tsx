@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { UserPlus, X, Save } from "lucide-react";
+import { useState, useRef } from "react";
+import { UserPlus, X, Save, GripVertical } from "lucide-react";
 import type { UserRow, ProjectRow } from "@/lib/types";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
@@ -57,6 +57,7 @@ export function DynamicTeamAllotment({
     : [blankRow()];
 
   const [rows, setRows] = useState<TeamAllocationRow[]>(existingRows);
+  const dragId = useRef<string | null>(null);
 
   function addRow() {
     setRows((prev) => [...prev, blankRow()]);
@@ -73,10 +74,32 @@ export function DynamicTeamAllotment({
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
+  function onDragStart(id: string) {
+    dragId.current = id;
+  }
+  function onDragOver(e: React.DragEvent, overId: string) {
+    e.preventDefault();
+    if (!dragId.current || dragId.current === overId) return;
+    setRows((prev) => {
+      const fromIdx = prev.findIndex((r) => r.id === dragId.current);
+      const toIdx = prev.findIndex((r) => r.id === overId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  }
+  function onDragEnd() {
+    dragId.current = null;
+  }
+
   return (
     <div className="rounded-xl border border-brand-300/25 bg-brand-300/[0.06] p-2">
+      <p className="text-[10px] text-slate-500 mb-1">Drag <span className="inline-flex align-middle"><GripVertical className="h-3 w-3" /></span> to set priority — top is assigned first, next auto-chains in this order.</p>
       {/* Column headers — aligned to the row grid */}
       <div className="flex items-center gap-1.5 mb-1 px-0.5">
+        <span className="w-5 shrink-0" />
         <span className="w-[30%] text-[8px] font-semibold uppercase tracking-wider text-slate-500">Role</span>
         <span className="flex-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">Employee</span>
         <span className="w-[28%] text-[8px] font-semibold uppercase tracking-wider text-slate-500">Deadline</span>
@@ -84,13 +107,26 @@ export function DynamicTeamAllotment({
       </div>
 
       <div className="space-y-1.5">
-        {rows.map((row) => {
+        {rows.map((row, idx) => {
           const roleMembers = row.role_key
             ? team.filter((u) => u.role_key === row.role_key && u.is_active)
             : [];
           const disabled = !row.role_key;
           return (
-            <div key={row.id} className="flex items-center gap-1.5">
+            <div
+              key={row.id}
+              draggable
+              onDragStart={() => onDragStart(row.id)}
+              onDragOver={(e) => onDragOver(e, row.id)}
+              onDragEnd={onDragEnd}
+              className="flex items-center gap-1.5 rounded-lg p-0.5 hover:bg-white/[0.03] transition-colors"
+            >
+              <span
+                className="w-5 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 shrink-0"
+                title={`Priority ${idx + 1} — drag to reorder`}
+              >
+                <GripVertical className="h-3.5 w-3.5" />
+              </span>
               <div className="w-[30%] min-w-0">
                 <SearchableSelect
                   options={AVAILABLE_ROLES.map((r) => ({ value: r.key, label: r.label }))}

@@ -168,12 +168,12 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
       ),
       query<Assignment>(
         `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
-                a.allotment_deadline::text AS allotment_deadline
+                a.allotment_deadline::text AS allotment_deadline, a.position
          FROM assignments a
          JOIN users u ON u.id = a.user_id
          JOIN roles r ON r.key = a.role_key
          WHERE a.project_id = ANY($1)
-         ORDER BY r.key`,
+         ORDER BY a.position ASC, r.key`,
         [projectIds]
       ),
     ]);
@@ -247,12 +247,12 @@ export async function getProjectDeliverables(projectId: string): Promise<Project
 export async function getProjectAssignments(projectId: string): Promise<Assignment[]> {
   return query<Assignment>(
     `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label,
-            a.allotment_deadline::text AS allotment_deadline
+            a.allotment_deadline::text AS allotment_deadline, a.position
      FROM assignments a
      JOIN users u ON u.id = a.user_id
      JOIN roles r ON r.key = a.role_key
      WHERE a.project_id = $1
-     ORDER BY r.key`,
+     ORDER BY a.position ASC, r.key`,
     [projectId]
   );
 }
@@ -341,12 +341,12 @@ export async function getBoard(): Promise<ProjectDetail[]> {
       [projectIds]
     ),
     query<Assignment>(
-      `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label
+      `SELECT a.id, a.user_id, a.project_id, a.role_key, u.full_name AS user_name, r.label AS role_label, a.position
        FROM assignments a
        JOIN users u ON u.id = a.user_id
        JOIN roles r ON r.key = a.role_key
        WHERE a.project_id = ANY($1)
-       ORDER BY r.key`,
+       ORDER BY a.position ASC, r.key`,
       [projectIds]
     ),
   ]);
