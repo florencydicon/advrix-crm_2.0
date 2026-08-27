@@ -441,6 +441,8 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
   }
 
   revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
   return { ok: true };
 }
 
@@ -455,9 +457,21 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
     return { error: "Not authorized." };
   }
 
-  const task = await getTaskWorkflowRow(taskId);
+  let task = await getTaskWorkflowRow(taskId);
   if (!task) return { error: "Task not found." };
-  if (task.status !== "submitted") return { error: "Task is not awaiting review." };
+  // Backfill old generic titles to actual content for clarity (e.g., "Static Post 01 — Content & Copy" -> content first line)
+  if (task.role_key === "WRITER" && task.title.includes(" — Content & Copy") && task.content && task.content.trim().length >= 3) {
+    const newTitle = task.content.split("\n")[0].trim().slice(0, 80);
+    if (newTitle && newTitle !== task.title) {
+      await query(`UPDATE tasks SET title = $2 WHERE id = $1`, [taskId, newTitle]);
+      task.title = newTitle;
+    }
+  }
+  // Idempotent: if already completed/approved, treat as success to avoid double-click errors
+  if (task.status === "completed" || task.status === "client_review" || task.status === "uploading") {
+    return { ok: true };
+  }
+  if (task.status !== "submitted") return { error: `Task is "${task.status}", not awaiting review. Please refresh.` };
   if (decision === "needs_improvement" && (!comment || comment.trim().length < 5)) {
     return { error: "Please provide specific feedback for the improvement." };
   }
@@ -560,6 +574,8 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
   }
 
   revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
   return { ok: true };
 }
 

@@ -19,8 +19,28 @@ export default async function ClientPipelinePage({
   const { id } = await params;
   const sp = await searchParams;
   const [pipeline, team] = await Promise.all([getPipelineByClient(), getTeam()]);
-  const client = pipeline.find((c) => c.client_id === id);
-  if (!client) notFound();
+  let client = pipeline.find((c) => c.client_id === id);
+  // Fallback: if URL was built with project_id as client_id (deep link from notification with stale client lookup), try to resolve via project
+  if (!client) {
+    const byProject = pipeline.find((c) => c.projects.some((p) => p.id === id));
+    if (byProject) {
+      // Redirect to correct client URL to avoid 404, preserving task deep link if present
+      const { redirect } = await import("next/navigation");
+      const taskPart = sp.task ? `&task=${encodeURIComponent(sp.task)}` : "";
+      redirect(`/projects/${byProject.client_id}?project=${id}${taskPart}`);
+    }
+    // Last resort: try direct project lookup (handles cases where pipeline is empty due to transient DB error)
+    try {
+      const { query } = await import("@/lib/db");
+      const rows = await query<{ client_id: string }>(`SELECT client_id FROM projects WHERE id = $1`, [id]);
+      if (rows[0]?.client_id) {
+        const { redirect } = await import("next/navigation");
+        const taskPart = sp.task ? `&task=${encodeURIComponent(sp.task)}` : "";
+        redirect(`/projects/${rows[0].client_id}?project=${id}${taskPart}`);
+      }
+    } catch {}
+    if (!client) notFound();
+  }
 
   return (
     <ProjectDetailView
