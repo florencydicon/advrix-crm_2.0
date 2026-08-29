@@ -397,21 +397,13 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
 }
 
 export async function getMyTasks(userId: string): Promise<Task[]> {
+  // Strict Sequential Visibility: a task appears ONLY on the dashboard of its
+  // current holder (tasks.assigned_to). Future members in the sequence remain
+  // hidden until the preceding member completes and the task advances via
+  // advanceTaskStep (which updates assigned_to + current_step).
   return query<Task>(
     `${TASK_SELECT}
      WHERE t.assigned_to = $1
-        OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1)
-        OR (
-          t.assigned_to IS NULL
-          AND EXISTS (
-            SELECT 1 FROM assignments pa
-            JOIN users u2 ON u2.id = pa.user_id
-            WHERE pa.project_id = t.project_id
-              AND pa.user_id = $1
-              AND pa.role_key = t.role_key
-              AND u2.is_active = true
-          )
-        )
      ORDER BY t.created_at ASC`,
     [userId]
   );
