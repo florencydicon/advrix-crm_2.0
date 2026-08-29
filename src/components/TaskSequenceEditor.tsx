@@ -11,7 +11,6 @@ import {
   setDeliverableSequenceAction,
 } from "@/lib/actions/projects";
 import { useToast } from "@/components/Toast";
-import { SummarizeBriefButton } from "@/components/AiButtons";
 
 const initials = (name: string) =>
   (name || "")
@@ -279,7 +278,6 @@ export function TaskBriefManager({ task }: { task: Task }) {
         <p className="text-[11px] text-rose-300 bg-rose-400/10 rounded px-2 py-1">Rejected: {task.review_comment}</p>
       )}
       <div className="flex items-center gap-1.5">
-        <SummarizeBriefButton taskId={task.id} />
         <button className="btn-primary !py-1 text-[11px]" onClick={approve} disabled={pending}>
           {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Approve Brief
         </button>

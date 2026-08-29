@@ -23,7 +23,7 @@ import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
 import { TaskBriefManager, TaskSequenceEditor, DeliverableSequenceEditor } from "@/components/TaskSequenceEditor";
-import { ApproveAllButton, EstimateDeadlinesButton, GenerateCopyButton, SummarizeBriefButton } from "@/components/AiButtons";
+import { ApproveAllButton } from "@/components/AiButtons";
 
 function isoDate(v: string | Date | null | undefined): string {
   if (!v) return "";
@@ -203,7 +203,6 @@ export default function ProjectDetailView({
                         return (
                           <div className="flex flex-wrap items-center gap-1.5">
                             <ApproveAllButton projectId={p.id} pendingCount={pendingCount} />
-                            <EstimateDeadlinesButton projectId={p.id} />
                           </div>
                         );
                       })()}
@@ -368,12 +367,6 @@ export default function ProjectDetailView({
                                   )}
                                   {canManage && t.step_key?.includes("_d_") && t.brief_approved_at && t.status !== "completed" && (
                                     <TaskSequenceEditor task={t} available={projectTeamOptions} />
-                                  )}
-                                  {roleKey === "SUPER_ADMIN" && t.status !== "completed" && (
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      <GenerateCopyButton taskId={t.id} />
-                                      {(t.brief_copy || t.description) && <SummarizeBriefButton taskId={t.id} />}
-                                    </div>
                                   )}
                                   <div className="pt-1.5 border-t border-white/10"><TaskActions task={t} roleKey={roleKey} userId={userId} onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)} /></div>
                                   {openTaskId === t.id && (<div className="rounded-md bg-white/5 p-2 animate-fade-in"><TaskDetails task={t} roleKey={roleKey} userId={userId} /></div>)}
