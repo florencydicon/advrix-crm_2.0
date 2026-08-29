@@ -76,6 +76,10 @@ export interface ProjectDeliverable {
   quantity: number;
   is_custom: boolean;
   custom_label: string | null;
+  /** One-time ordered team for every item of this deliverable (inherited by 01..NN). */
+  assignees?: TaskAssignee[];
+  /** Whether an explicit per-deliverable sequence has been saved yet. */
+  sequence_set?: boolean;
 }
 
 export interface Assignment {

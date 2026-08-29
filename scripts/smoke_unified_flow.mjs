@@ -223,6 +223,99 @@ async function main() {
     contribs.length === 3 && contribs.every((c) => c.status === "approved")
   );
 
+  // ── 8. Deliverable-level sequences + bulk approve ──
+  console.log("\n── Step 8: deliverable sequences + bulk approve ──");
+  const p2 = (await sql`
+    INSERT INTO projects (client_id, name, status, brief, created_by)
+    VALUES (${client.id}, 'Smoke Project DelivSeq', 'pending_approval', 'divseq brief', ${writer.id})
+    RETURNING id`)[0];
+  const d2 = (await sql`
+    INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
+    VALUES (${p2.id}, 'story_post', 'Story Post', 3, false, NULL)
+    RETURNING id`)[0];
+  // Project-order fallback EXISTS, but the deliverable sequence must WIN.
+  await sql`INSERT INTO assignments (user_id, project_id, role_key, position) VALUES (${writer.id}, ${p2.id}, 'WRITER', 0)`;
+  await sql`INSERT INTO assignments (user_id, project_id, role_key, position) VALUES (${designer.id}, ${p2.id}, 'DESIGNER', 1)`;
+  await sql`INSERT INTO assignments (user_id, project_id, role_key, position) VALUES (${smm.id}, ${p2.id}, 'SMM', 2)`;
+
+  const mkTask = async (stepKey, seq) =>
+    (
+      await sql`
+        INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
+        VALUES (${p2.id}, ${stepKey}, 'story_post', NULL, ${d2.id}, ${seq}, ${"Story Post " + seq}, 'Unified deliverable "Story Post".',
+                NULL, 'pending_approval', 'medium', NULL, NULL)
+        RETURNING id`
+    )[0].id;
+
+  const id2 = await mkTask("story_post_d_1", 1);
+  const id3 = await mkTask("story_post_d_2", 2);
+  const id4 = await mkTask("story_post_d_3", 3);
+
+  // Save a deliverable sequence (setDeliverableSequenceAction -> setDeliverableTeam).
+  // SMALL order differs from the project order on purpose: smm first proves precedence.
+  await sql`DELETE FROM deliverable_assignees WHERE deliverable_id = ${d2.id}`;
+  await sql`INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES (${d2.id}, ${smm.id}, 0)`;
+  await sql`INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES (${d2.id}, ${writer.id}, 1)`;
+  await sql`INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES (${d2.id}, ${designer.id}, 2)`;
+
+  // Bulk approve (approveAllBriefsAction): approve + autoAllotTaskTeam (deliverable-first).
+  const approveAndAllot = async (tid) => {
+    await sql`
+      UPDATE tasks SET status = 'approved', brief_approved_by = ${writer.id}, brief_approved_at = now(),
+        reviewed_by = ${writer.id}, reviewed_at = now() WHERE id = ${tid}`;
+    const members = await sql`
+      SELECT user_id FROM deliverable_assignees WHERE deliverable_id = ${d2.id} ORDER BY position ASC, added_at ASC`;
+    await sql`DELETE FROM task_assignees WHERE task_id = ${tid}`;
+    for (let i = 0; i < members.length; i++) {
+      await sql`INSERT INTO task_assignees (task_id, user_id, position) VALUES (${tid}, ${members[i].user_id}, ${i})`;
+    }
+    const firstRole = (
+      await sql`SELECT r.key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ${members[0].user_id}`
+    )[0].key;
+    await sql`UPDATE tasks SET assigned_to = ${members[0].user_id}, role_key = ${firstRole}, current_step = 0 WHERE id = ${tid}`;
+  };
+  await approveAndAllot(id2);
+  await approveAndAllot(id3);
+
+  const d2first = (await sql`SELECT assigned_to, current_step FROM tasks WHERE id = ${id2}`)[0];
+  assert(
+    "deliverable sequence wins over project order (SMM first)",
+    d2first,
+    d2first.assigned_to === smm.id && d2first.current_step === 0
+  );
+  const d2rows = await sql`
+    SELECT ta.user_id FROM task_assignees ta WHERE ta.task_id = ${id2} ORDER BY ta.position ASC`;
+  assert(
+    "inherited order SMM → WRITER → DESIGNER",
+    d2rows,
+    d2rows.length === 3 && d2rows[0].user_id === smm.id && d2rows[1].user_id === writer.id && d2rows[2].user_id === designer.id
+  );
+  const d3rows = await sql`SELECT COUNT(*)::text AS c FROM task_assignees WHERE task_id = ${id3}`;
+  assert("bulk approve covers story_post_d_2", d3rows, Number(d3rows[0].c) === 3);
+
+  // Edit the deliverable sequence — must re-apply to every approved-not-started item.
+  await approveAndAllot(id4);
+  await sql`DELETE FROM deliverable_assignees WHERE deliverable_id = ${d2.id}`;
+  await sql`INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES (${d2.id}, ${designer.id}, 0)`;
+  await sql`INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES (${d2.id}, ${smm.id}, 1)`;
+  await sql`INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES (${d2.id}, ${writer.id}, 2)`;
+  const approvedTasks = await sql`
+    SELECT id FROM tasks WHERE deliverable_id = ${d2.id} AND status = 'approved'`;
+  for (const row of approvedTasks) {
+    await sql`DELETE FROM task_assignees WHERE task_id = ${row.id}`;
+    await sql`INSERT INTO task_assignees (task_id, user_id, position) VALUES (${row.id}, ${designer.id}, 0)`;
+    await sql`INSERT INTO task_assignees (task_id, user_id, position) VALUES (${row.id}, ${smm.id}, 1)`;
+    await sql`INSERT INTO task_assignees (task_id, user_id, position) VALUES (${row.id}, ${writer.id}, 2)`;
+    await sql`UPDATE tasks SET assigned_to = ${designer.id}, role_key = 'DESIGNER', current_step = 0 WHERE id = ${row.id}`;
+  }
+  const reRow = await sql`
+    SELECT ta.user_id FROM task_assignees ta WHERE ta.task_id = ${id2} ORDER BY ta.position ASC`;
+  assert(
+    "editing deliverable sequence re-applies to approved-not-started items",
+    reRow,
+    reRow.length === 3 && reRow[0].user_id === designer.id && reRow[1].user_id === smm.id && reRow[2].user_id === writer.id
+  );
+
   // ── Cleanup ──
   console.log("\n── Cleanup ─────────────────────────────────");
   await sql`DELETE FROM clients WHERE id = ${client.id}`;
@@ -235,6 +328,12 @@ async function main() {
   assert("cascade cleaned tasks", orphanTasks, Number(orphanTasks[0].c) === 0);
   assert("cascade cleaned task_assignees", orphanAssignees, Number(orphanAssignees[0].c) === 0);
   assert("cascade cleaned task_contributions", orphanContribs, Number(orphanContribs[0].c) === 0);
+  const orphanDelivSeq = await sql`
+    SELECT COUNT(*)::text AS c FROM deliverable_assignees WHERE deliverable_id = ${d2.id}`;
+  assert("cascade cleaned deliverable_assignees", orphanDelivSeq, Number(orphanDelivSeq[0].c) === 0);
+  const p2Tasks = await sql`
+    SELECT COUNT(*)::text AS c FROM tasks WHERE project_id = ${p2.id}`;
+  assert("cascade cleaned second project's tasks", p2Tasks, Number(p2Tasks[0].c) === 0);
 
   console.log(failed === 0 ? "\nALL CHECKS PASSED ✅" : `\n${failed} CHECK(S) FAILED ❌`);
   process.exit(failed === 0 ? 0 : 1);

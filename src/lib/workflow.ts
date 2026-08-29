@@ -130,6 +130,39 @@ async function assignmentDeadlineOf(
   return rows[0]?.allotment_deadline ?? null;
 }
 
+/** The one-time ordered team for a deliverable, or [] when none is saved yet. */
+export async function getDeliverableTeam(deliverableId: string): Promise<string[]> {
+  try {
+    const rows = await query<{ user_id: string }>(
+      `SELECT user_id FROM deliverable_assignees
+       WHERE deliverable_id = $1 ORDER BY position ASC, added_at ASC`,
+      [deliverableId]
+    );
+    return rows.map((r) => r.user_id);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Saves the one-time team sequence for a deliverable and applies it to every
+ * item that is approved but not started yet (in-flight sequences are untouched).
+ */
+export async function setDeliverableTeam(deliverableId: string, memberIds: string[]) {
+  await query(`DELETE FROM deliverable_assignees WHERE deliverable_id = $1`, [deliverableId]);
+  for (let i = 0; i < memberIds.length; i++) {
+    await query(
+      `INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES ($1, $2, $3)`,
+      [deliverableId, memberIds[i], i]
+    );
+  }
+  const tasks = await query<{ id: string }>(
+    `SELECT id FROM tasks WHERE deliverable_id = $1 AND status = 'approved'`,
+    [deliverableId]
+  );
+  for (const t of tasks) await setTaskTeam(t.id, memberIds);
+}
+
 /**
  * Step 3 — Team Allotment. Sets the sequential team for one task in the exact
  * order the PM provides. Replaces membership, rewrites positions, and points
@@ -166,12 +199,23 @@ export async function setTaskTeam(taskId: string, memberIds: string[]) {
  * order. No-op while the brief is still awaiting approval.
  */
 export async function autoAllotTaskTeam(taskId: string, projectId: string) {
-  const members = await getProjectTeamOrder(projectId);
-  if (members.length === 0) return;
   const task = (
-    await query<{ status: string }>(`SELECT status FROM tasks WHERE id = $1`, [taskId])
+    await query<{ status: string; deliverable_id: string | null }>(
+      `SELECT status, deliverable_id FROM tasks WHERE id = $1`,
+      [taskId]
+    )
   )[0];
   if (!task || task.status !== "approved") return;
+  // Per-deliverable sequence wins; otherwise fall back to the project order.
+  const members =
+    (task.deliverable_id ? await getDeliverableTeam(task.deliverable_id) : []).filter(Boolean) ||
+    [];
+  if (members.length === 0) {
+    const projectMembers = await getProjectTeamOrder(projectId);
+    if (projectMembers.length === 0) return;
+    await setTaskTeam(taskId, projectMembers);
+    return;
+  }
   await setTaskTeam(taskId, members);
 }
 
@@ -180,13 +224,23 @@ export async function autoAllotTaskTeam(taskId: string, projectId: string) {
  * project to match the project team order. Called when the PM edits the team.
  */
 export async function syncApprovedTaskSequences(projectId: string) {
-  const members = await getProjectTeamOrder(projectId);
-  if (members.length === 0) return;
-  const tasks = await query<{ id: string }>(
-    `SELECT id FROM tasks WHERE project_id = $1 AND status = 'approved'`,
+  const projectMembers = await getProjectTeamOrder(projectId);
+  const tasks = await query<{ id: string; deliverable_id: string | null }>(
+    `SELECT id, deliverable_id FROM tasks WHERE project_id = $1 AND status = 'approved'`,
     [projectId]
   );
-  for (const t of tasks) await setTaskTeam(t.id, members);
+  const delivCache = new Map<string, string[]>();
+  for (const t of tasks) {
+    if (t.deliverable_id) {
+      if (!delivCache.has(t.deliverable_id)) delivCache.set(t.deliverable_id, await getDeliverableTeam(t.deliverable_id));
+      const dt = delivCache.get(t.deliverable_id)!;
+      if (dt.length > 0) {
+        await setTaskTeam(t.id, dt);
+        continue;
+      }
+    }
+    if (projectMembers.length > 0) await setTaskTeam(t.id, projectMembers);
+  }
 }
 
 /**
@@ -518,4 +572,83 @@ export async function extendForLeave(
 /** Manual deadline adjustment by admins/PMs — never locked. */
 export async function setTaskDeadline(taskId: string, date: string | null) {
   await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [taskId, date || null]);
+}
+
+/**
+ * Smart deadline estimation. Learns per-role durations from historical
+ * contributions (submitted → reviewed) and schedules every task in a project
+ * back-to-back per deliverable: tasks inside one deliverable run sequentially,
+ * different deliverables run in parallel. Sundays are skipped. Only tasks that
+ * already have an assigned team are scheduled; tasks with an existing due_date
+ * are left untouched.
+ */
+export async function estimateProjectDeadlines(projectId: string): Promise<number> {
+  const roleDurations = await estimateRoleDurations();
+
+  const tasks = await query<{ id: string; deliverable_id: string | null }>(
+    `SELECT id, deliverable_id FROM tasks
+     WHERE project_id = $1 AND due_date IS NULL AND status <> 'completed'
+     ORDER BY deliverable_id ASC, created_at ASC, id ASC`,
+    [projectId]
+  );
+  if (tasks.length === 0) return 0;
+
+  const start = new Date();
+  start.setHours(12, 0, 0, 0);
+  const cursorByGroup = new Map<string, Date>();
+  let scheduled = 0;
+
+  for (const t of tasks) {
+    const seq = await query<{ role_key: string | null }>(
+      `SELECT r.key AS role_key
+       FROM task_assignees ta
+       JOIN users u ON u.id = ta.user_id
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE ta.task_id = $1
+       ORDER BY ta.position ASC, ta.added_at ASC`,
+      [t.id]
+    );
+    if (seq.length === 0) continue;
+
+    let totalDays = 0;
+    for (const m of seq) totalDays += roleDurations.get(m.role_key ?? "WORKER") ?? 2;
+
+    const group = t.deliverable_id ?? `manual:${t.id}`;
+    const cursor = cursorByGroup.get(group) ?? new Date(start.getTime());
+    const due = addWorkingDays(cursor, Math.max(1, Math.round(totalDays)));
+    await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [t.id, toISODate(due)]);
+    cursorByGroup.set(group, due);
+    scheduled += 1;
+  }
+
+  return scheduled;
+}
+
+/** Historical per-role durations in working days (min 0.5, cap 14). */
+async function estimateRoleDurations(): Promise<Map<string, number>> {
+  const fallback = new Map<string, number>();
+  fallback.set("WRITER", 2).set("DESIGNER", 2).set("VIDEOGRAPHER", 3).set("SMM", 1).set("EDITOR", 1.5).set("WORKER", 2);
+
+  try {
+    const labels = await query<{ key: string; label: string }>(`SELECT key, label FROM roles`);
+    const labelToKey = new Map(labels.map((r) => [r.label, r.key]));
+
+    const rows = await query<{ role_label: string | null; avg_hours: number | null }>(
+      `SELECT c.role_label, AVG(EXTRACT(EPOCH FROM (c.reviewed_at - c.submitted_at)) / 3600.0)::float8 AS avg_hours
+       FROM task_contributions c
+       WHERE c.reviewed_at IS NOT NULL AND c.submitted_at IS NOT NULL AND c.role_label IS NOT NULL
+       GROUP BY c.role_label`
+    );
+
+    for (const r of rows) {
+      const hours = r.avg_hours ?? 24;
+      const days = Math.min(14, Math.max(0.5, hours / 8));
+      const key = labelToKey.get(r.role_label ?? "") ?? r.role_label ?? "WORKER";
+      fallback.set(key, Math.round(days * 2) / 2);
+    }
+  } catch (err) {
+    console.error("estimateRoleDurations failed (using fallbacks):", err);
+  }
+
+  return fallback;
 }

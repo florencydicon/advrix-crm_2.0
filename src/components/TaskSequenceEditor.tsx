@@ -2,10 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, ArrowDown, Check, X, ClipboardList, Loader2, Users } from "lucide-react";
+import { ArrowUp, ArrowDown, Check, X, ClipboardList, Layers, Loader2, Users } from "lucide-react";
 import type { Task } from "@/lib/types";
-import { setTaskSequenceAction, approveTaskBriefAction, rejectTaskBriefAction } from "@/lib/actions/projects";
+import {
+  setTaskSequenceAction,
+  approveTaskBriefAction,
+  rejectTaskBriefAction,
+  setDeliverableSequenceAction,
+} from "@/lib/actions/projects";
 import { useToast } from "@/components/Toast";
+import { SummarizeBriefButton } from "@/components/AiButtons";
 
 const initials = (name: string) =>
   (name || "")
@@ -62,7 +68,7 @@ export function TaskSequenceEditor({
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 space-y-2">
       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1">
-        <Users className="h-3 w-3" /> Team sequence — order the members who work on this task
+        <Users className="h-3 w-3" /> Team sequence — override for THIS task only (deliverable sequence sets all items)
       </p>
       <div className="flex flex-wrap gap-1.5">
         {available.map((a) => {
@@ -122,6 +128,122 @@ export function TaskSequenceEditor({
 }
 
 /**
+ * Step 3 — Team sequence per DELIVERABLE. Set once, and every item (01..NN) of
+ * the deliverable inherits the exact same order. Editing re-applies it to every
+ * approved-but-not-started item. The per-task editor (TaskSequenceEditor) is
+ * the "override one task only" escape hatch.
+ */
+export function DeliverableSequenceEditor({
+  deliverableId,
+  label,
+  current,
+  taskCount,
+  available,
+}: {
+  deliverableId: string;
+  label: string;
+  current: string[];
+  taskCount: number;
+  available: { id: string; name: string; role_label?: string | null }[];
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, start] = useTransition();
+  const [order, setOrder] = useState<string[]>(() =>
+    current.filter((id) => available.some((a) => a.id === id))
+  );
+
+  function toggle(id: string) {
+    setOrder((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+  function move(index: number, dir: -1 | 1) {
+    setOrder((prev) => {
+      const j = index + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+  }
+  function save() {
+    start(async () => {
+      const res = await setDeliverableSequenceAction(deliverableId, order);
+      if (res.error) toast(res.error, "error");
+      else toast(`${label} — sequence saved. ${taskCount} item${taskCount === 1 ? "" : "s"} will follow this order.`, "success");
+      router.refresh();
+    });
+  }
+
+  const memberOf = (id: string) => available.find((a) => a.id === id);
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 space-y-2">
+      <p className="text-[10px] font-semibold text-brand-300 uppercase tracking-wide flex items-center gap-1">
+        <Layers className="h-3 w-3" /> {label} — sequence applies to {taskCount} item{taskCount === 1 ? "" : "s"}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {available.map((a) => {
+          const selected = order.includes(a.id);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => toggle(a.id)}
+              className={`badge cursor-pointer transition-colors ${
+                selected
+                  ? "bg-brand-300/15 text-brand-200 border border-brand-300/40"
+                  : "bg-white/10 text-slate-400 hover:bg-white/15 border border-white/10"
+              }`}
+            >
+              {a.name}
+            </button>
+          );
+        })}
+      </div>
+      {order.length === 0 ? (
+        <p className="text-[10px] text-slate-500">
+          No members yet. Tap members above in the order they should work — every subtask will inherit this.
+        </p>
+      ) : (
+        <ol className="space-y-1">
+          {order.map((id, i) => {
+            const m = memberOf(id);
+            return (
+              <li key={id} className={`flex items-center gap-2 rounded-md border px-1.5 py-1 ${
+                i === 0 ? "border-brand-300/40 bg-brand-300/[0.06]" : "border-white/10 bg-night-850"
+              }`}>
+                <span className="w-5 text-center text-[10px] font-bold text-slate-500">{i + 1}</span>
+                <span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">
+                  {initials(m?.name || "")}
+                </span>
+                <span className="text-[11px] text-slate-200 truncate flex-1">{m?.name}</span>
+                {m?.role_label && <span className="badge !px-1.5 !py-0 text-[9px]">{m.role_label}</span>}
+                <button type="button" disabled={i === 0 || pending} onClick={() => move(i, -1)} className="p-0.5 text-slate-500 hover:text-brand-300 disabled:opacity-30">
+                  <ArrowUp className="h-3 w-3" />
+                </button>
+                <button type="button" disabled={i === order.length - 1 || pending} onClick={() => move(i, 1)} className="p-0.5 text-slate-500 hover:text-brand-300 disabled:opacity-30">
+                  <ArrowDown className="h-3 w-3" />
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <button
+        type="button"
+        onClick={save}
+        disabled={pending || order.length === 0}
+        className="btn-primary !py-1 text-[11px]"
+      >
+        {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        {pending ? "Saving…" : order.length === 0 ? "Pick members to enable" : "Save deliverable sequence"}
+      </button>
+      <p className="text-[10px] text-slate-500">Already-approved items are re-applied so nobody starts prematurely.</p>
+    </div>
+  );
+}
+
+/**
  * Step 2 — Initial brief approval / rejection of a unified task.
  * Nothing else is unlocked until the brief is approved.
  */
@@ -157,6 +279,7 @@ export function TaskBriefManager({ task }: { task: Task }) {
         <p className="text-[11px] text-rose-300 bg-rose-400/10 rounded px-2 py-1">Rejected: {task.review_comment}</p>
       )}
       <div className="flex items-center gap-1.5">
+        <SummarizeBriefButton taskId={task.id} />
         <button className="btn-primary !py-1 text-[11px]" onClick={approve} disabled={pending}>
           {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Approve Brief
         </button>

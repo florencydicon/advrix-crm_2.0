@@ -15,9 +15,12 @@ import {
   advanceTaskStep,
   autoAllotTaskTeam,
   setTaskTeam,
+  setDeliverableTeam,
   syncApprovedTaskSequences,
   markTaskComplete,
+  estimateProjectDeadlines,
 } from "@/lib/workflow";
+import { aiConfigured, aiComplete } from "@/lib/ai";
 import { createNotification, getProjectCreatorId, notifyRoles } from "@/lib/notifications";
 import {
   validateEmail,
@@ -375,6 +378,93 @@ export async function setTaskSequenceAction(taskId: string, memberIds: string[])
   return { ok: true };
 }
 
+/**
+ * Step 3 (one-time) — Sets the ordered team ONCE for a whole deliverable.
+ * Every item (01..NN) inherits the exact same sequence; editing it re-applies
+ * to all approved-but-not-started items automatically.
+ */
+export async function setDeliverableSequenceAction(deliverableId: string, memberIds: string[]) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  const clean = (memberIds || []).filter(Boolean);
+  if (clean.length === 0) return { error: "Add at least one team member to the sequence." };
+
+  const d = await query<{ project_id: string; project_name: string; category_label: string }>(
+    `SELECT pd.project_id, p.name AS project_name, pd.category_label
+     FROM project_deliverables pd
+     JOIN projects p ON p.id = pd.project_id
+     WHERE pd.id = $1`,
+    [deliverableId]
+  );
+  if (!d[0]) return { error: "Deliverable not found." };
+  await setDeliverableTeam(deliverableId, clean);
+
+  const clientId = await getProjectClientId(d[0].project_id);
+  const projectDeepLink = clientId ? projectLink(clientId, d[0].project_id) : "/projects";
+  if (clean[0] !== session.sub) {
+    await createNotification({
+      userId: clean[0],
+      type: "task",
+      title: "You're first on a new sequence",
+      body: `You are first in line for "${d[0].category_label}" on "${d[0].project_name}". Start when ready.`,
+      link: projectDeepLink,
+    });
+  }
+
+  revalidatePath("/projects");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
+  return { ok: true };
+}
+
+/**
+ * Step 2 (bulk) — Approves every pending brief in a project at once. Each task
+ * auto-allots its team from the per-deliverable sequence (or project order), so
+ * 50 subtasks are kicked off with a single click, not 50.
+ */
+export async function approveAllBriefsAction(projectId: string) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  const pending = await query<{ id: string; title: string; step_key: string | null; project_id: string; deliverable_id: string | null }>(
+    `SELECT id, title, step_key, project_id, deliverable_id
+     FROM tasks
+     WHERE project_id = $1 AND step_key ~ '_d_[0-9]+$' AND status IN ('pending_approval','rejected')`,
+    [projectId]
+  );
+  if (pending.length === 0) return { ok: true, approved: 0 };
+
+  let approved = 0;
+  for (const t of pending) {
+    if (t.step_key && t.step_key.match(/_d_[0-9]+$/)) {
+      await query(
+        `UPDATE tasks SET status = 'approved', brief_approved_by = $2, brief_approved_at = now(),
+         review_comment = NULL, reviewed_by = $2, reviewed_at = now()
+         WHERE id = $1`,
+        [t.id, session.sub]
+      );
+      await autoAllotTaskTeam(t.id, t.project_id);
+      approved += 1;
+    }
+  }
+
+  const clientId = await getProjectClientId(projectId);
+  const link = clientId ? projectLink(clientId, projectId) : "/projects";
+  await notifyRoles(CAN_REVIEW_TASKS, {
+    type: "task",
+    title: `${approved} brief${approved === 1 ? "" : "s"} approved`,
+    body: `${session.name} approved ${approved} brief${approved === 1 ? "" : "s"} on the project.`,
+    link,
+  });
+
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
+  return { ok: true, approved };
+}
+
 /** Completion override — force-closes a unified task at any point (Admin/PM only). */
 export async function markTaskCompleteAction(taskId: string) {
   const session = await getSession();
@@ -513,13 +603,15 @@ interface TaskWorkflowRow {
   status: string;
   assigned_to: string | null;
   content: string | null;
+  description: string | null;
+  brief_copy: string | null;
 }
 
 const CAN_REVIEW = ["PROJECT_MANAGER", "SUPER_ADMIN"];
 
 async function getTaskWorkflowRow(taskId: string): Promise<TaskWorkflowRow | null> {
   const rows = await query<TaskWorkflowRow>(
-    `SELECT id, project_id, step_key, role_key, sequence, deliverable_id, title, status, assigned_to, content
+    `SELECT id, project_id, step_key, role_key, sequence, deliverable_id, title, status, assigned_to, content, description, brief_copy
      FROM tasks WHERE id = $1`,
     [taskId]
   );
@@ -1275,4 +1367,92 @@ export async function extendPersonDeadlineAction(
 
   revalidatePath("/projects");
   return { ok: true };
+}
+
+// ---------- AI-assisted workflows (optional; degrade without AI_API_KEY) ----------
+
+function briefText(task: { title: string; description: string | null; brief_copy: string | null }): string {
+  return [task.title, task.description, task.brief_copy].filter(Boolean).join("\n\n").slice(0, 3000);
+}
+
+async function projectClientName(projectId: string): Promise<string> {
+  const rows = await query<{ name: string }>(
+    `SELECT c.name FROM projects p JOIN clients c ON c.id = p.client_id WHERE p.id = $1`,
+    [projectId]
+  );
+  return rows[0]?.name ?? "the client";
+}
+
+/** AI copy generation — drafts ready-to-publish content into tasks.content. */
+export async function generateCopyAction(taskId: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authorized." };
+  if (!aiConfigured()) return { error: "AI isn't configured yet. Add AI_API_KEY to the environment." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  const isAssignee = task.assigned_to === session.sub;
+  if (!isAssignee && !CAN_REVIEW_TASKS.includes(session.role_key)) {
+    return { error: "Only the current team member can generate the draft." };
+  }
+
+  const client = await projectClientName(task.project_id);
+  const system =
+    "You are a senior creative copywriter and social media strategist. Write clear, high-impact, ready-to-publish copy for the deliverable described. Include a strong headline, body text, and a short call-to-action. Do not invent facts, numbers, or URLs the brief doesn't mention.";
+  const user = `Client: ${client}\n\nBrief:\n${briefText(task)}`;
+
+  const { text } = await aiComplete(system, user, 1200);
+  const draft = text.slice(0, 5000);
+  await query(
+    `UPDATE tasks SET content = $2, remarks = COALESCE(remarks, $3) WHERE id = $1`,
+    [taskId, draft, `AI draft generated by ${session.name}.`]
+  );
+  revalidatePath("/projects");
+  return { ok: true, draft };
+}
+
+/** AI brief summarizer — converts a raw brief into a structured summary. */
+export async function summarizeBriefAction(taskId: string) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) return { error: "Not authorized." };
+  if (!aiConfigured()) return { error: "AI isn't configured yet. Add AI_API_KEY to the environment." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  const raw = briefText(task);
+  if (raw.trim().length < 20) return { error: "Not enough brief content to summarize yet." };
+
+  const system =
+    "You are a project manager's assistant. Convert a raw deliverable brief into a crisp structured summary: Goal, Audience, Tone, Must-include, CTA/Deadline. Use short bullet lines. Keep it under 180 words.";
+  const { text } = await aiComplete(system, raw, 400);
+
+  await query(`UPDATE tasks SET description = $2 WHERE id = $1`, [taskId, `AI summary —\n${text.trim().slice(0, 4000)}`]);
+  revalidatePath("/projects");
+  return { ok: true, summary: text };
+}
+
+/** AI content review — QA check of submitted draft (read-only, returns report). */
+export async function reviewContentAction(taskId: string) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) return { error: "Not authorized." };
+  if (!aiConfigured()) return { error: "AI isn't configured yet. Add AI_API_KEY to the environment." };
+
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  if (!task.content || task.content.trim().length < 10) return { error: "No content to review yet — ask the team member to submit a draft first." };
+
+  const system =
+    "You are a strict marketing QA reviewer. Review the following copy for grammar, clarity, tone, brand safety, and a clear call-to-action. Reply compactly:\nScore (0-100)\nTop 3 issues\nQuick fixes (short bullets). Under 200 words.";
+  const { text } = await aiComplete(system, task.content.slice(0, 4000), 400);
+  return { ok: true, report: text };
+}
+
+/** Smart deadline estimation — schedules every task in a project via learned role durations. */
+export async function estimateDeadlinesAction(projectId: string) {
+  const session = await getSession();
+  if (!session || !CAN_MANAGE.includes(session.role_key)) return { error: "Not authorized." };
+
+  const scheduled = await estimateProjectDeadlines(projectId);
+  revalidatePath("/projects");
+  return { ok: true, scheduled };
 }

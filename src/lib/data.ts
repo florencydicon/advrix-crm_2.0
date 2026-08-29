@@ -141,6 +141,7 @@ export interface PipelineClient {
 export interface PipelineProject extends Project {
   tasks: Task[];
   assignments: Assignment[];
+  deliverables_list: ProjectDeliverable[];
   total_tasks: number;
   completed_tasks: number;
 }
@@ -209,6 +210,42 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
       assignmentsByProject.get(a.project_id)!.push(a);
     }
 
+    const deliverables = await query<ProjectDeliverable>(
+      `SELECT * FROM project_deliverables WHERE project_id = ANY($1) ORDER BY created_at`,
+      [projectIds]
+    );
+    const deliverableIds = deliverables.map((d) => d.id);
+    const delivAssignees: { deliverable_id: string; id: string; name: string; role_key: string | null; role_label: string | null }[] = [];
+    if (deliverableIds.length > 0) {
+      delivAssignees.push(
+        ...(await query<{ deliverable_id: string; id: string; name: string; role_key: string | null; role_label: string | null }>(
+          `SELECT da.deliverable_id, u.id, u.full_name AS name, r.key AS role_key, r.label AS role_label
+           FROM deliverable_assignees da
+           JOIN users u ON u.id = da.user_id
+           LEFT JOIN roles r ON r.id = u.role_id
+           WHERE da.deliverable_id = ANY($1)
+           ORDER BY da.position ASC, da.added_at ASC`,
+          [deliverableIds]
+        ))
+      );
+    }
+    const delivByProject = new Map<string, ProjectDeliverable[]>();
+    const delivAssigneesByDeliv = new Map<string, ProjectDeliverable["assignees"]>();
+    for (const x of delivAssignees) {
+      const arr = delivAssigneesByDeliv.get(x.deliverable_id) ?? [];
+      arr.push({ id: x.id, name: x.name, role_key: x.role_key, role_label: x.role_label });
+      delivAssigneesByDeliv.set(x.deliverable_id, arr);
+    }
+    for (const d of deliverables) {
+      const a = delivAssigneesByDeliv.get(d.id);
+      if (a && a.length) {
+        d.assignees = a;
+        d.sequence_set = true;
+      }
+      if (!delivByProject.has(d.project_id)) delivByProject.set(d.project_id, []);
+      delivByProject.get(d.project_id)!.push(d);
+    }
+
     const clients: PipelineClient[] = [];
     const byClient = new Map<string, PipelineProject[]>();
     for (const p of projects) {
@@ -217,6 +254,7 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
         ...p,
         tasks: projectTasks,
         assignments: assignmentsByProject.get(p.id) || [],
+        deliverables_list: delivByProject.get(p.id) || [],
         total_tasks: projectTasks.length,
         completed_tasks: projectTasks.filter((t) => t.status === "completed").length,
       };
@@ -274,10 +312,27 @@ export async function getDeliverableTypes(): Promise<DeliverableType[]> {
 }
 
 export async function getProjectDeliverables(projectId: string): Promise<ProjectDeliverable[]> {
-  return query<ProjectDeliverable>(
+  const rows = await query<ProjectDeliverable>(
     `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
     [projectId]
   );
+  const seqs = await query<{ deliverable_id: string; id: string; name: string; role_label: string | null }>(
+    `SELECT da.deliverable_id, u.id, u.full_name AS name, r.label AS role_label
+     FROM deliverable_assignees da
+     JOIN users u ON u.id = da.user_id
+     LEFT JOIN roles r ON r.id = u.role_id
+     ORDER BY da.position ASC`
+  );
+  const byDeliv = new Map<string, ProjectDeliverable["assignees"]>();
+  for (const s of seqs) {
+    if (!byDeliv.has(s.deliverable_id)) byDeliv.set(s.deliverable_id, []);
+    byDeliv.get(s.deliverable_id)!.push({ id: s.id, name: s.name, role_key: null, role_label: s.role_label });
+  }
+  for (const d of rows) {
+    d.assignees = byDeliv.get(d.id) || [];
+    d.sequence_set = (d.assignees?.length ?? 0) > 0;
+  }
+  return rows;
 }
 
 export async function getProjectAssignments(projectId: string): Promise<Assignment[]> {

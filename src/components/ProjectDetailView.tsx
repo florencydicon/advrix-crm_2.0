@@ -22,7 +22,8 @@ import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
-import { TaskBriefManager, TaskSequenceEditor } from "@/components/TaskSequenceEditor";
+import { TaskBriefManager, TaskSequenceEditor, DeliverableSequenceEditor } from "@/components/TaskSequenceEditor";
+import { ApproveAllButton, EstimateDeadlinesButton } from "@/components/AiButtons";
 
 function isoDate(v: string | Date | null | undefined): string {
   if (!v) return "";
@@ -197,6 +198,29 @@ export default function ProjectDetailView({
 
                   {canManage && p.status === "in_progress" && (
                     <div className="px-3 pt-2.5 space-y-1.5">
+                      {(() => {
+                        const pendingCount = p.tasks.filter((t) => t.step_key?.includes("_d_") && (t.status === "pending_approval" || t.status === "rejected")).length;
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <ApproveAllButton projectId={p.id} pendingCount={pendingCount} />
+                            <EstimateDeadlinesButton projectId={p.id} />
+                          </div>
+                        );
+                      })()}
+                      {p.deliverables_list.map((d) => {
+                        const dTasks = p.tasks.filter((t) => t.deliverable_id === d.id);
+                        if (dTasks.length === 0) return null;
+                        return (
+                          <DeliverableSequenceEditor
+                            key={d.id}
+                            deliverableId={d.id}
+                            label={d.category_label}
+                            current={(d.assignees || []).map((a) => a.id)}
+                            taskCount={dTasks.length}
+                            available={projectTeamOptions}
+                          />
+                        );
+                      })}
                       <DynamicTeamAllotment
                         key={p.id}
                         project={p as unknown as Parameters<typeof DynamicTeamAllotment>[0]["project"]}

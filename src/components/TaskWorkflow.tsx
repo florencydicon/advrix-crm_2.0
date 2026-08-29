@@ -18,6 +18,7 @@ import {
 import type { Task } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { PLATFORMS } from "@/components/ui";
+import { GenerateCopyButton, ReviewContentButton } from "@/components/AiButtons";
 
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
 const CONTENT_ROLES = ["WRITER", "DESIGNER"];
@@ -335,6 +336,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
           }
         />
         <div className="flex items-center gap-1.5 flex-wrap">
+          <GenerateCopyButton taskId={task.id} />
           <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending}>
             <Save className="h-3 w-3" /> {pending ? "Saving…" : "Save draft"}
           </button>
@@ -404,6 +406,7 @@ export function ReviewPanel({ task }: { task: Task }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
+          <ReviewContentButton taskId={task.id} />
           <button className="btn-secondary !py-1 text-[11px]" onClick={() => decide("needs_improvement")} disabled={pending}>
             {pending && decision === "needs_improvement" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
             {pending && decision === "needs_improvement" ? "Sending…" : "Needs Improvement"}
