@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getTeamPaginated, getRoles } from "@/lib/data";
+import { getDatabaseCounts } from "@/lib/actions/admin";
 import SettingsView from "@/components/SettingsView";
 
 export const metadata = { title: "Settings — Advrix Media" };
@@ -20,9 +21,10 @@ export default async function SettingsPage({
   const role = params.role || "";
   const pageSize = 25;
 
-  const [result, roles] = await Promise.all([
+  const [result, roles, counts] = await Promise.all([
     getTeamPaginated({ page, pageSize, search, roleKey: role }),
     getRoles(),
+    getDatabaseCounts(),
   ]);
 
   const filterTabs = [
@@ -44,6 +46,7 @@ export default async function SettingsPage({
       basePath="/settings"
       sessionName={session.name}
       sessionRole={session.role_label}
+      counts={counts}
     />
   );
 }
