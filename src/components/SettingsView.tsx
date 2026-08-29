@@ -132,10 +132,10 @@ export default function SettingsView({
           </div>
 
           <DataExportPanel />
-
-          <FlushDatabasePanel counts={counts} />
         </div>
       )}
+
+      <FlushDatabasePanel counts={counts} />
     </div>
   );
 }

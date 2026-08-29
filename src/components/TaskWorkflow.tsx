@@ -14,6 +14,8 @@ import {
   approveTaskBriefAction,
   rejectTaskBriefAction,
   markTaskCompleteAction,
+  saveWriterVideoDraftAction,
+  submitWriterVideoDraftAction,
 } from "@/lib/actions/projects";
 import type { Task } from "@/lib/types";
 import { useToast } from "@/components/Toast";
@@ -235,7 +237,22 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
     : task.role_key ? CONTENT_ROLES.includes(task.role_key) : false;
   const hasDraft = draft.trim().length > 0;
 
+  // Writer → Video editor special case: title + script split (prevents 500-word heading ugliness)
+  const VIDEO_GROUPS = ["reel", "video_shoot", "video_edit"];
+  const isVideoWriterTask = isUnified && isWriter && VIDEO_GROUPS.includes(task.group_key);
+  const [videoTitle, setVideoTitle] = useState(() => (task.content ? task.title : ""));
+  const hasVideoTitle = videoTitle.trim().length > 0;
+
   function save() {
+    if (isVideoWriterTask) {
+      if (!hasVideoTitle) { toast("Video title is required — it will replace the sub-task heading.", "error"); return; }
+      start(async () => {
+        const res = await saveWriterVideoDraftAction(task.id, videoTitle, draft);
+        if (res.error) toast(res.error, "error");
+        else { setSaved(true); router.refresh(); setTimeout(() => setSaved(false), 2000); }
+      });
+      return;
+    }
     start(async () => {
       const res = await updateTaskContentAction(task.id, draft);
       if (res.error) toast(res.error, "error");
@@ -244,6 +261,15 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   }
 
   function submit() {
+    if (isVideoWriterTask) {
+      if (!hasVideoTitle) { toast("Add a video title before submitting — it replaces the heading.", "error"); return; }
+      start(async () => {
+        const res = await submitWriterVideoDraftAction(task.id, videoTitle, draft);
+        if (res.error) toast(res.error, "error");
+        router.refresh();
+      });
+      return;
+    }
     start(async () => {
       const res = await submitTaskAction(task.id, draft);
       if (res.error) toast(res.error, "error");
@@ -303,6 +329,56 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   }
 
   // Content roles (WRITER, DESIGNER): full content editor.
+  if (isVideoWriterTask) {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">Video Title <span className="text-rose-400">*</span></p>
+            {saved && <span className="text-[10px] text-emerald-400">Saved</span>}
+            <span className="text-[10px] text-slate-500">{videoTitle.length}/120</span>
+          </div>
+          <input
+            value={videoTitle}
+            onChange={(e) => setVideoTitle(e.target.value)}
+            maxLength={120}
+            className="input text-xs"
+            placeholder="e.g. Summer Glow — 30s Teaser"
+          />
+          {!hasVideoTitle && <p className="text-[10px] text-rose-300">Title required — replaces the sub-task heading.</p>}
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">Script <span className="text-rose-400">*</span></p>
+            <span className="text-[10px] text-slate-500">{draft.length}/5000</span>
+          </div>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={5}
+            className="input text-xs"
+            placeholder="Write the full 500-word script for the video editor…"
+          />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending || !hasVideoTitle || !hasDraft}>
+              <Save className="h-3 w-3" /> {pending ? "Saving…" : "Save draft"}
+            </button>
+            <button
+              className="btn-primary !py-1 text-[11px]"
+              onClick={submit}
+              disabled={pending || !hasVideoTitle || !hasDraft}
+              title={!hasVideoTitle ? "Add a title first" : !hasDraft ? "Add script before submitting" : undefined}
+            >
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+              {pending ? "Submitting…" : "Submit for Review"}
+            </button>
+          </div>
+          {(!hasVideoTitle || !hasDraft) && (
+            <p className="text-[10px] text-slate-500">Title and script are both required for video tasks.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       {/* Approved copy reference for the design/editing team */}

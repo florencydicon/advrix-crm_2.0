@@ -594,6 +594,7 @@ interface TaskWorkflowRow {
   id: string;
   project_id: string;
   step_key: string | null;
+  group_key: string;
   role_key: string;
   sequence: number;
   deliverable_id: string | null;
@@ -607,7 +608,7 @@ const CAN_REVIEW = ["PROJECT_MANAGER", "SUPER_ADMIN"];
 
 async function getTaskWorkflowRow(taskId: string): Promise<TaskWorkflowRow | null> {
   const rows = await query<TaskWorkflowRow>(
-    `SELECT id, project_id, step_key, role_key, sequence, deliverable_id, title, status, assigned_to, content
+    `SELECT id, project_id, step_key, group_key, role_key, sequence, deliverable_id, title, status, assigned_to, content
      FROM tasks WHERE id = $1`,
     [taskId]
   );
@@ -1362,5 +1363,96 @@ export async function extendPersonDeadlineAction(
   );
 
   revalidatePath("/projects");
+  return { ok: true };
+}
+
+const VIDEO_WRITER_GROUPS = new Set(["reel", "video_shoot", "video_edit"]);
+
+function isWriterVideoTaskRow(t: TaskWorkflowRow): boolean {
+  return t.role_key === "WRITER" && VIDEO_WRITER_GROUPS.has(t.group_key) && !!t.step_key?.includes("_d_");
+}
+
+/** Writer → Video Editor: save title + script draft (title required, replaces sub-task heading). */
+export async function saveWriterVideoDraftAction(taskId: string, title: string, script: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authorized." };
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  const isUnified = !!task.step_key?.includes("_d_");
+  const isAssignee = isUnified
+    ? task.assigned_to === session.sub
+    : task.assigned_to === session.sub ||
+      (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0;
+  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) return { error: "Only the current writer can save this task." };
+  if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) return { error: "Task is not editable." };
+
+  const cleanTitle = title.trim();
+  const cleanScript = script.trim();
+  if (isWriterVideoTaskRow(task)) {
+    if (!cleanTitle) return { error: "Video title is required." };
+    if (cleanTitle.length > 120) return { error: "Title too long (max 120 chars)." };
+    if (!cleanScript) return { error: "Script is required." };
+    if (cleanScript.length > 5000) return { error: "Script too long (max 5000 chars)." };
+    await query(`UPDATE tasks SET title = $2, content = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
+  } else {
+    if (!cleanScript) return { error: "Add content before saving." };
+    if (cleanScript.length > 5000) return { error: "Content too long." };
+    await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, cleanScript]);
+  }
+  revalidatePath("/projects");
+  return { ok: true };
+}
+
+/** Writer → Video Editor: submit title + script (title required, replaces heading, then submits). */
+export async function submitWriterVideoDraftAction(taskId: string, title: string, script: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authorized." };
+  const task = await getTaskWorkflowRow(taskId);
+  if (!task) return { error: "Task not found." };
+  const isUnified = !!task.step_key?.includes("_d_");
+  const isAssignee = isUnified
+    ? task.assigned_to === session.sub
+    : task.assigned_to === session.sub ||
+      (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0;
+  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) return { error: "Only the current writer can submit this task." };
+  if (!["in_progress", "needs_improvement"].includes(task.status)) return { error: "Task is not in a submittable state." };
+
+  const cleanTitle = title.trim();
+  const cleanScript = script.trim();
+  if (isWriterVideoTaskRow(task)) {
+    if (!cleanTitle) return { error: "Video title is required — it replaces the sub-task heading." };
+    if (cleanTitle.length > 120) return { error: "Title too long (max 120 chars)." };
+    if (!cleanScript) return { error: "Script is required." };
+    if (cleanScript.length > 5000) return { error: "Script too long." };
+    await query(`UPDATE tasks SET title = $2, content = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
+  } else {
+    if (!cleanScript) return { error: "Add your work before submitting." };
+    if (cleanScript.length > 5000) return { error: "Content too long." };
+    if (cleanScript !== task.content) await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, cleanScript]);
+  }
+
+  await query(`UPDATE tasks SET status = 'submitted', reviewed_at = now() WHERE id = $1`, [taskId]);
+  if (isUnified) {
+    const step = (await query<{ current_step: number; role_key: string | null }>(`SELECT current_step, role_key FROM tasks WHERE id = $1`, [taskId]))[0];
+    const finalContent = isWriterVideoTaskRow(task) ? `Title: ${cleanTitle}\n\n${cleanScript}` : cleanScript;
+    await query(
+      `INSERT INTO task_contributions (task_id, step, user_id, user_name, role_label, content, status, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'submitted', now())`,
+      [taskId, step?.current_step ?? 0, session.sub, session.name, step?.role_key || task.role_key, finalContent]
+    );
+  }
+  const clientId = await getProjectClientId(task.project_id);
+  const freshTitle = isWriterVideoTaskRow(task) ? cleanTitle : task.title;
+  if (clientId && task.step_key) {
+    await notifyRoles(CAN_REVIEW, {
+      type: "task",
+      title: "Task ready for review",
+      body: `${session.name} submitted "${freshTitle}" for review.`,
+      link: taskLink(clientId, task.project_id, task.step_key),
+    });
+  }
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
   return { ok: true };
 }
