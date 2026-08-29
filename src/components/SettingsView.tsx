@@ -132,10 +132,10 @@ export default function SettingsView({
           </div>
 
           <DataExportPanel />
+
+          {sessionRole === "SUPER_ADMIN" && <FlushDatabasePanel counts={counts} />}
         </div>
       )}
-
-      <FlushDatabasePanel counts={counts} />
     </div>
   );
 }
