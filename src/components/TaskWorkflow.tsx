@@ -208,6 +208,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   const [pending, start] = useTransition();
   const { toast } = useToast();
   const [draft, setDraft] = useState(task.content || "");
+  const [videoTitle, setVideoTitle] = useState(task.content ? task.title : "");
   const [saved, setSaved] = useState(false);
 
   const isUnified = isUnifiedTask(task);
@@ -228,8 +229,6 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
     ? isAssignee && EDITABLE_STATUSES.includes(task.status)
     : isProducer && (isAssignee || canManage) && EDITABLE_STATUSES.includes(task.status);
 
-  if (!editable) return null;
-
   const isWriter = task.role_key === "WRITER";
   const isVisual = task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
   const isContentRole = isUnified
@@ -240,8 +239,9 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   // Writer → Video editor special case: title + script split (prevents 500-word heading ugliness)
   const VIDEO_GROUPS = ["reel", "video_shoot", "video_edit"];
   const isVideoWriterTask = isUnified && isWriter && VIDEO_GROUPS.includes(task.group_key);
-  const [videoTitle, setVideoTitle] = useState(() => (task.content ? task.title : ""));
   const hasVideoTitle = videoTitle.trim().length > 0;
+
+  if (!editable) return null;
 
   function save() {
     if (isVideoWriterTask) {
