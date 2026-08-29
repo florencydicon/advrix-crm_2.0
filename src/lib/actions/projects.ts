@@ -1393,7 +1393,7 @@ export async function saveWriterVideoDraftAction(taskId: string, title: string, 
     if (cleanTitle.length > 120) return { error: "Title too long (max 120 chars)." };
     if (!cleanScript) return { error: "Script is required." };
     if (cleanScript.length > 5000) return { error: "Script too long (max 5000 chars)." };
-    await query(`UPDATE tasks SET title = $2, content = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
+    await query(`UPDATE tasks SET title = $2, content = $3, brief_copy = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
   } else {
     if (!cleanScript) return { error: "Add content before saving." };
     if (cleanScript.length > 5000) return { error: "Content too long." };
@@ -1424,11 +1424,11 @@ export async function submitWriterVideoDraftAction(taskId: string, title: string
     if (cleanTitle.length > 120) return { error: "Title too long (max 120 chars)." };
     if (!cleanScript) return { error: "Script is required." };
     if (cleanScript.length > 5000) return { error: "Script too long." };
-    await query(`UPDATE tasks SET title = $2, content = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
+    await query(`UPDATE tasks SET title = $2, content = $3, brief_copy = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
   } else {
     if (!cleanScript) return { error: "Add your work before submitting." };
     if (cleanScript.length > 5000) return { error: "Content too long." };
-    if (cleanScript !== task.content) await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, cleanScript]);
+    if (cleanScript !== task.content) await query(`UPDATE tasks SET content = $2, brief_copy = COALESCE(brief_copy, $2) WHERE id = $1`, [taskId, cleanScript]);
   }
 
   await query(`UPDATE tasks SET status = 'submitted', reviewed_at = now() WHERE id = $1`, [taskId]);

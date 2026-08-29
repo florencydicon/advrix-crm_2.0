@@ -208,9 +208,6 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   const router = useRouter();
   const [pending, start] = useTransition();
   const { toast } = useToast();
-  const [draft, setDraft] = useState(task.content || "");
-  const [videoTitle, setVideoTitle] = useState(task.content ? task.title : "");
-  const [saved, setSaved] = useState(false);
 
   const isUnified = isUnifiedTask(task);
   const isProducer =
@@ -226,20 +223,27 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
     : task.assigned_to === userId ||
       (Array.isArray(task.assignees) && task.assignees.some((a: any) => a.id === userId)) ||
       task.assigned_to === null;
-  const editable = isUnified
-    ? isAssignee && EDITABLE_STATUSES.includes(task.status)
-    : isProducer && (isAssignee || canManage) && EDITABLE_STATUSES.includes(task.status);
 
   const isWriter = task.role_key === "WRITER";
   const isVisual = task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
   const isContentRole = isUnified
     ? task.role_key === "WRITER" || task.role_key === "DESIGNER"
     : task.role_key ? CONTENT_ROLES.includes(task.role_key) : false;
-  const hasDraft = draft.trim().length > 0;
 
-  // Writer → Video editor special case: title + script split (prevents 500-word heading ugliness)
   const VIDEO_GROUPS = ["reel", "video_shoot", "video_edit"];
   const isVideoWriterTask = isUnified && isWriter && VIDEO_GROUPS.includes(task.group_key);
+
+  const [draft, setDraft] = useState(() => {
+    if (!isContentRole && task.status === "approved") return "";
+    return task.content || "";
+  });
+  const [videoTitle, setVideoTitle] = useState(() => (task.content ? task.title : ""));
+  const [saved, setSaved] = useState(false);
+
+  const editable = isUnified
+    ? isAssignee && EDITABLE_STATUSES.includes(task.status)
+    : isProducer && (isAssignee || canManage) && EDITABLE_STATUSES.includes(task.status);
+  const hasDraft = draft.trim().length > 0;
   const hasVideoTitle = videoTitle.trim().length > 0;
 
   if (!editable) return null;
@@ -280,18 +284,23 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
 
   // Non-content roles (EDITOR, VIDEOGRAPHER): simplified panel — no copywriting Description block.
   if (!isContentRole) {
+    const writerRef =
+      task.brief_copy ||
+      task.contributions?.find((c: any) => c.status === "approved" || c.status === "submitted")?.content ||
+      task.contributions?.[0]?.content ||
+      null;
     return (
       <div className="space-y-2">
-        {task.brief_copy && (
+        {writerRef && (
           <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <FileText className="h-3.5 w-3.5 text-brand-300" />
               <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">
-                Approved copy — reference
+                {task.brief_copy ? "Approved copy — reference" : "Previous step — reference"}
               </p>
             </div>
-            <p className="text-[10px] text-slate-500 mb-1">Approved copy from the content team — use as reference.</p>
-            <p className="text-xs text-slate-300 whitespace-pre-wrap">{task.brief_copy}</p>
+            <p className="text-[10px] text-slate-500 mb-1">Content from the previous member — use as reference.</p>
+            <p className="text-xs text-slate-300 whitespace-pre-wrap">{writerRef}</p>
           </div>
         )}
 
