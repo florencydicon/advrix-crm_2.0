@@ -150,7 +150,6 @@ const FLUSH_OPTIONS: { key: FlushEntity; label: string; desc: string }[] = [
   { key: "attendance", label: "Attendance", desc: "All punch-in/out records" },
   { key: "leaves", label: "Leaves", desc: "All leave applications" },
   { key: "notifications", label: "Notifications", desc: "All user notifications" },
-  { key: "users", label: "Users", desc: "Non-SUPER_ADMIN users (you are kept)" },
 ];
 
 function FlushDatabasePanel({ counts }: { counts: Record<string, number> }) {

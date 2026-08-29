@@ -11,8 +11,7 @@ export type FlushEntity =
   | "leads"
   | "attendance"
   | "leaves"
-  | "notifications"
-  | "users";
+  | "notifications";
 
 const ALLOWED: Set<FlushEntity> = new Set([
   "clients",
@@ -22,7 +21,6 @@ const ALLOWED: Set<FlushEntity> = new Set([
   "attendance",
   "leaves",
   "notifications",
-  "users",
 ]);
 
 async function requireSuperAdmin() {
@@ -41,7 +39,6 @@ export async function getDatabaseCounts(): Promise<Record<FlushEntity, number> &
     attendance: "attendance",
     leaves: "leaves",
     notifications: "notifications",
-    users: "users",
   };
   for (const [key, table] of Object.entries(tables)) {
     try {
@@ -60,7 +57,6 @@ export async function getDatabaseCounts(): Promise<Record<FlushEntity, number> &
  * - clients: cascades to projects, project_deliverables, tasks, assignments, task_assignees etc via FK
  * - projects: cascades to deliverables/tasks
  * - tasks: only tasks (and its assignees/contributions)
- * - users: all non-SUPER_ADMIN users (never deletes caller even if they are SUPER_ADMIN)
  */
 export async function flushDataAction(entities: FlushEntity[]) {
   const auth = await requireSuperAdmin();
@@ -151,25 +147,6 @@ export async function flushDataAction(entities: FlushEntity[]) {
       }
     }
 
-    if (clean.includes("users")) {
-      // Never delete the caller, never delete other SUPER_ADMINs
-      const superRole = (await query<{ id: string }>(`SELECT id FROM roles WHERE key = 'SUPER_ADMIN' LIMIT 1`))[0];
-      if (superRole) {
-        const r = await query(
-          `DELETE FROM users WHERE id != $1 AND role_id != $2 RETURNING 1`,
-          [session.sub, superRole.id]
-        );
-        results.users = Array.isArray(r) ? r.length : 0;
-      } else {
-        const r = await query(`DELETE FROM users WHERE id != $1 RETURNING 1`, [session.sub]);
-        results.users = Array.isArray(r) ? r.length : 0;
-      }
-      // Clean dependent login_attempts
-      try {
-        await query(`DELETE FROM login_attempts WHERE user_id NOT IN (SELECT id FROM users)`);
-      } catch {}
-    }
-
     revalidatePath("/settings");
     revalidatePath("/dashboard");
     revalidatePath("/projects");
@@ -201,14 +178,6 @@ export async function flushEntireDatabaseAction() {
     try { await query(`DELETE FROM leaves`); } catch {}
     try { await query(`DELETE FROM notifications`); } catch {}
     try { await query(`DELETE FROM login_attempts`); } catch {}
-
-    // Users: keep only SUPER_ADMINs and the caller
-    const superRole = (await query<{ id: string }>(`SELECT id FROM roles WHERE key = 'SUPER_ADMIN' LIMIT 1`))[0];
-    if (superRole) {
-      await query(`DELETE FROM users WHERE id != $1 AND role_id != $2`, [session.sub, superRole.id]);
-    } else {
-      await query(`DELETE FROM users WHERE id != $1`, [session.sub]);
-    }
 
     revalidatePath("/settings");
     revalidatePath("/dashboard");
