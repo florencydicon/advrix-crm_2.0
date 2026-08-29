@@ -11,6 +11,9 @@ import {
   approveClientAction,
   completeTaskWithPlatformsAction,
   updateTaskContentAction,
+  approveTaskBriefAction,
+  rejectTaskBriefAction,
+  markTaskCompleteAction,
 } from "@/lib/actions/projects";
 import type { Task } from "@/lib/types";
 import { useToast } from "@/components/Toast";
@@ -18,6 +21,10 @@ import { PLATFORMS } from "@/components/ui";
 
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
 const CONTENT_ROLES = ["WRITER", "DESIGNER"];
+const REVIEWER_ROLES = ["PROJECT_MANAGER", "SUPER_ADMIN"];
+
+const isUnifiedTask = (t: Task) => !!t.step_key?.includes("_d_");
+const isCurrentMember = (t: Task, userId: string) => t.assigned_to === userId;
 
 /**
  * Read-only content preview. Shown for completed tasks, and inside review /
@@ -37,7 +44,77 @@ export function TaskContent({ task, className = "" }: { task: Task; className?: 
   );
 }
 
-const REVIEWER_ROLES = ["PROJECT_MANAGER", "SUPER_ADMIN"];
+/**
+ * Ordered team chips for a unified sequential task: completed steps are
+ * checkmarked, the current step is highlighted, later steps are dimmed.
+ */
+function SequenceStrip({ task }: { task: Task }) {
+  const assignees = task.assignees || [];
+  if (assignees.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Team sequence</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {assignees.map((a, i) => {
+          const done = i < (task.current_step ?? 0);
+          const active = i === (task.current_step ?? 0);
+          return (
+            <span
+              key={a.id}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+                done
+                  ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                  : active
+                    ? "border-brand-300/40 bg-brand-300/10 text-brand-200"
+                    : "border-white/10 bg-white/5 text-slate-400"
+              }`}
+            >
+              {done ? <CheckCircle2 className="h-3 w-3" /> : <span className="w-3 text-center">{i + 1}</span>}
+              {a.name}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Per-stage work history of a unified task. Every approved gate stays visible
+ * so later members and reviewers see all previously approved content/assets.
+ */
+function ContributionsTimeline({ task }: { task: Task }) {
+  const contributions = task.contributions || [];
+  if (contributions.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {contributions.map((c) => (
+        <div key={c.id} className="rounded-lg border border-white/10 bg-night-850 p-2">
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+              Step {c.step + 1} · {c.user_name || "Unknown"} {c.role_label ? `(${c.role_label})` : ""}
+            </p>
+            <span
+              className={`badge ml-auto ${
+                c.status === "approved"
+                  ? "bg-emerald-400/10 text-emerald-300"
+                  : c.status === "needs_improvement"
+                    ? "bg-rose-400/10 text-rose-300"
+                    : "bg-violet-400/10 text-violet-300"
+              }`}
+            >
+              {c.status === "approved" ? "Approved" : c.status === "needs_improvement" ? "Needs improvement" : "Awaiting review"}
+            </span>
+          </div>
+          <p className="text-xs text-slate-300 whitespace-pre-wrap mt-1">{c.content || "—"}</p>
+          {c.review_comment && (
+            <p className="text-[11px] text-amber-300 mt-1.5 bg-amber-400/10 rounded px-1.5 py-1">Reviewer: {c.review_comment}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Standardized accordion body used by every task row across the app (staff
@@ -55,6 +132,7 @@ export function TaskDetails({
   userId: string;
 }) {
   const reviewable = task.status === "submitted" && REVIEWER_ROLES.includes(roleKey);
+  const unified = isUnifiedTask(task);
   const showContent =
     task.content &&
     !EDITABLE_STATUSES.includes(task.status) &&
@@ -66,12 +144,26 @@ export function TaskDetails({
         <span>Added {new Date(task.created_at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} · {new Date(task.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
         {task.due_date && <span className="text-slate-500">Due {new Date(task.due_date).toLocaleDateString([], { day: "numeric", month: "short" })}</span>}
       </p>
+      {unified && <SequenceStrip task={task} />}
+      {unified && (task.status === "pending_approval" || task.status === "rejected") && (
+        <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs">
+          <p className="text-[10px] font-semibold text-amber-300 uppercase tracking-wide">
+            {task.status === "pending_approval" ? "Brief awaiting approval" : "Brief rejected — needs revision"}
+          </p>
+          {task.status === "pending_approval" ? (
+            <p className="text-slate-300 mt-0.5">A manager must approve the brief before the team is allotted and work begins.</p>
+          ) : (
+            <p className="text-slate-300 mt-0.5 whitespace-pre-wrap">{task.review_comment || "No reason provided."}</p>
+          )}
+        </div>
+      )}
       {task.remarks && (
         <div className="rounded-lg border border-violet-400/20 bg-violet-400/[0.06] p-2 text-xs">
           <p className="text-[10px] font-semibold text-violet-300 uppercase tracking-wide">Remarks / Brief</p>
           <p className="text-slate-300 mt-0.5 whitespace-pre-wrap">{task.remarks}</p>
         </div>
       )}
+      {unified && <ContributionsTimeline task={task} />}
       <ContentEditor task={task} roleKey={roleKey} userId={userId} />
       {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER") && (
         <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
@@ -116,22 +208,31 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
   const [draft, setDraft] = useState(task.content || "");
   const [saved, setSaved] = useState(false);
 
-  const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
+  const isUnified = isUnifiedTask(task);
+  const isProducer =
+    isUnified ||
+    task.role_key === "WRITER" ||
+    task.role_key === "DESIGNER" ||
+    task.role_key === "EDITOR" ||
+    task.role_key === "VIDEOGRAPHER" ||
+    task.role_key === "SMM";
   const canManage = roleKey === "SUPER_ADMIN" || roleKey === "PROJECT_MANAGER";
-  const isAssignee =
-    task.assigned_to === userId ||
-    (Array.isArray(task.assignees) && task.assignees.some((a: any) => a.id === userId)) ||
-    task.assigned_to === null;
-  const editable =
-    isProducer &&
-    (isAssignee || canManage) &&
-    EDITABLE_STATUSES.includes(task.status);
+  const isAssignee = isUnified
+    ? isCurrentMember(task, userId)
+    : task.assigned_to === userId ||
+      (Array.isArray(task.assignees) && task.assignees.some((a: any) => a.id === userId)) ||
+      task.assigned_to === null;
+  const editable = isUnified
+    ? isAssignee && EDITABLE_STATUSES.includes(task.status)
+    : isProducer && (isAssignee || canManage) && EDITABLE_STATUSES.includes(task.status);
 
   if (!editable) return null;
 
   const isWriter = task.role_key === "WRITER";
   const isVisual = task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
-  const isContentRole = CONTENT_ROLES.includes(task.role_key);
+  const isContentRole = isUnified
+    ? task.role_key === "WRITER" || task.role_key === "DESIGNER"
+    : task.role_key ? CONTENT_ROLES.includes(task.role_key) : false;
   const hasDraft = draft.trim().length > 0;
 
   function save() {
@@ -307,7 +408,16 @@ export function ReviewPanel({ task }: { task: Task }) {
             {pending && decision === "needs_improvement" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
             {pending && decision === "needs_improvement" ? "Sending…" : "Needs Improvement"}
           </button>
-          {isVisual ? (
+          {isUnifiedTask(task) ? (
+            <button className="btn-primary !py-1 text-[11px]" onClick={() => decide("approve")} disabled={pending}>
+              {pending && decision === "approve" ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+              {pending && decision === "approve"
+                ? "Sending…"
+                : (task.current_step ?? 0) + 1 < (task.assignees?.length ?? 0)
+                  ? "Approve → Next Member"
+                  : "Approve & Complete"}
+            </button>
+          ) : isVisual ? (
             <button className="btn-primary !py-1 text-[11px]" onClick={() => decide("approve")} disabled={pending}>
               {pending && decision === "approve" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Users className="h-3 w-3" />}
               {pending && decision === "approve" ? "Sending…" : "Approve → Client"}
@@ -477,8 +587,57 @@ export function TaskActions({
     return <ReviewPanel task={task} />;
   }
 
-  // // Completed tasks: read-only view is opened via the row accordion.
+  // Completed tasks: read-only view is opened via the row accordion.
   if (task.status === "completed") {
+    return null;
+  }
+
+  // ---------- Unified sequential task ----------
+  if (isUnifiedTask(task)) {
+    const briefPending = task.status === "pending_approval" || task.status === "rejected";
+    const myTurn = isCurrentMember(task, userId);
+    const editable = task.status === "in_progress" || task.status === "needs_improvement";
+
+    if (isReviewer) {
+      return (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {briefPending && (
+            <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => approveTaskBriefAction(task.id))} disabled={pending}>
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+              Approve Brief
+            </button>
+          )}
+          {task.status === "approved" && myTurn && (
+            <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => startTaskAction(task.id), true)} disabled={pending}>
+              Start <ArrowRight className="h-3 w-3" />
+            </button>
+          )}
+          {editable && myTurn && (
+            <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => onExpand?.(task.id)} disabled={pending}>
+              <PenLine className="h-3 w-3" /> Draft & Submit
+            </button>
+          )}
+          <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => run(() => markTaskCompleteAction(task.id))} disabled={pending}>
+            <CheckCircle2 className="h-3 w-3" /> Mark Complete
+          </button>
+        </div>
+      );
+    }
+
+    if (task.status === "approved" && myTurn) {
+      return (
+        <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => startTaskAction(task.id), true)} disabled={pending}>
+          Start <ArrowRight className="h-3 w-3" />
+        </button>
+      );
+    }
+    if (editable && myTurn) {
+      return (
+        <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => onExpand?.(task.id)} disabled={pending}>
+          <PenLine className="h-3 w-3" /> Draft & Submit
+        </button>
+      );
+    }
     return null;
   }
 

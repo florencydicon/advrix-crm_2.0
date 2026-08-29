@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { X, CircleCheck, Clock, PauseCircle, Send, Undo2, Users, Upload } from "lucide-react";
+import { X, CircleCheck, Clock, PauseCircle, PlayCircle, Send, Undo2, Users, Upload } from "lucide-react";
 
 export const STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
   pending: { label: "Pending", cls: "bg-white/10 text-slate-300", Icon: PauseCircle },
-  pending_approval: { label: "Pending Approval", cls: "bg-amber-400/10 text-amber-300", Icon: Clock },
+  pending_approval: { label: "Brief Pending Approval", cls: "bg-amber-400/10 text-amber-300", Icon: Clock },
+  rejected: { label: "Rejected", cls: "bg-rose-400/10 text-rose-300", Icon: Undo2 },
+  approved: { label: "Ready to Start", cls: "bg-emerald-400/10 text-emerald-300", Icon: PlayCircle },
   in_progress: { label: "In Process", cls: "bg-brand-300/10 text-brand-300", Icon: Clock },
   submitted: { label: "Awaiting Review", cls: "bg-violet-400/10 text-violet-300", Icon: Send },
   needs_improvement: { label: "Needs Improvement", cls: "bg-rose-400/10 text-rose-300", Icon: Undo2 },
@@ -18,6 +20,9 @@ export const STATUS_META: Record<string, { label: string; cls: string; Icon: any
 };
 
 export const STATUS_ORDER = [
+  "pending_approval",
+  "rejected",
+  "approved",
   "pending",
   "in_progress",
   "submitted",
@@ -26,6 +31,7 @@ export const STATUS_ORDER = [
   "client_feedback",
   "client_approved",
   "uploading",
+  "upload_done",
   "completed",
 ];
 

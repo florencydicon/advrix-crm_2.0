@@ -238,11 +238,27 @@ const TASK_SELECT = `
   SELECT t.*, p.name AS project_name, c.name AS client_name, c.company AS client_company,
          u.full_name AS assignee_name, r.label AS role_label,
          t.due_date::text AS due_date,
+         t.brief_approved_at::text AS brief_approved_at,
+         t.current_step,
          COALESCE((
-           SELECT json_agg(json_build_object('id', ta.user_id, 'name', ua.full_name) ORDER BY ua.full_name)
-           FROM task_assignees ta JOIN users ua ON ua.id = ta.user_id
+           SELECT json_agg(json_build_object(
+             'id', ta.user_id, 'name', ua.full_name, 'role_key', r2.key, 'role_label', r2.label
+           ) ORDER BY ta.position ASC, ta.added_at ASC)
+           FROM task_assignees ta
+           JOIN users ua ON ua.id = ta.user_id
+           LEFT JOIN roles r2 ON r2.id = ua.role_id
            WHERE ta.task_id = t.id
-         ), '[]'::json) AS assignees
+         ), '[]'::json) AS assignees,
+         COALESCE((
+           SELECT json_agg(json_build_object(
+             'id', tc.id, 'step', tc.step, 'user_id', tc.user_id, 'user_name', tc.user_name,
+             'role_label', tc.role_label, 'content', tc.content, 'status', tc.status,
+             'review_comment', tc.review_comment, 'reviewed_by', tc.reviewed_by,
+             'submitted_at', tc.submitted_at::text, 'reviewed_at', tc.reviewed_at::text
+           ) ORDER BY tc.step ASC, tc.submitted_at ASC)
+           FROM task_contributions tc
+           WHERE tc.task_id = t.id
+         ), '[]'::json) AS contributions
   FROM tasks t
   JOIN projects p ON p.id = t.project_id
   JOIN clients c ON c.id = p.client_id
@@ -352,6 +368,18 @@ export async function getSubmittedTasks(): Promise<Task[]> {
     `${TASK_SELECT}
      WHERE t.status = 'submitted'
      ORDER BY t.reviewed_at DESC NULLS LAST, t.created_at ASC`
+  );
+}
+
+/**
+ * Unified sequential tasks whose brief is awaiting PM/Admin approval, including
+ * ones rejected for revision (Step 2 gate).
+ */
+export async function getBriefApprovalQueue(): Promise<Task[]> {
+  return query<Task>(
+    `${TASK_SELECT}
+     WHERE t.status IN ('pending_approval', 'rejected')
+     ORDER BY t.created_at ASC`
   );
 }
 

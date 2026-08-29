@@ -74,9 +74,15 @@ export async function runWorkflow(_projectId: string) {
 }
 
 /**
- * Generates the individual content tasks for every deliverable item on a
- * project (e.g. "Static Post 01", "Static Post 02", "Reel 01", ...). Visual
- * tasks are created later, when the corresponding content task is completed.
+ * Generates the UNIFIED sequential tasks for every deliverable item on a
+ * project (e.g. "Static Post 01", "Reel 01", ...).
+ *
+ * A deliverable is one task block — NOT split into content "_c_" + visual "_v_"
+ * sub-tasks. Each task starts as `pending_approval` (brief awaiting approval,
+ * no members yet). Once a PM approves the brief it becomes `approved` and the
+ * sequence is auto-filled from the project team order; the task then travels
+ * through each member (start → submit → gate approval → handoff) and completes
+ * automatically after the final approval.
  */
 export async function generateDeliverableTasks(projectId: string) {
   try {
@@ -86,99 +92,190 @@ export async function generateDeliverableTasks(projectId: string) {
     );
     if (deliverables.length === 0) return;
 
-    const types = await query<DeliverableTypeRow>(`SELECT key, content_role, visual_role FROM deliverable_types`);
-
-    // Determine which roles are allocated to this project.
-    // If WRITER is allocated, create content tasks first (sequence 1).
-    // If WRITER is NOT allocated but a visual role IS, skip content and create visual directly.
-    // If no allocations exist yet, default to creating both (backward compat).
-    const allocs = await query<{ role_key: string }>(
-      `SELECT DISTINCT role_key FROM assignments WHERE project_id = $1`,
-      [projectId]
-    );
-    const allocatedRoles = new Set(allocs.map((a) => a.role_key));
-    const hasWriter = allocatedRoles.has("WRITER");
-    const hasNoAllocations = allocatedRoles.size === 0;
-
     for (const d of deliverables) {
-      const type = types.find((t) => t.key === d.category_key);
       const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
-      const contentRole: RoleKey | null = d.is_custom ? null : (type?.content_role as RoleKey | null) || null;
-
       for (let i = 1; i <= d.quantity; i++) {
+        const stepKey = `${d.category_key}_d_${i}`;
         const title = `${label} ${pad(i)}`;
-        const contentStepKey = `${d.category_key}_c_${i}`;
-        const visualStepKey = `${d.category_key}_v_${i}`;
-
-        // Decide: create content task or skip straight to visual?
-        const createContentTask = contentRole && (hasWriter || hasNoAllocations);
-
-        if (createContentTask) {
-          const existing = await query<{ id: string }>(
-            `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-            [projectId, contentStepKey]
-          );
-          if (existing.length === 0) {
-            await query(
-              `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-               VALUES ($1, $2, $3, $4, $5, 1, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
-              [
-                projectId,
-                contentStepKey,
-                d.category_key,
-                contentRole,
-                d.id,
-                `${title} — Content & Copy`,
-                `Draft the copy, captions and script for "${title}". Final copy must be brand-aligned before visual production begins.`,
-              ]
-            );
-          }
-        } else {
-          // No WRITER allocated — create visual task directly as sequence 1.
-          let visualRole: RoleKey | null = null;
-          if (d.is_custom) {
-            visualRole = "DESIGNER";
-          } else {
-            // Use the visual_role from the type, which may be DESIGNER, EDITOR, or VIDEOGRAPHER.
-            visualRole = (type?.visual_role as RoleKey | null) || null;
-          }
-          if (visualRole) {
-            const existing = await query<{ id: string }>(
-              `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-              [projectId, visualStepKey]
-            );
-            if (existing.length === 0) {
-              await query(
-                `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-                 VALUES ($1, $2, $3, $4, $5, 1, $6, $7, NULL, 'pending', 'medium', NULL, NULL)`,
-                [
-                  projectId,
-                  visualStepKey,
-                  d.category_key,
-                  visualRole,
-                  d.id,
-                  `${title} — Visual`,
-                  `Produce the visual asset for "${title}".`,
-                ]
-              );
-            }
-          }
-        }
+        const existing = await query<{ id: string }>(
+          `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
+          [projectId, stepKey]
+        );
+        if (existing.length > 0) continue;
+        await query(
+          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
+           VALUES ($1, $2, $3, NULL, $4, 1, $5, $6, NULL, 'pending_approval', 'medium', NULL, NULL)`,
+          [
+            projectId,
+            stepKey,
+            d.category_key,
+            d.id,
+            title,
+            `Unified deliverable "${title}". This task flows sequentially through the assigned team — each member starts, submits, and is approved before the next hand-off.`,
+          ]
+        );
       }
     }
 
-    const allocations = await query<{ role_key: string; user_id: string }>(
-      `SELECT role_key, user_id FROM assignments WHERE project_id = $1`,
-      [projectId]
-    );
-    for (const a of allocations) {
-      await allocateTasksForRole(projectId, a.role_key, a.user_id);
-    }
-
+    // Any task already past brief approval picks up the current team order.
+    await syncApprovedTaskSequences(projectId);
     await maybeCompleteProject(projectId);
   } catch (err) {
     console.error("generateDeliverableTasks failed for project", projectId, ":", err);
   }
+}
+
+// ---------- Unified sequential workflow (Steps 1–5) ----------
+
+/** Ordered project team member ids (position asc, legacy fallback by created_at). */
+export async function getProjectTeamOrder(projectId: string): Promise<string[]> {
+  try {
+    const rows = await query<{ user_id: string }>(
+      `SELECT user_id FROM assignments WHERE project_id = $1 ORDER BY position ASC, created_at ASC`,
+      [projectId]
+    );
+    return rows.map((r) => r.user_id);
+  } catch {
+    const rows = await query<{ user_id: string }>(
+      `SELECT user_id FROM assignments WHERE project_id = $1 ORDER BY created_at ASC`,
+      [projectId]
+    );
+    return rows.map((r) => r.user_id);
+  }
+}
+
+async function roleKeyOf(userId: string): Promise<string | null> {
+  const rows = await query<{ role_key: string }>(
+    `SELECT r.key AS role_key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
+    [userId]
+  );
+  return rows[0]?.role_key ?? null;
+}
+
+/** The given member's assignment deadline on the project (for stage due-dates). */
+async function assignmentDeadlineOf(
+  projectId: string,
+  userId: string,
+  roleKey: string | null
+): Promise<string | null> {
+  const rows = await query<{ allotment_deadline: string | null }>(
+    `SELECT allotment_deadline::text AS allotment_deadline
+     FROM assignments
+     WHERE project_id = $1 AND user_id = $2 AND ($3::text IS NULL OR role_key = $3)
+     ORDER BY position ASC LIMIT 1`,
+    [projectId, userId, roleKey]
+  );
+  return rows[0]?.allotment_deadline ?? null;
+}
+
+/**
+ * Step 3 — Team Allotment. Sets the sequential team for one task in the exact
+ * order the PM provides. Replaces membership, rewrites positions, and points
+ * the task at the first member. Does NOT change the task status.
+ */
+export async function setTaskTeam(taskId: string, memberIds: string[]) {
+  if (!Array.isArray(memberIds) || memberIds.length === 0) return;
+  const task = (
+    await query<{ project_id: string }>(`SELECT project_id FROM tasks WHERE id = $1`, [taskId])
+  )[0];
+  if (!task) return;
+  const roles = new Map<string, string>();
+  await query(`DELETE FROM task_assignees WHERE task_id = $1`, [taskId]);
+  for (let i = 0; i < memberIds.length; i++) {
+    const uid = memberIds[i];
+    roles.set(uid, (await roleKeyOf(uid)) || "");
+    await query(
+      `INSERT INTO task_assignees (task_id, user_id, position) VALUES ($1, $2, $3)`,
+      [taskId, uid, i]
+    );
+  }
+  const first = memberIds[0];
+  const firstRole = roles.get(first) || null;
+  const deadline = await assignmentDeadlineOf(task.project_id, first, firstRole);
+  await query(
+    `UPDATE tasks SET assigned_to = $2, role_key = $3, current_step = 0, due_date = COALESCE($4, due_date)
+     WHERE id = $1`,
+    [taskId, first, firstRole, deadline]
+  );
+}
+
+/**
+ * Auto-fills the sequence of a freshly-approved task from the project team
+ * order. No-op while the brief is still awaiting approval.
+ */
+export async function autoAllotTaskTeam(taskId: string, projectId: string) {
+  const members = await getProjectTeamOrder(projectId);
+  if (members.length === 0) return;
+  const task = (
+    await query<{ status: string }>(`SELECT status FROM tasks WHERE id = $1`, [taskId])
+  )[0];
+  if (!task || task.status !== "approved") return;
+  await setTaskTeam(taskId, members);
+}
+
+/**
+ * Rebuilds the sequence of every approved (brief OK, not started) task in a
+ * project to match the project team order. Called when the PM edits the team.
+ */
+export async function syncApprovedTaskSequences(projectId: string) {
+  const members = await getProjectTeamOrder(projectId);
+  if (members.length === 0) return;
+  const tasks = await query<{ id: string }>(
+    `SELECT id FROM tasks WHERE project_id = $1 AND status = 'approved'`,
+    [projectId]
+  );
+  for (const t of tasks) await setTaskTeam(t.id, members);
+}
+
+/**
+ * Step 4/5 — advances a task to the next member after a gate approval, or
+ * completes it after the final member's approval. Returns the next member's id,
+ * or null when the task is now completed.
+ */
+export async function advanceTaskStep(taskId: string): Promise<string | null> {
+  const task = (
+    await query<{ project_id: string; current_step: number }>(
+      `SELECT project_id, current_step FROM tasks WHERE id = $1`,
+      [taskId]
+    )
+  )[0];
+  if (!task) return null;
+  const seq = await query<{ user_id: string | null; role_key: string | null }>(
+    `SELECT ta.user_id, r.key AS role_key
+     FROM task_assignees ta
+     LEFT JOIN users u ON u.id = ta.user_id
+     LEFT JOIN roles r ON r.id = u.role_id
+     WHERE ta.task_id = $1
+     ORDER BY ta.position ASC, ta.added_at ASC`,
+    [taskId]
+  );
+  const nextIdx = (task.current_step ?? 0) + 1;
+  const next = seq[nextIdx];
+  if (next?.user_id) {
+    const deadline = await assignmentDeadlineOf(task.project_id, next.user_id, next.role_key);
+    await query(
+      `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = 'approved',
+       due_date = COALESCE($5, due_date), reviewed_at = NULL
+       WHERE id = $1`,
+      [taskId, nextIdx, next.user_id, next.role_key, deadline]
+    );
+    return next.user_id;
+  }
+  await query(`UPDATE tasks SET status = 'completed', completed_at = now() WHERE id = $1`, [taskId]);
+  await maybeCompleteProject(task.project_id);
+  return null;
+}
+
+/**
+ * Manual completion override (Admin/PM only) — force-closes a unified task at
+ * any point in the sequence.
+ */
+export async function markTaskComplete(taskId: string) {
+  await query(`UPDATE tasks SET status = 'completed', completed_at = now() WHERE id = $1`, [taskId]);
+  const task = (
+    await query<{ project_id: string }>(`SELECT project_id FROM tasks WHERE id = $1`, [taskId])
+  )[0];
+  if (task) await maybeCompleteProject(task.project_id);
 }
 
 /**
@@ -195,6 +292,12 @@ export async function handleDeliverableTaskCompleted(projectId: string, taskId: 
       )
     )[0];
     if (!task) {
+      await maybeCompleteProject(projectId);
+      return;
+    }
+    // Unified sequential tasks (_d_) have no downstream visual sub-task to
+    // create — the sequence is handled by advanceTaskStep / reviewTaskAction.
+    if (task.step_key && task.step_key.includes("_d_")) {
       await maybeCompleteProject(projectId);
       return;
     }

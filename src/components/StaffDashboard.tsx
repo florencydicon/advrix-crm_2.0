@@ -21,12 +21,12 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
   const [openClient, setOpenClient] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
-  const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading"];
+  const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading", "approved"];
 
   const FILTERS = [
     { key: "", label: "All" },
     { key: "in_progress", label: "Active" },
-    { key: "pending", label: "Pending" },
+    { key: "approved", label: "Ready to Start" },
     { key: "submitted", label: "Awaiting Review" },
     { key: "needs_improvement", label: "Improvement Needed" },
     { key: "completed", label: "Done" },
@@ -34,7 +34,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
 
   const metrics = [
     { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
-    { label: "Pending", value: tasks.filter((t) => t.status === "pending").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
+    { label: "Ready", value: tasks.filter((t) => t.status === "approved").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
     { label: "Done", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 

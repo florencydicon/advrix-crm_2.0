@@ -12,6 +12,11 @@ import {
   computeSequentialDeadlines,
   extendForLeave,
   setTaskDeadline,
+  advanceTaskStep,
+  autoAllotTaskTeam,
+  setTaskTeam,
+  syncApprovedTaskSequences,
+  markTaskComplete,
 } from "@/lib/workflow";
 import { createNotification, getProjectCreatorId, notifyRoles } from "@/lib/notifications";
 import {
@@ -188,6 +193,8 @@ export async function approveProjectAction(projectId: string) {
 
   // Deliverable-based projects generate individual tasks; others use the pipeline.
   await generateDeliverableTasks(projectId);
+  // Brief approved → auto-fill each task's sequence from the project team order.
+  await syncApprovedTaskSequences(projectId);
   await computeSequentialDeadlines(projectId);
 
   const creatorId = await getProjectCreatorId(projectId);
@@ -227,6 +234,169 @@ export async function rejectProjectAction(projectId: string) {
     });
   }
   revalidatePath("/projects");
+  return { ok: true };
+}
+
+// ---------- Unified sequential task workflow (Step 2–5 + override) ----------
+
+const CAN_REVIEW_TASKS = ["PROJECT_MANAGER", "SUPER_ADMIN"];
+
+interface TaskBriefRow {
+  status: string;
+  project_id: string;
+  title: string;
+  created_by: string | null;
+  step_key: string | null;
+  assigned_to: string | null;
+  brief_approved_at: string | null;
+}
+
+async function getTaskBriefRow(taskId: string): Promise<TaskBriefRow | null> {
+  const rows = await query<TaskBriefRow>(
+    `SELECT status, project_id, title, created_by, step_key, assigned_to, brief_approved_at FROM tasks WHERE id = $1`,
+    [taskId]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Step 2 — Initial Task Approval. A PM/Admin approves the brief, which unlocks
+ * team allotment and production. The task is auto-allotted from the project
+ * team order so it is immediately ready for the first member.
+ */
+export async function approveTaskBriefAction(taskId: string, comment?: string) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  const t = await getTaskBriefRow(taskId);
+  if (!t) return { error: "Task not found." };
+  if (t.status !== "pending_approval" && t.status !== "rejected") {
+    return { error: "Task brief is not awaiting approval." };
+  }
+  await query(
+    `UPDATE tasks SET status = 'approved', brief_approved_by = $2, brief_approved_at = now(),
+     review_comment = $3, reviewed_by = $2, reviewed_at = now()
+     WHERE id = $1`,
+    [taskId, session.sub, comment?.trim() || null]
+  );
+  await autoAllotTaskTeam(taskId, t.project_id);
+
+  const updated = (
+    await query<{ assigned_to: string | null }>(`SELECT assigned_to FROM tasks WHERE id = $1`, [taskId])
+  )[0];
+  const clientId = await getProjectClientId(t.project_id);
+  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
+  if (updated?.assigned_to && updated.assigned_to !== session.sub) {
+    await createNotification({
+      userId: updated.assigned_to,
+      type: "task",
+      title: "Brief approved — your turn",
+      body: `"${t.title}" was approved. You are first in line — start when ready.`,
+      link,
+    });
+  }
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
+  return { ok: true };
+}
+
+/** Step 2 — Brief rejected: sends the brief back for revision with a reason. */
+export async function rejectTaskBriefAction(taskId: string, reason: string) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  if (!reason || reason.trim().length < 5) {
+    return { error: "Please provide a reason for rejecting the brief." };
+  }
+  const t = await getTaskBriefRow(taskId);
+  if (!t) return { error: "Task not found." };
+  if (t.status !== "pending_approval" && t.status !== "rejected") {
+    return { error: "Task brief is not awaiting approval." };
+  }
+  await query(
+    `UPDATE tasks SET status = 'rejected', review_comment = $2, reviewed_by = $3, reviewed_at = now(),
+     assigned_to = NULL, role_key = NULL, current_step = 0
+     WHERE id = $1`,
+    [taskId, reason.trim(), session.sub]
+  );
+  await query(`DELETE FROM task_assignees WHERE task_id = $1`, [taskId]);
+
+  const clientId = await getProjectClientId(t.project_id);
+  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
+  if (t.created_by) {
+    await createNotification({
+      userId: t.created_by,
+      type: "task",
+      title: "Brief needs revision",
+      body: `"${t.title}" — ${reason.trim()}`,
+      link,
+    });
+  }
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
+  return { ok: true };
+}
+
+/**
+ * Step 3 — Team Allotment (manual). Sets the exact sequential order of members
+ * for one unified task. Only allowed once the brief has been approved.
+ */
+export async function setTaskSequenceAction(taskId: string, memberIds: string[]) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  const t = await getTaskBriefRow(taskId);
+  if (!t) return { error: "Task not found." };
+  if (!t.brief_approved_at) return { error: "Approve the brief before allotting the team." };
+  if (t.status === "completed") return { error: "Task is already completed." };
+  const clean = (memberIds || []).filter(Boolean);
+  if (clean.length === 0) return { error: "Add at least one team member to start the sequence." };
+
+  await setTaskTeam(taskId, clean);
+
+  const clientId = await getProjectClientId(t.project_id);
+  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
+  if (clean[0] !== session.sub) {
+    await createNotification({
+      userId: clean[0],
+      type: "task",
+      title: "You're first on a new task sequence",
+      body: `You are first in line for "${t.title}". Start when ready.`,
+      link,
+    });
+  }
+  revalidatePath("/projects");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
+  return { ok: true };
+}
+
+/** Completion override — force-closes a unified task at any point (Admin/PM only). */
+export async function markTaskCompleteAction(taskId: string) {
+  const session = await getSession();
+  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+    return { error: "Not authorized." };
+  }
+  const t = await getTaskBriefRow(taskId);
+  if (!t) return { error: "Task not found." };
+
+  await markTaskComplete(taskId);
+
+  const clientId = await getProjectClientId(t.project_id);
+  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
+  await notifyRoles(CAN_REVIEW_TASKS, {
+    type: "task",
+    title: "Task marked complete",
+    body: `${session.name} marked "${t.title}" complete.`,
+    link,
+  });
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  if (clientId) revalidatePath(`/projects/${clientId}`);
   return { ok: true };
 }
 
@@ -361,24 +531,28 @@ function isVisualTask(t: TaskWorkflowRow) {
   return t.step_key?.includes("_v_") || (t.role_key === "DESIGNER" || t.role_key === "EDITOR" || t.role_key === "VIDEOGRAPHER");
 }
 
-/** Assignee starts work: pending -> in_progress */
+/** Assignee starts work: approved/pending -> in_progress */
 export async function startTaskAction(taskId: string) {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
 
   const task = await getTaskWorkflowRow(taskId);
   if (!task) return { error: "Task not found." };
-  const isAssignee =
-    task.assigned_to === session.sub ||
-    (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
-    (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
+  const isUnified = !!task.step_key?.includes("_d_");
+  const isAssignee = isUnified
+    ? task.assigned_to === session.sub
+    : task.assigned_to === session.sub ||
+      (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
+      (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
   if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) {
-    return { error: "Only the assignee can start this task." };
+    return { error: "Only the current team member can start this task." };
   }
-  if (task.status !== "pending") return { error: "Task has already started." };
+  if (task.status !== "approved" && task.status !== "pending") {
+    return { error: "Task has already started." };
+  }
 
-  // Claim unassigned task for the starter
-  if (!task.assigned_to) {
+  // Claim unassigned task for the starter (legacy flows only).
+  if (!isUnified && !task.assigned_to) {
     await query(`UPDATE tasks SET assigned_to = $2 WHERE id = $1 AND assigned_to IS NULL`, [taskId, session.sub]);
     await query(`INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [taskId, session.sub]);
   }
@@ -388,9 +562,10 @@ export async function startTaskAction(taskId: string) {
 }
 
 /**
- * Assignee submits work for review: in_progress -> submitted.
- * Accepts the content text so "Submit for Review" saves + submits in one step �
- * no separate "Save draft" click required.
+ * Assignee submits work for review: in_progress/needs_improvement -> submitted.
+ * Accepts the content text so "Submit for Review" saves + submits in one step —
+ * no separate "Save draft" click required. For unified (_d_) tasks the work is
+ * snapshotted into task_contributions so later members can see prior stages.
  */
 export async function submitTaskAction(taskId: string, content?: string | null) {
   const session = await getSession();
@@ -398,19 +573,21 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
 
   const task = await getTaskWorkflowRow(taskId);
   if (!task) return { error: "Task not found." };
-  const isAssignee =
-    task.assigned_to === session.sub ||
-    (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
-    (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
+  const isUnified = !!task.step_key?.includes("_d_");
+  const isAssignee = isUnified
+    ? task.assigned_to === session.sub
+    : task.assigned_to === session.sub ||
+      (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
+      (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
   if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) {
-    return { error: "Only the assignee can submit this task." };
+    return { error: "Only the current team member can submit this task." };
   }
-  if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) {
+  if (!["in_progress", "needs_improvement"].includes(task.status)) {
     return { error: "Task is not in a submittable state." };
   }
 
   // Producers may submit with content passed through directly.
-  if (["WRITER", "DESIGNER", "EDITOR", "VIDEOGRAPHER"].includes(task.role_key)) {
+  if (["WRITER", "DESIGNER", "EDITOR", "VIDEOGRAPHER", "SMM"].includes(task.role_key)) {
     const text = content != null ? String(content).trim() : task.content?.trim() || "";
     if (!text) {
       return { error: "Add your work (copy, notes or asset links) before submitting." };
@@ -419,16 +596,32 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
     if (content != null && text !== task.content) {
       await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
     }
-    // Auto-rename Content task to its actual copy for clarity (e.g., "Static Post 01 — Content & Copy" -> "JB Enterprise solutions post 1")
-    if (task.role_key === "WRITER" && text.length >= 3) {
-      const newTitle = text.split("\n")[0].trim().slice(0, 80);
-      if (newTitle && newTitle !== task.title) {
-        await query(`UPDATE tasks SET title = $2 WHERE id = $1`, [taskId, newTitle]);
-      }
-    }
   }
 
   await query(`UPDATE tasks SET status = 'submitted', reviewed_at = now() WHERE id = $1`, [taskId]);
+
+  // Snapshot this stage's work for the sequential history (later members/
+  // reviewers see every prior approved submission).
+  if (isUnified) {
+    const step = (
+      await query<{ current_step: number; role_key: string | null }>(
+        `SELECT current_step, role_key FROM tasks WHERE id = $1`,
+        [taskId]
+      )
+    )[0];
+    await query(
+      `INSERT INTO task_contributions (task_id, step, user_id, user_name, role_label, content, status, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'submitted', now())`,
+      [
+        taskId,
+        step?.current_step ?? 0,
+        session.sub,
+        session.name,
+        step?.role_key || null,
+        content != null ? String(content).trim() : task.content?.trim() || null,
+      ]
+    );
+  }
 
   const clientId = await getProjectClientId(task.project_id);
   if (clientId && task.step_key) {
@@ -481,6 +674,76 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
   // Pre-fetch clientId for deep-linking notifications.
   const clientId = await getProjectClientId(task.project_id);
   const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+
+  // ---------------- Unified sequential gate (-d-) ----------------
+  if (task.step_key?.includes("_d_")) {
+    if (decision === "needs_improvement") {
+      await query(
+        `UPDATE tasks SET status = 'needs_improvement', review_comment = $2, reviewed_by = $3, reviewed_at = now()
+         WHERE id = $1`,
+        [taskId, commentText, session.sub]
+      );
+      await query(
+        `UPDATE task_contributions SET status = 'needs_improvement', review_comment = $2, reviewed_by = $3, reviewed_at = now()
+         WHERE task_id = $1 AND step = (SELECT current_step FROM tasks WHERE id = $1) AND status = 'submitted'`,
+        [taskId, commentText, session.sub]
+      );
+      if (task.assigned_to) {
+        await createNotification({
+          userId: task.assigned_to,
+          type: "task",
+          title: "Task needs improvement",
+          body: `"${task.title}" — ${commentText}`,
+          link: taskDeepLink,
+        });
+      }
+    } else if (decision === "approve") {
+      await query(
+        `UPDATE task_contributions SET status = 'approved', review_comment = $2, reviewed_by = $3, reviewed_at = now()
+         WHERE task_id = $1 AND step = (SELECT current_step FROM tasks WHERE id = $1) AND status = 'submitted'`,
+        [taskId, commentText, session.sub]
+      );
+      // nextUserId is the next member, or null when the task just completed.
+      const nextUserId = await advanceTaskStep(taskId);
+      if (task.assigned_to) {
+        await createNotification({
+          userId: task.assigned_to,
+          type: "task",
+          title: "Work approved",
+          body: `Your work on "${task.title}" was approved.`,
+          link: taskDeepLink,
+        });
+      }
+      if (nextUserId) {
+        await createNotification({
+          userId: nextUserId,
+          type: "task",
+          title: "Approved — your turn",
+          body: `"${task.title}" passed review. It's now in your hands — start when ready.`,
+          link: taskDeepLink,
+        });
+      } else {
+        const creatorId = await getProjectCreatorId(task.project_id);
+        if (creatorId) {
+          await createNotification({
+            userId: creatorId,
+            type: "task",
+            title: "Deliverable completed",
+            body: `"${task.title}" made it through the full team and is complete.`,
+            link: taskDeepLink,
+          });
+        }
+      }
+    } else {
+      return { error: "Invalid review decision for this task." };
+    }
+
+    revalidatePath("/projects");
+    revalidatePath("/dashboard");
+    if (clientId) revalidatePath(`/projects/${clientId}`);
+    return { ok: true };
+  }
+  // ---------------- Legacy role-lane gate (non _d_) ----------------
 
   if (decision === "needs_improvement") {
     await query(
@@ -796,6 +1059,8 @@ export async function assignProjectTeamAction(
 
   const clean = allocations.filter((a) => a.role_key && a.user_id);
   await allocateProjectTeam(projectId, clean);
+  // Any approved (brief OK, not-started) sequential task now follows the new order.
+  await syncApprovedTaskSequences(projectId);
 
   const project = await query<{ name: string; client_id: string }>(`SELECT name, client_id FROM projects WHERE id = $1`, [projectId]);
   const projectName = project[0]?.name ?? "Project";

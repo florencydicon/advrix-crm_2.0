@@ -92,6 +92,9 @@ export interface Assignment {
 }
 
 export type TaskStatus =
+  | "pending_approval"
+  | "rejected"
+  | "approved"
   | "pending"
   | "in_progress"
   | "submitted"
@@ -100,9 +103,13 @@ export type TaskStatus =
   | "client_feedback"
   | "client_approved"
   | "uploading"
+  | "upload_done"
   | "completed";
 
 export const TASK_STATUS_FLOW: TaskStatus[] = [
+  "pending_approval",
+  "rejected",
+  "approved",
   "pending",
   "in_progress",
   "submitted",
@@ -111,8 +118,31 @@ export const TASK_STATUS_FLOW: TaskStatus[] = [
   "client_feedback",
   "client_approved",
   "uploading",
+  "upload_done",
   "completed",
 ];
+
+export interface TaskAssignee {
+  id: string;
+  name: string;
+  role_key: string | null;
+  role_label: string | null;
+}
+
+/** One stage of a sequential task: a member's submission + its approval gate. */
+export interface TaskContribution {
+  id: string;
+  step: number;
+  user_id: string | null;
+  user_name: string | null;
+  role_label: string | null;
+  content: string | null;
+  status: "submitted" | "needs_improvement" | "approved";
+  review_comment: string | null;
+  reviewed_by: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+}
 
 export interface Task {
   id: string;
@@ -122,8 +152,8 @@ export interface Task {
   client_company: string | null;
   step_key: string;
   group_key: string;
-  role_key: RoleKey;
-  role_label: string;
+  role_key: RoleKey | null;
+  role_label: string | null;
   deliverable_id: string | null;
   sequence: number;
   title: string;
@@ -134,7 +164,10 @@ export interface Task {
   priority: string;
   assigned_to: string | null;
   assignee_name: string | null;
-  assignees: { id: string; name: string }[];
+  assignees: TaskAssignee[];
+  current_step: number;
+  brief_approved_at: string | null;
+  contributions: TaskContribution[];
   review_comment: string | null;
   client_feedback: string | null;
   platforms: string[];

@@ -22,6 +22,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
+import { TaskBriefManager, TaskSequenceEditor } from "@/components/TaskSequenceEditor";
 
 function isoDate(v: string | Date | null | undefined): string {
   if (!v) return "";
@@ -154,6 +155,9 @@ export default function ProjectDetailView({
       <div className="space-y-2.5">
         {client.projects.map((p) => {
           const isProjectOpen = expandedProjectId === p.id;
+          const projectTeamOptions = Array.from(
+            new Map(p.assignments.map((a) => [a.user_id, a])).values()
+          ).map((a) => ({ id: a.user_id, name: a.user_name || "", role_label: a.role_label }));
           return (
             <div key={p.id} className="card overflow-hidden">
               <button
@@ -262,7 +266,7 @@ export default function ProjectDetailView({
                                 <p className="text-[12px] font-medium text-white truncate leading-tight">{t.title}</p>
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-[10px] text-slate-500">
                                   <span className="text-slate-600">{fmtDate(t.created_at)} · {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                                  {t.role_label && <span className={`badge !px-1.5 !py-0 text-[10px] ${ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400"}`}>{t.role_label}</span>}
+                                  {t.role_label && <span className={`badge !px-1.5 !py-0 text-[10px] ${t.role_key ? ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400" : "bg-white/10 text-slate-400"}`}>{t.role_label}</span>}
                                   {(t.assignees?.length ? t.assignees : t.assignee_name ? [{ id: t.assigned_to || "", name: t.assignee_name }] : []).map((m) => (
                                     <span key={m.id} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 pl-0.5 pr-1 py-0.5">
                                       <span className="h-4 w-4 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">{initials(m.name)}</span>
@@ -334,6 +338,12 @@ export default function ProjectDetailView({
                                         placeholder="Add initial content, brief, or remarks for cross-department collaboration…"
                                       />
                                     </div>
+                                  )}
+                                  {canManage && t.step_key?.includes("_d_") && (t.status === "pending_approval" || t.status === "rejected") && (
+                                    <TaskBriefManager task={t} />
+                                  )}
+                                  {canManage && t.step_key?.includes("_d_") && t.brief_approved_at && t.status !== "completed" && (
+                                    <TaskSequenceEditor task={t} available={projectTeamOptions} />
                                   )}
                                   <div className="pt-1.5 border-t border-white/10"><TaskActions task={t} roleKey={roleKey} userId={userId} onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)} /></div>
                                   {openTaskId === t.id && (<div className="rounded-md bg-white/5 p-2 animate-fade-in"><TaskDetails task={t} roleKey={roleKey} userId={userId} /></div>)}

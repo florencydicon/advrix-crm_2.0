@@ -7,7 +7,7 @@ import {
 import { getSession } from "@/lib/session";
 import {
   getMyTasks, getProjects, getLeadStats, getTaskStatusCounts,
-  getSubmittedTasks, getAllLeaves, getBottlenecks,
+  getSubmittedTasks, getBriefApprovalQueue, getAllLeaves, getBottlenecks,
 } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
@@ -95,14 +95,16 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let leadStats: any = null;
   let taskCounts: Record<string, number> = {};
   let submittedTasks: any[] = [];
+  let briefQueue: any[] = [];
   let pendingLeaves: any[] = [];
   let bottlenecks: any[] = [];
   try {
-    [projects, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
+    [projects, leadStats, taskCounts, submittedTasks, briefQueue, pendingLeaves, bottlenecks] = await Promise.all([
       getProjects().catch(() => [] as any),
       isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
       isSuperAdmin ? getTaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
       getSubmittedTasks().catch(() => [] as any),
+      getBriefApprovalQueue().catch(() => [] as any),
       getAllLeaves({ status: "pending" }).catch(() => [] as any),
       isSuperAdmin ? getBottlenecks().catch(() => [] as any) : Promise.resolve([] as any),
     ]);
@@ -133,6 +135,13 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
       type: "task",
       title: t.title,
       subtitle: `${t.project_name} — ${t.role_label || t.role_key}`,
+      href: `/projects/${t.project_id}?project=${t.project_id}&task=${t.step_key}`,
+    })),
+    ...briefQueue.map((t): ActionItem => ({
+      id: `brief-${t.id}`,
+      type: "task",
+      title: `Brief: ${t.title}`,
+      subtitle: `${t.project_name} — brief awaiting approval`,
       href: `/projects/${t.project_id}?project=${t.project_id}&task=${t.step_key}`,
     })),
     ...pendingLeaves.map((l): ActionItem => ({

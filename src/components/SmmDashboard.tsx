@@ -12,9 +12,10 @@ import {
 
 const TABS = [
   { key: "", label: "All" },
+  { key: "approved", label: "Ready to Start" },
   { key: "client_review", label: "Client Review" },
   { key: "uploading", label: "Uploading" },
-  { key: "pending", label: "Pending" },
+  { key: "submitted", label: "Awaiting Review" },
   { key: "completed", label: "Completed" },
 ];
 
@@ -30,8 +31,9 @@ export default function SmmDashboard({
   const [openId, setOpenId] = useState<string | null>(null);
 
   const metrics = [
+    { label: "Ready to Start", value: tasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
     { label: "Client Review", value: tasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
-    { label: "Uploading", value: tasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-brand-300 bg-brand-300/[0.07]" },
+    { label: "Uploading", value: tasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-amber-300 bg-amber-400/10" },
     { label: "Completed", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
@@ -66,7 +68,7 @@ export default function SmmDashboard({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         {metrics.map((m) => (
           <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>
             <m.Icon className="h-5 w-5 shrink-0" />
