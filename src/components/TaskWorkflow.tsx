@@ -135,10 +135,11 @@ export function TaskDetails({
 }) {
   const reviewable = task.status === "submitted" && REVIEWER_ROLES.includes(roleKey);
   const unified = isUnifiedTask(task);
+  const isSuperAdmin = roleKey === "SUPER_ADMIN";
   const showContent =
     task.content &&
-    !EDITABLE_STATUSES.includes(task.status) &&
-    !(reviewable && task.status === "submitted");
+    (!EDITABLE_STATUSES.includes(task.status) || isSuperAdmin) &&
+    !(reviewable && task.status === "submitted" && !isSuperAdmin);
 
   return (
     <div className="space-y-2">

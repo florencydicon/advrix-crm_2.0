@@ -335,6 +335,12 @@ export default function ProjectDetailView({
                                       <p className="text-[11px] text-amber-300 flex items-center gap-1"><Coffee className="h-3 w-3" />{t.on_leave_note}</p>
                                     </div>
                                   )}
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 bg-white/[0.03] rounded-md px-2 py-1.5 border border-white/5">
+                                    <span>Created {fmtDate(t.created_at)} {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                                    {t.brief_approved_at && <span>Approved {fmtDate(t.brief_approved_at)} {new Date(t.brief_approved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                                    {t.due_date && <span>Due {fmtDate(t.due_date)}</span>}
+                                    {t.completed_at && <span className="text-emerald-300">Completed {fmtDate(t.completed_at as any)} {new Date(t.completed_at as any).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                                  </div>
                                   {canManage && t.status !== "completed" && (
                                     <div className="rounded-md border border-white/10 bg-white/5 p-2">
                                       <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Deadline</p>
