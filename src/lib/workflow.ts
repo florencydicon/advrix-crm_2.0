@@ -1,11 +1,4 @@
 import { query } from "@/lib/db";
-import type { RoleKey } from "@/lib/types";
-
-interface TaskRow {
-  id: string;
-  step_key: string;
-  status: string;
-}
 
 interface DeliverableRow {
   id: string;
@@ -17,33 +10,8 @@ interface DeliverableRow {
   custom_label: string | null;
 }
 
-interface DeliverableTypeRow {
-  key: string;
-  content_role: string | null;
-  visual_role: string | null;
-}
-
 function pad(n: number) {
   return String(n).padStart(2, "0");
-}
-
-/** Replaces role placeholders in a template. */
-function fillTemplate(template: string, item: number, label: string) {
-  return template
-    .replaceAll("{N}", pad(item))
-    .replaceAll("{n}", String(item))
-    .replaceAll("{label}", label);
-}
-
-async function assigneeForRole(roleKey: string): Promise<string | null> {
-  const rows = await query<{ id: string }>(
-    `SELECT u.id FROM users u
-     JOIN roles r ON r.id = u.role_id
-     WHERE r.key = $1 AND u.is_active = true
-     ORDER BY u.created_at ASC LIMIT 1`,
-    [roleKey]
-  );
-  return rows[0]?.id ?? null;
 }
 
 async function allocateTasksForRole(projectId: string, roleKey: string, userId: string | null) {
@@ -65,14 +33,6 @@ async function allocateTasksForRole(projectId: string, roleKey: string, userId: 
        AND (step_key IS NULL OR step_key !~ '_d_[0-9]+$')`,
     [projectId, roleKey, userId]
   );
-}
-
-/**
- * Legacy workflow runner - now a no-op since we use deliverables-based workflow.
- * Kept for backwards compatibility with existing action calls.
- */
-export async function runWorkflow(_projectId: string) {
-  // No-op: deliverables-based workflow handles task generation via generateDeliverableTasks
 }
 
 /**
@@ -281,110 +241,14 @@ export async function markTaskComplete(taskId: string) {
 }
 
 /**
- * Fired when a task moves to completed. If it is a content task for a
- * deliverable, creates (and auto-assigns) the matching visual task so the work
- * transitions to the Designer / Video Editor automatically.
+ * Fired when a task moves to completed — final project-completion check.
+ *
+ * The legacy content→visual (_c_ → _v_) sibling-task auto-creation was retired:
+ * every task now runs on the unified sequential model (_d_), where downstream
+ * hand-offs are driven by advanceTaskStep, never by synthesizing a new task.
  */
-export async function handleDeliverableTaskCompleted(projectId: string, taskId: string) {
-  try {
-    const task = (
-      await query<{ id: string; deliverable_id: string; group_key: string; title: string; step_key: string; sequence: number; content: string | null }>(
-        `SELECT id, deliverable_id, group_key, title, step_key, sequence, content FROM tasks WHERE id = $1 AND deliverable_id IS NOT NULL`,
-        [taskId]
-      )
-    )[0];
-    if (!task) {
-      await maybeCompleteProject(projectId);
-      return;
-    }
-    // Unified sequential tasks (_d_) have no downstream visual sub-task to
-    // create — the sequence is handled by advanceTaskStep / reviewTaskAction.
-    if (task.step_key && task.step_key.includes("_d_")) {
-      await maybeCompleteProject(projectId);
-      return;
-    }
-    // If this is already a visual task (step_key contains _v_) or not sequence 1,
-    // there is no downstream visual task to create — just check project completion.
-    if (task.step_key.includes("_v_") || task.sequence !== 1) {
-      await maybeCompleteProject(projectId);
-      return;
-    }
-
-    const d = (
-      await query<DeliverableRow>(
-        `SELECT * FROM project_deliverables WHERE id = $1`,
-        [task.deliverable_id]
-      )
-    )[0];
-
-    let visualRole: RoleKey | null = null;
-    if (d) {
-      if (d.is_custom) {
-        visualRole = "DESIGNER";
-      } else {
-        const type = (
-          await query<DeliverableTypeRow>(
-            `SELECT key, content_role, visual_role FROM deliverable_types WHERE key = $1`,
-            [d.category_key]
-          )
-        )[0];
-        visualRole = (type?.visual_role as RoleKey | null) || null;
-      }
-    }
-
-    if (visualRole) {
-      const visualStepKey = task.step_key.replace(/_c_\d+$/, "") + "_v_" + (task.step_key.match(/_c_(\d+)$/)?.[1] ?? "1");
-      const exists = await query<{ id: string }>(
-        `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-        [projectId, visualStepKey]
-      );
-      if (exists.length === 0) {
-        let alloc: { user_id: string }[] = [];
-        try {
-          alloc = await query<{ user_id: string }>(
-            `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 ORDER BY position ASC LIMIT 1`,
-            [projectId, visualRole]
-          );
-        } catch {
-          alloc = await query<{ user_id: string }>(
-            `SELECT user_id FROM assignments WHERE project_id = $1 AND role_key = $2 LIMIT 1`,
-            [projectId, visualRole]
-          );
-        }
-        // Content-title swap: if Writer provided content (e.g., "Premium Living, Premium Interior"),
-        // the next visual task title becomes that content so Designer/Editor sees the actual copy as task name.
-        const rawContent = (task.content || "").split("\n")[0].trim();
-        const visualTitle = rawContent.length >= 3 ? rawContent.slice(0, 80) : `${task.title.replace(/— Content & Copy\s*$/, "").trim()} — Visual`;
-        const inserted = await query<{ id: string }>(
-          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, content, status, priority, assigned_to, created_by)
-           VALUES ($1, $2, $3, $4, $5, 2, $6, $7, $8, $9, 'pending', 'medium', $10, NULL)
-           RETURNING id`,
-          [
-            projectId,
-            visualStepKey,
-            task.group_key,
-            visualRole,
-            task.deliverable_id,
-            visualTitle,
-            `Visual production for "${task.title}". Use the approved copy as reference.`,
-            task.content,
-            task.title,
-            alloc[0]?.user_id ?? null,
-          ]
-        );
-        if (inserted[0]?.id && alloc[0]?.user_id) {
-          await query(
-            `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [inserted[0].id, alloc[0].user_id]
-          );
-        }
-      }
-    }
-
-    await maybeCompleteProject(projectId);
-  } catch (err) {
-    console.error("handleDeliverableTaskCompleted failed for project", projectId, "task", taskId, ":", err);
-  }
+export async function handleDeliverableTaskCompleted(projectId: string, _taskId: string) {
+  await maybeCompleteProject(projectId);
 }
 
 /**
@@ -476,132 +340,6 @@ export async function allocateProjectTeam(
       );
     }
     await allocateTasksForRole(projectId, a.role_key, a.user_id);
-    await ensureVisualTasksForAllocation(projectId, a.role_key, a.user_id);
-  }
-}
-
-async function ensureVisualTasksForAllocation(projectId: string, roleKey: string, userId: string) {
-  try {
-    // Unified sequential projects (_d_ tasks) never create legacy _c_/_v_
-    // sub-tasks — the sequence is driven by the PM per-task. Skip entirely.
-    const unified = await query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c FROM tasks WHERE project_id = $1 AND step_key ~ '_d_[0-9]+$'`,
-      [projectId]
-    );
-    if (Number(unified[0]?.c ?? 0) > 0) return;
-    // Live DB patch: ensure deliverable_types support all 3 scenarios (1→2→5, 1→3→5, 1→4) + single-role direct
-    // video_shoot and video_edit are WRITER->visual so Writer→Videographer/Editor chains work;
-    // single-role direct when no Writer allocated is healed via orphan deletion below.
-    await query(`UPDATE deliverable_types SET content_role = 'WRITER' WHERE key IN ('video_shoot','video_edit') AND content_role IS DISTINCT FROM 'WRITER'`);
-    await query(`INSERT INTO deliverable_types (key, label, content_role, visual_role, default_qty, sort) VALUES ('design_asset','Design Asset',NULL,'DESIGNER',1,80) ON CONFLICT (key) DO NOTHING`);
-    // Heal mismatched visual roles (e.g., Video Shoot visual showing as Video Editor) from pre-migration data.
-    await query(`UPDATE tasks SET role_key = 'VIDEOGRAPHER' WHERE group_key = 'video_shoot' AND step_key LIKE '%_v_%' AND role_key != 'VIDEOGRAPHER'`);
-    await query(`UPDATE tasks SET role_key = 'EDITOR' WHERE group_key = 'video_edit' AND step_key LIKE '%_v_%' AND role_key != 'EDITOR'`);
-    await query(`UPDATE tasks SET role_key = 'DESIGNER' WHERE group_key = 'design_asset' AND step_key LIKE '%_v_%' AND role_key != 'DESIGNER'`);
-    // Backfill old Writer tasks that were completed before title-swap fix: rename generic "Static Post 01 — Content & Copy" to actual content first line
-    try {
-      await query(`UPDATE tasks SET title = LEFT(TRIM(SPLIT_PART(content, E'\n', 1)), 80) WHERE role_key='WRITER' AND title LIKE '% — Content & Copy' AND content IS NOT NULL AND LENGTH(TRIM(content)) >=3`);
-    } catch {}
-    const deliverables = await query<DeliverableRow>(
-      `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
-      [projectId]
-    );
-    if (deliverables.length === 0) return;
-    const types = await query<DeliverableTypeRow>(`SELECT key, content_role, visual_role FROM deliverable_types`);
-    const typeMap = new Map(types.map((t) => [t.key, t]));
-    // Fix orphan Writer tasks for any WRITER→visual deliverable (Banner, Reel, Static Post, etc.)
-    // when no WRITER is allocated on this project. The pending Writer "Content & Copy"
-    // placeholder is stale — convert it to the correct visual role so the yellow pill shows
-    // Designer/Editor/Videographer instead of Content Writer, and tasks are assigned directly.
-    const hasWriterAlloc = (await query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM assignments WHERE project_id = $1 AND role_key = 'WRITER'`, [projectId]))[0];
-    const writerCount = Number(hasWriterAlloc?.c ?? 0);
-    if (writerCount === 0) {
-      for (const d of deliverables) {
-        const t = typeMap.get(d.category_key);
-        if (!t || t.content_role !== 'WRITER' || !t.visual_role) continue;
-        const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
-        const targetRole = t.visual_role;
-        for (let i = 1; i <= d.quantity; i++) {
-          const contentStepKey = `${d.category_key}_c_${i}`;
-          const rows = await query<{ id: string; role_key: string; assigned_to: string | null; status: string }>(
-            `SELECT id, role_key, assigned_to, status FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-            [projectId, contentStepKey]
-          );
-          if (rows[0] && rows[0].role_key === 'WRITER' && !rows[0].assigned_to && rows[0].status === 'pending') {
-            const visualStepKey = `${d.category_key}_v_${i}`;
-            // Avoid duplicate if visual already exists for this index
-            const vExists = await query<{ id: string }>(`SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`, [projectId, visualStepKey]);
-            if (vExists.length > 0) {
-              // Visual already exists — just delete the stale Writer placeholder
-              await query(`DELETE FROM tasks WHERE id = $1`, [rows[0].id]);
-            } else {
-              await query(
-                `UPDATE tasks SET role_key = $2, step_key = $3, title = $4, description = $5 WHERE id = $1`,
-                [rows[0].id, targetRole, visualStepKey, `${label} ${pad(i)} — Visual`, `Produce the visual asset for "${label} ${pad(i)}".`]
-              );
-              // If the current allocation matches the target role, assign it immediately
-              if (targetRole === roleKey) {
-                await query(`INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [rows[0].id, userId]);
-                await query(`UPDATE tasks SET assigned_to = COALESCE(assigned_to, $2) WHERE id = $1`, [rows[0].id, userId]);
-              }
-            }
-          }
-        }
-      }
-    }
-    for (const d of deliverables) {
-      const type = typeMap.get(d.category_key);
-      if (!type) continue;
-      // Only act when the allocated role matches the visual role for this deliverable.
-      // Custom deliverables default visual to DESIGNER.
-      let visualRole: string | null = null;
-      if (d.is_custom) visualRole = "DESIGNER";
-      else visualRole = type.visual_role;
-      if (visualRole !== roleKey) continue;
-      const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
-      for (let i = 1; i <= d.quantity; i++) {
-        const visualStepKey = `${d.category_key}_v_${i}`;
-        const title = `${label} ${pad(i)}`;
-        const exists = await query<{ id: string }>(
-          `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-          [projectId, visualStepKey]
-        );
-        if (exists.length > 0) {
-          // Already exists — ensure assignee present
-          await query(
-            `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [exists[0].id, userId]
-          );
-          await query(
-            `UPDATE tasks SET assigned_to = COALESCE(assigned_to, $2) WHERE id = $1 AND status <> 'completed'`,
-            [exists[0].id, userId]
-          );
-          continue;
-        }
-        // Create visual task immediately (sequence 2 if content exists, else 1)
-        const contentStepKey = `${d.category_key}_c_${i}`;
-        const contentExists = await query<{ id: string; content: string | null }>(
-          `SELECT id, content FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-          [projectId, contentStepKey]
-        );
-        const seq = contentExists.length > 0 ? 2 : 1;
-        const briefCopy = contentExists[0]?.content ?? null;
-        const desc = seq === 2 ? `Visual production for "${title} — Content & Copy". Use the approved copy as reference.` : `Produce the visual asset for "${title}".`;
-        const inserted = await query<{ id: string }>(
-          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, status, priority, assigned_to, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 'medium', $10, NULL) RETURNING id`,
-          [projectId, visualStepKey, d.category_key, visualRole, d.id, seq, `${title} — Visual`, desc, briefCopy, userId]
-        );
-        if (inserted[0]?.id) {
-          await query(
-            `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [inserted[0].id, userId]
-          );
-        }
-      }
-    }
-  } catch (err) {
-    console.error("ensureVisualTasksForAllocation failed for project", projectId, "role", roleKey, ":", err);
   }
 }
 
