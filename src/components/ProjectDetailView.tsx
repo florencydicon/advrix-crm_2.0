@@ -271,7 +271,7 @@ export default function ProjectDetailView({
                                     <span key={m.id} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 pl-0.5 pr-1 py-0.5">
                                       <span className="h-4 w-4 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">{initials(m.name)}</span>
                                       <span className="text-[10px] text-slate-300 max-w-[90px] truncate">{m.name}</span>
-                                      {canManage && t.status !== "completed" && (
+                                      {canManage && t.status !== "completed" && !t.step_key?.includes("_d_") && (
                                         <button
                                           type="button"
                                           onClick={(e) => {

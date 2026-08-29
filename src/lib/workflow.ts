@@ -54,13 +54,15 @@ async function allocateTasksForRole(projectId: string, roleKey: string, userId: 
     `INSERT INTO task_assignees (task_id, user_id)
      SELECT t.id, $3 FROM tasks t
      WHERE t.project_id = $1 AND t.role_key = $2 AND t.status <> 'completed'
+       AND (t.step_key IS NULL OR t.step_key !~ '_d_[0-9]+$')
      ON CONFLICT (task_id, user_id) DO NOTHING`,
     [projectId, roleKey, userId]
   );
   // Primary assignee only fills empty slots — no overwriting.
   await query(
     `UPDATE tasks SET assigned_to = $3
-     WHERE project_id = $1 AND role_key = $2 AND status <> 'completed' AND assigned_to IS NULL`,
+     WHERE project_id = $1 AND role_key = $2 AND status <> 'completed' AND assigned_to IS NULL
+       AND (step_key IS NULL OR step_key !~ '_d_[0-9]+$')`,
     [projectId, roleKey, userId]
   );
 }
@@ -480,6 +482,13 @@ export async function allocateProjectTeam(
 
 async function ensureVisualTasksForAllocation(projectId: string, roleKey: string, userId: string) {
   try {
+    // Unified sequential projects (_d_ tasks) never create legacy _c_/_v_
+    // sub-tasks — the sequence is driven by the PM per-task. Skip entirely.
+    const unified = await query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM tasks WHERE project_id = $1 AND step_key ~ '_d_[0-9]+$'`,
+      [projectId]
+    );
+    if (Number(unified[0]?.c ?? 0) > 0) return;
     // Live DB patch: ensure deliverable_types support all 3 scenarios (1→2→5, 1→3→5, 1→4) + single-role direct
     // video_shoot and video_edit are WRITER->visual so Writer→Videographer/Editor chains work;
     // single-role direct when no Writer allocated is healed via orphan deletion below.

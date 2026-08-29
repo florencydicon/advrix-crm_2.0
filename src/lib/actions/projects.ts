@@ -999,6 +999,14 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
     return { error: "Not authorized." };
   }
 
+  // Unified sequential tasks have an ordered sequence — use the sequence editor.
+  const seq = await query<{ step_key: string | null }>(
+    `SELECT step_key FROM tasks WHERE id = $1`, [taskId]
+  );
+  if (seq[0]?.step_key?.includes("_d_")) {
+    return { error: "Use the team sequence editor to change members on this task." };
+  }
+
   try {
     await query(`DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2`, [taskId, userId]);
   } catch {
