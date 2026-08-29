@@ -24,6 +24,7 @@ export default function SettingsView({
   basePath,
   sessionName,
   sessionRole,
+  sessionRoleKey,
   counts,
 }: {
   users: UserRow[];
@@ -38,6 +39,7 @@ export default function SettingsView({
   basePath: string;
   sessionName: string;
   sessionRole: string;
+  sessionRoleKey: string;
   counts: Record<string, number>;
 }) {
   const router = useRouter();
@@ -133,7 +135,7 @@ export default function SettingsView({
 
           <DataExportPanel />
 
-          {sessionRole === "SUPER_ADMIN" && <FlushDatabasePanel counts={counts} />}
+          {sessionRoleKey === "SUPER_ADMIN" && <FlushDatabasePanel counts={counts} />}
         </div>
       )}
     </div>

@@ -46,6 +46,7 @@ export default async function SettingsPage({
       basePath="/settings"
       sessionName={session.name}
       sessionRole={session.role_label}
+      sessionRoleKey={session.role_key}
       counts={counts}
     />
   );
