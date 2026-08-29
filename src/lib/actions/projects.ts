@@ -602,13 +602,14 @@ interface TaskWorkflowRow {
   status: string;
   assigned_to: string | null;
   content: string | null;
+  current_step: number;
 }
 
 const CAN_REVIEW = ["PROJECT_MANAGER", "SUPER_ADMIN"];
 
 async function getTaskWorkflowRow(taskId: string): Promise<TaskWorkflowRow | null> {
   const rows = await query<TaskWorkflowRow>(
-    `SELECT id, project_id, step_key, group_key, role_key, sequence, deliverable_id, title, status, assigned_to, content
+    `SELECT id, project_id, step_key, group_key, role_key, sequence, deliverable_id, title, status, assigned_to, content, current_step
      FROM tasks WHERE id = $1`,
     [taskId]
   );
@@ -792,35 +793,55 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
          WHERE task_id = $1 AND step = (SELECT current_step FROM tasks WHERE id = $1) AND status = 'submitted'`,
         [taskId, commentText, session.sub]
       );
-      // nextUserId is the next member, or null when the task just completed.
-      const nextUserId = await advanceTaskStep(taskId);
-      if (task.assigned_to) {
-        await createNotification({
-          userId: task.assigned_to,
-          type: "task",
-          title: "Work approved",
-          body: `Your work on "${task.title}" was approved.`,
-          link: taskDeepLink,
-        });
-      }
-      if (nextUserId) {
-        await createNotification({
-          userId: nextUserId,
-          type: "task",
-          title: "Approved — your turn",
-          body: `"${task.title}" passed review. It's now in your hands — start when ready.`,
-          link: taskDeepLink,
-        });
-      } else {
-        const creatorId = await getProjectCreatorId(task.project_id);
-        if (creatorId) {
+      // SMM final step should go to client_review, not directly to completed, to allow
+      // client approval/feedback → rollback to designer → uploading → publish → final completion.
+      const seqForCheck = await query<{ user_id: string }>(
+        `SELECT user_id FROM task_assignees WHERE task_id = $1 ORDER BY position ASC`,
+        [taskId]
+      );
+      const isLast = seqForCheck.length > 0 ? (task.current_step ?? 0) === seqForCheck.length - 1 : true;
+      if (isLast && task.role_key === "SMM") {
+        await query(`UPDATE tasks SET status = 'client_review', reviewed_at = now() WHERE id = $1`, [taskId]);
+        if (task.assigned_to) {
           await createNotification({
-            userId: creatorId,
+            userId: task.assigned_to,
             type: "task",
-            title: "Deliverable completed",
-            body: `"${task.title}" made it through the full team and is complete.`,
+            title: "Work approved — client review",
+            body: `Your work on "${task.title}" was approved. Now take it to the client.`,
             link: taskDeepLink,
           });
+        }
+      } else {
+        // nextUserId is the next member, or null when the task just completed.
+        const nextUserId = await advanceTaskStep(taskId);
+        if (task.assigned_to) {
+          await createNotification({
+            userId: task.assigned_to,
+            type: "task",
+            title: "Work approved",
+            body: `Your work on "${task.title}" was approved.`,
+            link: taskDeepLink,
+          });
+        }
+        if (nextUserId) {
+          await createNotification({
+            userId: nextUserId,
+            type: "task",
+            title: "Approved — your turn",
+            body: `"${task.title}" passed review. It's now in your hands — start when ready.`,
+            link: taskDeepLink,
+          });
+        } else {
+          const creatorId = await getProjectCreatorId(task.project_id);
+          if (creatorId) {
+            await createNotification({
+              userId: creatorId,
+              type: "task",
+              title: "Deliverable completed",
+              body: `"${task.title}" made it through the full team and is complete.`,
+              link: taskDeepLink,
+            });
+          }
         }
       }
     } else {
@@ -943,6 +964,37 @@ export async function clientFeedbackAction(taskId: string, feedback: string) {
     return { error: "Please capture the client's feedback notes." };
   }
 
+  // Unified sequential: rollback to Designer (position 0) so client feedback is addressed before re-upload.
+  if (task.step_key?.includes("_d_")) {
+    const seq = await query<{ user_id: string; role_key: string | null; position: number }>(
+      `SELECT ta.user_id, r.key AS role_key, ta.position
+       FROM task_assignees ta
+       LEFT JOIN users u ON u.id = ta.user_id
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE ta.task_id = $1
+       ORDER BY ta.position ASC`,
+      [taskId]
+    );
+    const designer = seq.find((s) => s.role_key === "DESIGNER") || seq.find((s) => s.role_key !== "SMM") || seq[0];
+    if (!designer) return { error: "No designer found in sequence to handle feedback." };
+    await query(
+      `UPDATE tasks SET assigned_to = $2, role_key = $3, current_step = $4, status = 'client_feedback', client_feedback = $5, reviewed_at = now()
+       WHERE id = $1`,
+      [taskId, designer.user_id, designer.role_key || "DESIGNER", designer.position, feedback.trim()]
+    );
+    const clientId = await getProjectClientId(task.project_id);
+    const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+    await createNotification({
+      userId: designer.user_id,
+      type: "task",
+      title: "Client feedback — your turn",
+      body: `Client gave feedback on "${task.title}" — please revise.`,
+      link: taskDeepLink,
+    });
+    revalidatePath("/projects");
+    return { ok: true };
+  }
+
   const producerId = await routeVisualTaskToProducer(task.project_id, taskId, task.role_key);
   await query(
     `UPDATE tasks SET client_feedback = $2 WHERE id = $1`,
@@ -1016,11 +1068,19 @@ export async function completeTaskWithPlatformsAction(taskId: string, platforms:
     return { error: "Select at least one publishing platform before marking the task done." };
   }
 
-  await query(
-    `UPDATE tasks SET status = 'completed', platforms = $2, completed_at = now() WHERE id = $1`,
-    [taskId, clean]
-  );
-  await handleDeliverableTaskCompleted(task.project_id, taskId);
+  if (task.step_key?.includes("_d_")) {
+    // Unified: SMM marks upload done, Super Admin/PM does final completion.
+    await query(
+      `UPDATE tasks SET status = 'upload_done', platforms = $2, reviewed_at = now() WHERE id = $1`,
+      [taskId, clean]
+    );
+  } else {
+    await query(
+      `UPDATE tasks SET status = 'completed', platforms = $2, completed_at = now() WHERE id = $1`,
+      [taskId, clean]
+    );
+    await handleDeliverableTaskCompleted(task.project_id, taskId);
+  }
 
   const creatorId = await getProjectCreatorId(task.project_id);
   if (creatorId) {

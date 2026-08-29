@@ -35,13 +35,17 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
   const metrics = [
     { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
     { label: "Ready", value: tasks.filter((t) => t.status === "approved").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
-    { label: "Done", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+    { label: "Done", value: tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
-      if (statusFilter && t.status !== statusFilter) return false;
+      if (statusFilter) {
+        if (statusFilter === "completed") {
+          if (t.status !== "completed" && t.status !== "upload_done") return false;
+        } else if (t.status !== statusFilter) return false;
+      }
       if (!q) return true;
       return (
         t.title.toLowerCase().includes(q) ||
@@ -54,7 +58,11 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
 
   const tabCounts = FILTERS.map((f) => ({
     ...f,
-    count: f.key ? tasks.filter((t) => t.status === f.key).length : tasks.length,
+    count: f.key
+      ? f.key === "completed"
+        ? tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length
+        : tasks.filter((t) => t.status === f.key).length
+      : tasks.length,
   }));
 
   const grouped = useMemo(() => {

@@ -684,6 +684,21 @@ export function TaskActions({
     const myTurn = isCurrentMember(task, userId);
     const editable = task.status === "in_progress" || task.status === "needs_improvement";
 
+    // SMM client stages for unified tasks (after sequential handoff)
+    if (isSmm && task.status === "client_review") {
+      return <ClientFeedbackPanel task={task} />;
+    }
+    if (isSmm && task.status === "uploading") {
+      return <PublishPanel task={task} />;
+    }
+    if (isSmm && task.status === "client_approved") {
+      return (
+        <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => run(() => approveClientAction(task.id))} disabled={pending}>
+          <Upload className="h-3 w-3" /> Shift to Uploading
+        </button>
+      );
+    }
+
     if (isReviewer) {
       return (
         <div className="flex flex-wrap items-center gap-1.5">

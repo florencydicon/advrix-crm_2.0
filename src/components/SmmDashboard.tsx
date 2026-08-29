@@ -34,13 +34,17 @@ export default function SmmDashboard({
     { label: "Ready to Start", value: tasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
     { label: "Client Review", value: tasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
     { label: "Uploading", value: tasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-amber-300 bg-amber-400/10" },
-    { label: "Completed", value: tasks.filter((t) => t.status === "completed").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+    { label: "Completed", value: tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return tasks.filter((t) => {
-      if (statusFilter && t.status !== statusFilter) return false;
+      if (statusFilter) {
+        if (statusFilter === "completed") {
+          if (t.status !== "completed" && t.status !== "upload_done") return false;
+        } else if (t.status !== statusFilter) return false;
+      }
       if (!q) return true;
       return (
         t.title.toLowerCase().includes(q) ||
@@ -53,7 +57,9 @@ export default function SmmDashboard({
   const tabCounts = TABS.map((tab) => ({
     ...tab,
     count: tab.key
-      ? tasks.filter((t) => t.status === tab.key).length
+      ? tab.key === "completed"
+        ? tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length
+        : tasks.filter((t) => t.status === tab.key).length
       : tasks.length,
   }));
 

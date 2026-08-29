@@ -399,11 +399,11 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
 export async function getMyTasks(userId: string): Promise<Task[]> {
   // Strict Sequential Visibility:
   // - Active tasks: ONLY current holder (assigned_to) sees it — future members hidden
-  // - Completed tasks: all participants see it in Done/history (via task_assignees)
+  // - Completed/upload_done: all participants see it in Done/history (via task_assignees)
   return query<Task>(
     `${TASK_SELECT}
      WHERE t.assigned_to = $1
-        OR (t.status = 'completed' AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))
+        OR (t.status IN ('completed','upload_done') AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))
      ORDER BY t.created_at ASC`,
     [userId]
   );
