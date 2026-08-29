@@ -604,6 +604,7 @@ export function TaskActions({
     if (isReviewer) {
       return (
         <div className="flex flex-wrap items-center gap-1.5">
+          <GenerateCopyButton taskId={task.id} />
           {briefPending && (
             <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => approveTaskBriefAction(task.id))} disabled={pending}>
               {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
