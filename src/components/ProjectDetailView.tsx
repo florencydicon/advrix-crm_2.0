@@ -28,6 +28,7 @@ import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
 import { TaskBriefManager, TaskSequenceEditor, DeliverableSequenceEditor } from "@/components/TaskSequenceEditor";
 import { ApproveAllButton } from "@/components/AiButtons";
 import { RichTextEditor } from "@/components/RichText";
+import { ChatPanel } from "@/components/ChatPanel";
 
 function isoDate(v: string | Date | null | undefined): string {
   if (!v) return "";
@@ -90,6 +91,7 @@ export default function ProjectDetailView({
   const [extendTarget, setExtendTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
   const [boardMode, setBoardMode] = useState<Record<string, boolean>>({});
   const [boardOpenId, setBoardOpenId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Record<string, "tasks" | "chat">>({});
 
   // Deep-link: auto-expand project + task and scroll to it.
   useEffect(() => {
@@ -295,7 +297,30 @@ export default function ProjectDetailView({
                   )}
 
                   <div className="p-2.5 space-y-2">
-                    {p.tasks.length === 0 ? (
+                    {/* Project tabs: Tasks / Chat */}
+                    {has("chat:use") && (
+                      <div className="flex items-center gap-1 border-b border-white/[0.06] -mx-2.5 px-2.5 pb-0 mb-1">
+                        {(["tasks", "chat"] as const).map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setActiveTab((s) => ({ ...s, [p.id]: tab }))}
+                            className={`px-3 py-1.5 text-[11px] font-medium capitalize border-b-2 -mb-px transition-colors ${
+                              (activeTab[p.id] || "tasks") === tab
+                                ? "border-brand-300 text-brand-300"
+                                : "border-transparent text-slate-500 hover:text-slate-300"
+                            }`}
+                          >
+                            {tab === "tasks" ? `Tasks (${p.tasks.length})` : "Chat"}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {(activeTab[p.id] || "tasks") === "chat" && has("chat:use") ? (
+                      <div className="h-[420px]">
+                        <ChatPanel projectId={p.id} currentUserId={userId} />
+                      </div>
+                    ) : p.tasks.length === 0 ? (
                       <p className="text-[11px] text-slate-500 py-2 text-center">{p.status === "pending_approval" ? "Tasks will be generated once approved." : "No tasks yet."}</p>
                     ) : (
                       <>

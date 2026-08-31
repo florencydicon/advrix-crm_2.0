@@ -366,3 +366,25 @@ export interface LeadStats {
   pipelineValue: number;
   wonValue: number;
 }
+
+export interface ChatAttachment {
+  id: string;
+  message_id: string;
+  file_name: string;
+  data_url: string;
+  file_size: number;
+  mime_type: string;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  sender_id: string;
+  sender_name: string;
+  content: string;
+  attachments: ChatAttachment[];
+  created_at: string;
+  updated_at: string;
+}
