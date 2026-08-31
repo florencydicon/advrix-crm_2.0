@@ -181,6 +181,10 @@ export async function flushEntireDatabaseAction() {
     try { await query(`DELETE FROM leaves`); } catch {}
     try { await query(`DELETE FROM notifications`); } catch {}
     try { await query(`DELETE FROM login_attempts`); } catch {}
+    try { await query(`DELETE FROM chat_attachments`); } catch {}
+    try { await query(`DELETE FROM chat_messages`); } catch {}
+    try { await query(`DELETE FROM notes`); } catch {}
+    try { await query(`DELETE FROM users WHERE role_id != (SELECT id FROM roles WHERE key = 'SUPER_ADMIN')`); } catch {}
 
     revalidatePath("/settings");
     revalidatePath("/dashboard");

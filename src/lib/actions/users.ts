@@ -96,6 +96,46 @@ export async function changeRoleAction(userId: string, roleKey: string) {
   return { ok: true };
 }
 
+export async function deleteUserAction(userId: string): Promise<{ error?: string }> {
+  const session = await getSession();
+  if (!session || !hasPermission(session.permissions, "users:manage")) {
+    return { error: "Not authorized." };
+  }
+  if (userId === session.sub) return { error: "You cannot delete your own account." };
+
+  // Check not SUPER_ADMIN
+  const target = await query<{ role_key: string }>(
+    `SELECT r.key AS role_key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
+    [userId]
+  );
+  if (!target[0]) return { error: "User not found." };
+  if (target[0].role_key === "SUPER_ADMIN") return { error: "Cannot delete a Super Admin." };
+
+  // Cascade-delete user data in FK order
+  const adminRows = await query<{ id: string }>(
+    `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = 'SUPER_ADMIN' LIMIT 1`
+  );
+  const adminId = adminRows[0]?.id ?? null;
+
+  try { await query(`DELETE FROM task_contributions WHERE user_id = $1`, [userId]); } catch {}
+  try { await query(`DELETE FROM chat_messages WHERE sender_id = $1`, [userId]); } catch {}
+  try { await query(`DELETE FROM notifications WHERE user_id = $1`, [userId]); } catch {}
+  try { await query(`DELETE FROM leaves WHERE user_id = $1`, [userId]); } catch {}
+  try { await query(`DELETE FROM attendance WHERE user_id = $1`, [userId]); } catch {}
+  try { await query(`DELETE FROM notes WHERE author_id = $1`, [userId]); } catch {}
+  try { await query(`DELETE FROM assignments WHERE user_id = $1`, [userId]); } catch {}
+  try { await query(`DELETE FROM task_assignees WHERE user_id = $1`, [userId]); } catch {}
+  try { await query(`UPDATE projects SET created_by = NULL WHERE created_by = $1`, [userId]); } catch {}
+  try { await query(`UPDATE leads SET owner_id = $2 WHERE owner_id = $1`, [userId, adminId]); } catch {}
+
+  // Delete the user
+  await query(`DELETE FROM users WHERE id = $1`, [userId]);
+
+  revalidatePath("/team");
+  revalidatePath("/settings");
+  return {};
+}
+
 export async function updateUserPhoneAction(userId: string, phone: string) {
   const session = await getSession();
   if (!session || !hasPermission(session.permissions, "users:manage")) {

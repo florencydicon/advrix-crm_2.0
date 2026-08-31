@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, UserX, UserCheck, Shield, Eye, EyeOff, Smartphone, ShieldCheck, History } from "lucide-react";
+import { Plus, UserX, UserCheck, Shield, Eye, EyeOff, Smartphone, ShieldCheck, History, Trash2 } from "lucide-react";
 import {
   createUserAction,
   toggleUserActiveAction,
   changeRoleAction,
   updateUserPhoneAction,
   resetPasswordAction,
+  deleteUserAction,
 } from "@/lib/actions/users";
 import { updateUserPermissionsAction, updateUserDesignationAction } from "@/lib/actions/roles";
 import { DEFAULT_ROLE_PERMISSIONS } from "@/lib/permissions";
@@ -93,6 +94,7 @@ export default function TeamView({
   const [designation, setDesignation] = useState("");
   const [perms, setPermsState] = useState<string[]>([]);
   const [timelineTarget, setTimelineTarget] = useState<UserRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
 
   function openPerms(u: UserRow) {
     setPermTarget(u);
@@ -179,7 +181,7 @@ export default function TeamView({
     {
       key: "actions",
       label: "",
-      className: "w-[80px]",
+      className: "w-[100px]",
       render: (u) => (
         <div className="flex items-center justify-end gap-0.5">
           <button
@@ -221,6 +223,15 @@ export default function TeamView({
           >
             {u.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
           </button>
+          {u.role_key !== "SUPER_ADMIN" && (
+            <button
+              className="btn-ghost !px-1.5 !py-0.5 text-[11px] !text-rose-400/70 hover:!text-rose-300"
+              title="Permanently delete user"
+              onClick={() => { setDeleteTarget(u); setError(null); }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -304,6 +315,26 @@ export default function TeamView({
       </Modal>
 
       {timelineTarget && <MemberTimeline key={timelineTarget.id} user={timelineTarget} onClose={() => setTimelineTarget(null)} />}
+
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title={`Delete User — ${deleteTarget?.full_name || ""}`}>
+        {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
+        <div className="space-y-3">
+          <p className="text-xs text-slate-400">
+            Permanently delete <strong className="text-white">{deleteTarget?.full_name}</strong>?
+            This will remove all their data (tasks, attendance, leaves, messages, notes) and cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setDeleteTarget(null)} className="btn-ghost">Cancel</button>
+            <button
+              disabled={pending}
+              onClick={() => run(() => deleteUserAction(deleteTarget!.id), () => setDeleteTarget(null))}
+              className="btn bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30"
+            >
+              Permanently delete
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={!!permTarget} onClose={closePerms} title={`Permissions — ${permTarget?.full_name || ""}`}>
         {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
