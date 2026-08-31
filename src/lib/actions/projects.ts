@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
+import { sanitizeRich, richToPlain, isEmptyRich } from "@/lib/rich";
 import {
   generateDeliverableTasks,
   handleDeliverableTaskCompleted,
@@ -505,9 +506,9 @@ export async function updateTaskContentAction(taskId: string, content: string) {
     return { error: "Not authorized." };
   }
 
-  const text = String(content || "").trim();
-  if (!text) return { error: "Add your work before continuing (copy, notes or asset links)." };
-  if (text.length > 5000) return { error: "Content is too long (max 5000 characters)." };
+  const text = sanitizeRich(content);
+  if (isEmptyRich(text)) return { error: "Add your work before continuing (copy, notes or asset links)." };
+  if (richToPlain(text).length > 5000) return { error: "Content is too long (max 5000 characters)." };
 
   await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
   revalidatePath("/projects");
@@ -683,11 +684,12 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
 
   // Producers may submit with content passed through directly.
   if (["WRITER", "DESIGNER", "EDITOR", "VIDEOGRAPHER", "SMM"].includes(task.role_key)) {
-    const text = content != null ? String(content).trim() : task.content?.trim() || "";
-    if (!text) {
+    const raw = content != null ? sanitizeRich(String(content)) : undefined;
+    const text = raw != null ? raw : sanitizeRich(task.content || "");
+    if (isEmptyRich(text)) {
       return { error: "Add your work (copy, notes or asset links) before submitting." };
     }
-    if (text.length > 5000) return { error: "Content is too long (max 5000 characters)." };
+    if (richToPlain(text).length > 5000) return { error: "Content is too long (max 5000 characters)." };
     if (content != null && text !== task.content) {
       await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, text]);
     }
@@ -1455,16 +1457,16 @@ export async function saveWriterVideoDraftAction(taskId: string, title: string, 
   if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) return { error: "Task is not editable." };
 
   const cleanTitle = title.trim();
-  const cleanScript = script.trim();
+  const cleanScript = sanitizeRich(script);
   if (isWriterVideoTaskRow(task)) {
     if (!cleanTitle) return { error: "Video title is required." };
     if (cleanTitle.length > 120) return { error: "Title too long (max 120 chars)." };
-    if (!cleanScript) return { error: "Script is required." };
-    if (cleanScript.length > 5000) return { error: "Script too long (max 5000 chars)." };
+    if (isEmptyRich(cleanScript)) return { error: "Script is required." };
+    if (richToPlain(cleanScript).length > 5000) return { error: "Script too long (max 5000 chars)." };
     await query(`UPDATE tasks SET title = $2, content = $3, brief_copy = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
   } else {
-    if (!cleanScript) return { error: "Add content before saving." };
-    if (cleanScript.length > 5000) return { error: "Content too long." };
+    if (isEmptyRich(cleanScript)) return { error: "Add content before saving." };
+    if (richToPlain(cleanScript).length > 5000) return { error: "Content too long." };
     await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, cleanScript]);
   }
   revalidatePath("/projects");
@@ -1486,16 +1488,16 @@ export async function submitWriterVideoDraftAction(taskId: string, title: string
   if (!["in_progress", "needs_improvement"].includes(task.status)) return { error: "Task is not in a submittable state." };
 
   const cleanTitle = title.trim();
-  const cleanScript = script.trim();
+  const cleanScript = sanitizeRich(script);
   if (isWriterVideoTaskRow(task)) {
     if (!cleanTitle) return { error: "Video title is required — it replaces the sub-task heading." };
     if (cleanTitle.length > 120) return { error: "Title too long (max 120 chars)." };
-    if (!cleanScript) return { error: "Script is required." };
-    if (cleanScript.length > 5000) return { error: "Script too long." };
+    if (isEmptyRich(cleanScript)) return { error: "Script is required." };
+    if (richToPlain(cleanScript).length > 5000) return { error: "Script too long." };
     await query(`UPDATE tasks SET title = $2, content = $3, brief_copy = $3 WHERE id = $1`, [taskId, cleanTitle, cleanScript]);
   } else {
-    if (!cleanScript) return { error: "Add your work before submitting." };
-    if (cleanScript.length > 5000) return { error: "Content too long." };
+    if (isEmptyRich(cleanScript)) return { error: "Script is required." };
+    if (richToPlain(cleanScript).length > 5000) return { error: "Script too long." };
     if (cleanScript !== task.content) await query(`UPDATE tasks SET content = $2, brief_copy = COALESCE(brief_copy, $2) WHERE id = $1`, [taskId, cleanScript]);
   }
 

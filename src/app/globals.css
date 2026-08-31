@@ -229,6 +229,58 @@ a:focus-visible {
   display: none;
 }
 
+/* Rich-text bodies (RichText / RichTextEditor output) */
+.rich-body {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+  word-break: break-word;
+}
+.rich-body p {
+  margin: 0 0 0.375rem;
+}
+.rich-body p:last-child {
+  margin-bottom: 0;
+}
+.rich-body h1,
+.rich-body h2,
+.rich-body h3,
+.rich-body h4 {
+  color: #f1f5f9;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+}
+.rich-body h1 { font-size: 1rem; }
+.rich-body h2 { font-size: 0.875rem; }
+.rich-body h3 { font-size: 0.8125rem; }
+.rich-body h4 { font-size: 0.75rem; }
+.rich-body ul,
+.rich-body ol {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+.rich-body ul { list-style: disc; }
+.rich-body ol { list-style: decimal; }
+.rich-body li {
+  margin: 0.125rem 0;
+}
+.rich-body a {
+  color: #85de85;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rich-body blockquote {
+  border-left: 2px solid rgba(133, 222, 133, 0.4);
+  padding-left: 0.75rem;
+  margin: 0.375rem 0;
+  color: #94a3b8;
+  font-style: italic;
+}
+.rich-body b, .rich-body strong { font-weight: 700; color: #f1f5f9; }
+.rich-body em, .rich-body i { font-style: italic; }
+.rich-body u { text-decoration: underline; }
+.rich-body s { text-decoration: line-through; }
+
 /* ── Mobile-first helpers ── */
 @media (max-width: 767px) {
   /* Larger touch targets on mobile */

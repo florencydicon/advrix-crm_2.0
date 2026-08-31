@@ -27,6 +27,7 @@ import { useToast } from "@/components/Toast";
 import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
 import { TaskBriefManager, TaskSequenceEditor, DeliverableSequenceEditor } from "@/components/TaskSequenceEditor";
 import { ApproveAllButton } from "@/components/AiButtons";
+import { RichTextEditor } from "@/components/RichText";
 
 function isoDate(v: string | Date | null | undefined): string {
   if (!v) return "";
@@ -414,14 +415,14 @@ export default function ProjectDetailView({
                                   {(has("tasks:manage") || has("leads:manage") || ["SUPER_ADMIN", "PROJECT_MANAGER", "SALES"].includes(roleKey)) && (
                                     <div className="rounded-md border border-white/10 bg-white/5 p-2">
                                       <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Remarks / Brief</p>
-                                      <textarea
-                                        rows={2}
-                                        defaultValue={t.remarks || ""}
-                                        onBlur={(e) => {
-                                          const val = e.target.value;
-                                          if (val !== (t.remarks || "")) run(() => updateTaskRemarksAction(t.id, val));
+                                      <RichTextEditor
+                                        value={t.remarks || ""}
+                                        minRows={2}
+                                        maxLength={10000}
+                                        onChange={() => {}}
+                                        onBlur={(html) => {
+                                          if (html !== (t.remarks || "")) run(() => updateTaskRemarksAction(t.id, html));
                                         }}
-                                        className="input !text-[11px] !py-1.5"
                                         placeholder="Add initial content, brief, or remarks for cross-department collaboration…"
                                       />
                                     </div>

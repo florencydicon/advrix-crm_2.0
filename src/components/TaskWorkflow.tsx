@@ -21,6 +21,8 @@ import type { Task } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { PLATFORMS } from "@/components/ui";
 import { hasPermission } from "@/lib/permissions";
+import { RichText, RichTextEditor } from "@/components/RichText";
+import { isEmptyRich, richToPlain } from "@/lib/rich";
 
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
 const CONTENT_ROLES = ["WRITER", "DESIGNER"];
@@ -54,7 +56,7 @@ export function TaskContent({ task, className = "" }: { task: Task; className?: 
         <Eye className="h-3.5 w-3.5 text-slate-500" />
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{label}</p>
       </div>
-      <p className="text-sm text-slate-200 whitespace-pre-wrap">{task.content || "—"}</p>
+      <RichText html={task.content} fallback="—" className="text-sm text-slate-200" />
     </div>
   );
 }
@@ -121,7 +123,7 @@ function ContributionsTimeline({ task }: { task: Task }) {
               {c.status === "approved" ? "Approved" : c.status === "needs_improvement" ? "Needs improvement" : "Awaiting review"}
             </span>
           </div>
-          <p className="text-xs text-slate-300 whitespace-pre-wrap mt-1">{c.content || "—"}</p>
+          <RichText html={c.content} fallback="—" className="text-xs text-slate-300 mt-1" />
           {c.review_comment && (
             <p className="text-[11px] text-amber-300 mt-1.5 bg-amber-400/10 rounded px-1.5 py-1">Reviewer: {c.review_comment}</p>
           )}
@@ -179,7 +181,7 @@ export function TaskDetails({
       {task.remarks && (
         <div className="rounded-lg border border-violet-400/20 bg-violet-400/[0.06] p-2 text-xs">
           <p className="text-[10px] font-semibold text-violet-300 uppercase tracking-wide">Remarks / Brief</p>
-          <p className="text-slate-300 mt-0.5 whitespace-pre-wrap">{task.remarks}</p>
+          <RichText html={task.remarks} className="mt-0.5 text-slate-300" />
         </div>
       )}
       {unified && <ContributionsTimeline task={task} />}
@@ -193,7 +195,7 @@ export function TaskDetails({
             </p>
           </div>
           <p className="text-[10px] text-slate-500 mb-1">Approved copy from the content writer — use as reference.</p>
-          <p className="text-xs text-slate-300 whitespace-pre-wrap">{task.brief_copy}</p>
+          <RichText html={task.brief_copy} className="text-xs text-slate-300" />
         </div>
       )}
       {showContent && <TaskContent task={task} />}
@@ -260,7 +262,7 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
   const editable = isUnified
     ? isAssignee && EDITABLE_STATUSES.includes(task.status)
     : isProducer && (isAssignee || canManage) && EDITABLE_STATUSES.includes(task.status);
-  const hasDraft = draft.trim().length > 0;
+  const hasDraft = !isEmptyRich(draft);
   const hasVideoTitle = videoTitle.trim().length > 0;
 
   if (!editable) return null;
@@ -317,7 +319,7 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
               </p>
             </div>
             <p className="text-[10px] text-slate-500 mb-1">Content from the previous member — use as reference.</p>
-            <p className="text-xs text-slate-300 whitespace-pre-wrap">{writerRef}</p>
+            <RichText html={writerRef} className="text-xs text-slate-300" />
           </div>
         )}
 
@@ -326,11 +328,11 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
             <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">Asset Notes / Links</p>
             {saved && <span className="text-[10px] text-emerald-400">Saved</span>}
           </div>
-          <textarea
+          <RichTextEditor
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={3}
-            className="input text-xs"
+            onChange={setDraft}
+            minRows={3}
+            maxLength={10000}
             placeholder="Paste design/video file links, or add asset notes…"
           />
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -375,13 +377,13 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
           {!hasVideoTitle && <p className="text-[10px] text-rose-300">Title required — replaces the sub-task heading.</p>}
           <div className="flex items-center justify-between pt-1">
             <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">Script <span className="text-rose-400">*</span></p>
-            <span className="text-[10px] text-slate-500">{draft.length}/5000</span>
+            <span className="text-[10px] text-slate-500">{richToPlain(draft).length}/5000</span>
           </div>
-          <textarea
+          <RichTextEditor
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={5}
-            className="input text-xs"
+            onChange={setDraft}
+            minRows={5}
+            maxLength={5000}
             placeholder="Write the full 500-word script for the video editor…"
           />
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -415,7 +417,7 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
             <FileText className="h-3.5 w-3.5 text-brand-300" />
             <p className="text-[11px] font-semibold text-brand-300 uppercase tracking-wide">Approved copy — reference for design</p>
           </div>
-          <p className="text-xs text-slate-300 whitespace-pre-wrap">{task.brief_copy}</p>
+          <RichText html={task.brief_copy} className="text-xs text-slate-300" />
         </div>
       )}
 
@@ -426,11 +428,11 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
           </p>
           {saved && <span className="text-[10px] text-emerald-400">Saved</span>}
         </div>
-        <textarea
+        <RichTextEditor
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={4}
-          className="input text-xs"
+          onChange={setDraft}
+          minRows={4}
+          maxLength={20000}
           placeholder={
             isWriter
               ? "Draft the captions, copy and script…"
