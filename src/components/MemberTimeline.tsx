@@ -6,6 +6,7 @@ import { getMemberTimelineAction, type MemberTimelinePayload } from "@/lib/actio
 import { Modal, StatusBadge } from "@/components/ui";
 import ActivityLogCard from "@/components/ActivityLogCard";
 import type { UserRow, Task } from "@/lib/types";
+import { formatClientName } from "@/lib/utils";
 
 function fmt(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -30,7 +31,7 @@ function TimelineRow({ task, memberId }: { task: Task; memberId: string }) {
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-white leading-tight">{task.title}</p>
           <p className="text-[10px] text-slate-500 truncate mt-0.5">
-            {task.client_company || task.client_name} · {task.project_name}
+            {formatClientName(task.client_company, task.client_name)} · {task.project_name}
           </p>
         </div>
         {task.role_label && <span className="badge bg-white/10 text-slate-300 text-[10px]">{task.role_label}</span>}

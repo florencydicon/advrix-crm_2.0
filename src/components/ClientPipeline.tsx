@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, FolderKanban, Search, Users } from "lucide-react";
 import type { PipelineClient } from "@/lib/data";
 import { ProjectStatusBadge } from "@/components/ui";
+import { formatClientName } from "@/lib/utils";
 
 function initials(name: string) {
   return name
@@ -42,7 +43,7 @@ export default function ClientPipeline({ pipeline }: { pipeline: PipelineClient[
     if (!q) return enriched;
     return enriched.filter(
       (c) =>
-        c.client_name.toLowerCase().includes(q) ||
+        formatClientName(c.client_company, c.client_name).toLowerCase().includes(q) ||
         c.projects.some(
           (p) =>
             p.name.toLowerCase().includes(q) ||
@@ -106,9 +107,9 @@ export default function ClientPipeline({ pipeline }: { pipeline: PipelineClient[
                   {initials(c.client_company || c.client_name)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white truncate">{c.client_company || c.client_name}</p>
+                  <p className="font-semibold text-white truncate">{formatClientName(c.client_company, c.client_name)}</p>
                   <p className="text-[11px] text-slate-500 truncate">
-                    {c.client_company ? c.client_name : `${c.projects.length} project${c.projects.length === 1 ? "" : "s"}`}
+                    {c.projects.length} project{c.projects.length === 1 ? "" : "s"}
                     {c.pendingProjects > 0 && (
                       <span className="text-amber-300"> · {c.pendingProjects} awaiting approval</span>
                     )}

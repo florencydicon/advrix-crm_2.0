@@ -1,24 +1,31 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
-import { ArrowRight, PlayCircle, Clock, CheckCircle2, Filter, ChevronDown } from "lucide-react";
+import { useState, useMemo } from "react";
+import { PlayCircle, Clock, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import type { Task } from "@/lib/types";
-import { StatusBadge, PriorityBadge, PlatformBadges } from "@/components/ui";
+import { StatusBadge, PriorityBadge } from "@/components/ui";
 import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
-import type { Column } from "@/components/SmartTable";
+import { formatClientName } from "@/lib/utils";
 
-interface GroupedClient {
-  client_name: string;
-  client_company: string | null;
-  projects: { name: string; tasks: Task[] }[];
-  tasks: Task[];
+function taskTypeLabel(groupKey: string | null): string {
+  if (!groupKey || groupKey === "manual") return "Task";
+  return groupKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function StaffDashboard({ tasks, roleKey, userId, permissions }: { tasks: Task[]; roleKey: string; userId: string; permissions?: string[] }) {
+export default function StaffDashboard({
+  tasks,
+  roleKey,
+  userId,
+  permissions,
+}: {
+  tasks: Task[];
+  roleKey: string;
+  userId: string;
+  permissions?: string[];
+}) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [openClient, setOpenClient] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading", "approved"];
@@ -50,8 +57,7 @@ export default function StaffDashboard({ tasks, roleKey, userId, permissions }: 
       return (
         t.title.toLowerCase().includes(q) ||
         t.project_name.toLowerCase().includes(q) ||
-        t.client_name.toLowerCase().includes(q) ||
-        (t.client_company || "").toLowerCase().includes(q)
+        formatClientName(t.client_company, t.client_name).toLowerCase().includes(q)
       );
     });
   }, [tasks, search, statusFilter]);
@@ -64,90 +70,6 @@ export default function StaffDashboard({ tasks, roleKey, userId, permissions }: 
         : tasks.filter((t) => t.status === f.key).length
       : tasks.length,
   }));
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, GroupedClient>();
-    for (const t of filtered) {
-      const key = t.client_company || t.client_name;
-      if (!map.has(key)) {
-        map.set(key, { client_name: t.client_name, client_company: t.client_company, projects: [], tasks: [] });
-      }
-      const client = map.get(key)!;
-      client.tasks.push(t);
-    }
-    for (const client of map.values()) {
-      const projectMap = new Map<string, GroupedClient["projects"][number]>();
-      for (const t of client.tasks) {
-        if (!projectMap.has(t.project_name)) {
-          projectMap.set(t.project_name, { name: t.project_name, tasks: [] });
-        }
-        projectMap.get(t.project_name)!.tasks.push(t);
-      }
-      client.projects = [...projectMap.values()];
-    }
-    return [...map.values()];
-  }, [filtered]);
-
-  const columns: Column<Task>[] = [
-    {
-      key: "task",
-      label: "Task",
-      className: "min-w-[200px]",
-      render: (t) => (
-        <div className="pl-2 border-l-2 border-brand-300/60">
-          <p className="font-medium text-xs text-white truncate">{t.title}</p>
-          <p className="text-[11px] text-slate-500 truncate">{t.project_name} · {t.client_company || t.client_name}</p>
-          <p className="text-[9px] text-slate-600 truncate">{new Date(t.created_at).toLocaleDateString([], { day: "numeric", month: "short" })} · {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
-        </div>
-      ),
-    },
-    {
-      key: "role",
-      label: "Role",
-      className: "w-[110px] text-left",
-      render: (t) => t.role_label ? <span className="badge bg-white/10 text-slate-400 text-[10px] leading-none px-2 py-1">{t.role_label}</span> : null,
-    },
-    {
-      key: "priority",
-      label: "Priority",
-      className: "w-[90px] text-left",
-      render: (t) => <PriorityBadge priority={t.priority} />,
-    },
-    {
-      key: "status",
-      label: "Status",
-      className: "w-[130px] text-left",
-      render: (t) => <StatusBadge status={t.status} />,
-    },
-    {
-      key: "platforms",
-      label: "Published on",
-      className: "w-[120px] text-left",
-      render: (t) => <PlatformBadges platforms={t.platforms} />,
-    },
-    {
-      key: "action",
-      label: "",
-      render: (t) => (
-        <TaskActions
-          task={t}
-          roleKey={roleKey}
-          userId={userId}
-          permissions={permissions}
-          onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)}
-        />
-      ),
-    },
-  ];
-
-  if (tasks.length === 0) {
-    return (
-      <div className="card flex flex-col items-center justify-center py-8 text-center">
-        <p className="text-sm font-medium text-slate-300">No assignments yet</p>
-        <p className="text-xs text-slate-500 mt-1">New tasks will appear here automatically.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-3">
@@ -164,11 +86,13 @@ export default function StaffDashboard({ tasks, roleKey, userId, permissions }: 
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 w-full sm:max-w-xs">
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, projects, clients…" className="input !py-1.5 text-xs" />
-          </div>
-        </div>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search tasks, projects, clients…"
+          className="input !py-1.5 text-xs w-full sm:max-w-xs"
+        />
         {/* Desktop: scrollable pills */}
         <div className="hidden md:flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
           {tabCounts.map((tab) => (
@@ -223,115 +147,136 @@ export default function StaffDashboard({ tasks, roleKey, userId, permissions }: 
         </div>
       </div>
 
-      <div className="space-y-3">
-        {grouped.length === 0 && (
-          <div className="card py-8 text-center text-xs text-slate-500">No tasks match your search.</div>
-        )}
-        {grouped.map((client) => {
-          const key = client.client_company || client.client_name;
-          const isOpen = openClient === key;
-          const done = client.tasks.filter((t) => t.status === "completed").length;
-          const active = client.tasks.filter((t) => t.status !== "completed").length;
-          return (
-            <div key={key} className="card overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left"
-                onClick={() => { setOpenClient(isOpen ? null : key); setOpenTaskId(null); }}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`text-slate-500 transition-transform ${isOpen ? "rotate-90" : ""}`}>
-                    <ArrowRight className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm text-white truncate">{client.client_company || client.client_name}</p>
-                    <p className="text-[11px] text-slate-500 truncate">{client.client_company ? client.client_name : `${client.projects.length} project${client.projects.length === 1 ? "" : "s"}`}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="badge bg-emerald-400/10 text-emerald-300 text-[10px] md:text-xs">{done} done</span>
-                  <span className={`badge text-[10px] md:text-xs ${active > 0 ? "bg-amber-400/10 text-amber-300" : "bg-white/10 text-slate-400"}`}>{active} active</span>
-                </div>
-              </button>
-
-              {isOpen && (
-                <div className="border-t border-white/[0.06] space-y-0">
-                  {client.projects.map((project) => (
-                    <div key={project.name} className="border-b border-white/[0.06] last:border-b-0">
-                      <div className="px-4 py-2 bg-white/[0.02] flex items-center justify-between gap-2 border-l-2 border-brand-300 ml-1">
-                        <p className="text-xs font-semibold text-white truncate">{project.name}</p>
-                        <span className="text-[10px] text-slate-500 shrink-0">{project.tasks.length} task{project.tasks.length === 1 ? "" : "s"}</span>
-                      </div>
-                      {/* Desktop table per project */}
-                      <div className="hidden md:block overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b border-white/10 bg-white/[0.03]">
-                              {columns.map((col) => (
-                                <th key={col.key} className={`px-4 py-2 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider ${col.className || ""}`}>
-                                  {col.label}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/[0.06]">
-                            {project.tasks.map((t) => (
-                              <Fragment key={t.id}>
-                                <tr className="hover:bg-white/[0.04] transition-colors cursor-pointer border-l-2 border-brand-300/70" onClick={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}>
-                                  {columns.map((col) => (
-                                    <td key={col.key} className={`px-4 py-2 ${col.className || ""}`} onClick={(e) => e.stopPropagation()}>
-                                      {col.render(t)}
-                                    </td>
-                                  ))}
-                                </tr>
-                                {openTaskId === t.id && (
-                                  <tr className="bg-white/[0.03]">
-                                    <td colSpan={columns.length} className="px-4 py-2">
-                                      <TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} />
-                                    </td>
-                                  </tr>
-                                )}
-                              </Fragment>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      {/* Mobile cards per project */}
-                      <div className="md:hidden divide-y divide-white/[0.06]">
-                        {project.tasks.map((t) => (
-                          <div key={t.id} className="border-l-2 border-brand-300 ml-1">
-                            <button
-                              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors"
-                              onClick={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-xs text-white truncate">{t.title}</p>
-                                <p className="text-[10px] text-slate-500 truncate">{project.name} · {new Date(t.created_at).toLocaleDateString([], { day: "numeric", month: "short" })}</p>
-                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                  {t.role_label && <span className="badge bg-white/10 text-slate-400 text-[10px] leading-none px-2 py-1">{t.role_label}</span>}
-                                  <PriorityBadge priority={t.priority} />
-                                  <StatusBadge status={t.status} />
-                                </div>
-                              </div>
-                              <span className={`text-slate-500 transition-transform shrink-0 ${openTaskId === t.id ? "rotate-90" : ""}`}>
-                                <ArrowRight className="h-4 w-4" />
-                              </span>
-                            </button>
-                            {openTaskId === t.id && (
-                              <div className="px-4 pb-3 pt-2 border-t border-white/[0.04] bg-white/[0.02]">
-                                <TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} />
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {filtered.length === 0 ? (
+        <div className="card py-8 text-center">
+          <p className="text-sm font-medium text-slate-300">
+            {tasks.length === 0 ? "No assignments yet" : "No tasks match your search."}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">New tasks will appear here automatically.</p>
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[880px]">
+              <thead className="sticky top-0 z-10">
+                <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
+                  <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
+                  <th className="px-3 py-2.5 min-w-[160px]">Project</th>
+                  <th className="px-3 py-2.5 min-w-[200px]">Task</th>
+                  <th className="px-3 py-2.5 w-32">Task Type</th>
+                  <th className="px-3 py-2.5 w-32">Status</th>
+                  <th className="px-3 py-2.5 w-28">Priority</th>
+                  <th className="px-3 py-2.5 w-32">Due</th>
+                  <th className="px-3 py-2.5 w-16">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.04]">
+                {filtered.map((t) => (
+                  <FragmentRow
+                    key={t.id}
+                    task={t}
+                    roleKey={roleKey}
+                    userId={userId}
+                    permissions={permissions}
+                    open={openTaskId === t.id}
+                    onToggle={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function FragmentRow({
+  task: t,
+  roleKey,
+  userId,
+  permissions,
+  open,
+  onToggle,
+}: {
+  task: Task;
+  roleKey: string;
+  userId: string;
+  permissions?: string[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        className="hover:bg-white/[0.03] transition-colors cursor-pointer group"
+      >
+        <td className="px-4 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
+          <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[190px]">
+            {formatClientName(t.client_company, t.client_name)}
+          </span>
+        </td>
+        <td className="px-3 py-2.5">
+          <span className="text-xs text-slate-300 truncate block max-w-[150px]">{t.project_name}</span>
+        </td>
+        <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+          <p className="text-sm text-white font-medium leading-tight truncate max-w-[190px]">{t.title}</p>
+        </td>
+        <td className="px-3 py-2.5">
+          <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+            {taskTypeLabel(t.group_key)}
+          </span>
+        </td>
+        <td className="px-3 py-2.5">
+          <StatusBadge status={t.status} />
+        </td>
+        <td className="px-3 py-2.5">
+          <PriorityBadge priority={t.priority} />
+        </td>
+        <td className="px-3 py-2.5">
+          <span className="text-xs tabular-nums text-slate-400">
+            {t.due_date ? t.due_date.slice(0, 10) : "—"}
+          </span>
+        </td>
+        <td className="px-3 py-2.5 relative" onClick={(e) => e.stopPropagation()}>
+          <div className="relative inline-block">
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="p-1 rounded-md text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-white/10 bg-night-800 shadow-2xl z-20 py-1 text-xs">
+                <button
+                  onClick={() => { setMenuOpen(false); onToggle(); }}
+                  className="w-full text-left px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+                >
+                  Open details
+                </button>
+                <div className="border-t border-white/[0.06] px-2 py-1">
+                  <TaskActions
+                    task={t}
+                    roleKey={roleKey}
+                    userId={userId}
+                    permissions={permissions}
+                    onExpand={(id) => { setMenuOpen(false); onToggle(); }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </td>
+      </tr>
+      {open && (
+        <tr className="bg-white/[0.03]">
+          <td colSpan={8} className="px-4 py-3">
+            <TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

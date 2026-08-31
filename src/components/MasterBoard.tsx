@@ -6,6 +6,7 @@ import { StatusBadge, PriorityBadge, EmptyState } from "@/components/ui";
 import type { MasterBoardPayload, MasterRow } from "@/lib/actions/masterboard";
 import { getMasterBoardAction } from "@/lib/actions/masterboard";
 import type { UserRow } from "@/lib/types";
+import { formatClientName } from "@/lib/utils";
 import TaskDrawer from "@/components/TaskDrawer";
 
 type ViewTab = "all" | "mine";
@@ -64,11 +65,18 @@ export default function MasterBoard({
   const [pending, startTransition] = useTransition();
 
   const clients = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>();
+    const map = new Map<string, { id: string; name: string; company: string | null }>();
     for (const r of rows) {
-      if (!map.has(r.client_id)) map.set(r.client_id, { id: r.client_id, name: r.client_name });
+      if (!map.has(r.client_id))
+        map.set(r.client_id, {
+          id: r.client_id,
+          name: r.client_name,
+          company: r.client_company,
+        });
     }
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...map.values()].sort((a, b) =>
+      formatClientName(a.company, a.name).localeCompare(formatClientName(b.company, b.name))
+    );
   }, [rows]);
 
   const projects = useMemo(() => {
@@ -243,7 +251,7 @@ export default function MasterBoard({
               <option value="all">Client Group: All</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {formatClientName(c.company, c.name)}
                 </option>
               ))}
             </select>
@@ -280,7 +288,7 @@ export default function MasterBoard({
                 </th>
                 <th className="px-3 py-2.5 w-44">Client</th>
                 <th className="px-3 py-2.5 w-44">Project</th>
-                <th className="px-3 py-2.5 min-w-[220px]">Task</th>
+                <th className="px-3 py-2.5 min-w-[220px] sticky left-0 bg-night-850 z-10">Task</th>
                 <th className="px-3 py-2.5 w-32">Task Type</th>
                 <th className="px-3 py-2.5 w-32">Status</th>
                 <th className="px-3 py-2.5 w-28">Priority</th>
@@ -315,7 +323,7 @@ export default function MasterBoard({
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="text-xs font-medium text-brand-300/90 truncate block">
-                      {r.client_name}
+                      {formatClientName(r.client_company, r.client_name)}
                     </span>
                   </td>
                   <td className="px-3 py-2.5">
@@ -323,8 +331,8 @@ export default function MasterBoard({
                       {r.project_name || "—"}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5">
-                    <p className="text-sm text-white font-medium leading-tight">{r.title}</p>
+                  <td className="px-3 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
+                    <p className="text-sm text-white font-medium leading-tight truncate max-w-[220px]">{r.title}</p>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">

@@ -6,6 +6,7 @@ import { CheckCircle2, Inbox } from "lucide-react";
 import type { Task } from "@/lib/types";
 import { StatusBadge } from "@/components/ui";
 import { ReviewPanel } from "@/components/TaskWorkflow";
+import { formatClientName } from "@/lib/utils";
 
 export default function ApprovalQueue({
   initialTasks,
@@ -35,7 +36,7 @@ export default function ApprovalQueue({
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-white truncate">{t.title}</p>
                   <p className="text-xs text-slate-500 truncate">
-                    {t.client_name} · {t.project_name} · {t.assignee_name || "Unassigned"} ({t.role_label})
+                    {formatClientName(t.client_company, t.client_name)} · {t.project_name} · {t.assignee_name || "Unassigned"} ({t.role_label})
                   </p>
                 </div>
                 <StatusBadge status={t.status} />

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Link2, Loader2, Check, ExternalLink } from "lucide-react";
 import type { PortfolioClient } from "@/lib/actions/masterboard";
 import { createClientShareAction } from "@/lib/actions/masterboard";
+import { formatClientName } from "@/lib/utils";
 
 function initials(name: string) {
   return name
@@ -65,11 +66,11 @@ export default function ClientPortfolioHub({
             className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 hover:bg-white/[0.04] transition-colors"
           >
             <div className="flex items-center gap-2.5">
-              <span className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-semibold shrink-0 ${avatarClass(c.name)}`}>
-                {initials(c.name)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-white truncate">{c.name}</p>
+                <span className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-semibold shrink-0 ${avatarClass(c.name)}`}>
+                  {initials(c.company || c.name)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-white truncate">{formatClientName(c.company, c.name)}</p>
                 <p className="text-[10px] text-slate-600 truncate">
                   {c.active_projects} active · {c.total_projects} total
                 </p>

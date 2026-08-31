@@ -17,6 +17,7 @@ import {
 import type { PipelineClient } from "@/lib/data";
 import type { Assignment, UserRow } from "@/lib/types";
 import { StatusBadge } from "@/components/ui";
+import { formatClientName } from "@/lib/utils";
 import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
 import KanbanBoard from "@/components/KanbanBoard";
 import type { TaskStatus } from "@/lib/types";
@@ -159,8 +160,8 @@ export default function ProjectDetailView({
           <Link href="/projects" className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-brand-300 transition-colors mb-0.5">
             <ArrowLeft className="h-3 w-3" /> All clients
           </Link>
-          <h1 className="text-base font-bold tracking-tight leading-tight">{client.client_company || client.client_name}</h1>
-          {client.client_company && <p className="text-[11px] text-slate-500 truncate">{client.client_name}</p>}
+          <h1 className="text-base font-bold tracking-tight leading-tight">{formatClientName(client.client_company, client.client_name)}</h1>
+          {client.client_company && <p className="text-[11px] text-slate-500 truncate">Contact: {client.client_name}</p>}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-slate-400">
             <span><span className="font-semibold text-white">{client.projects.length}</span> project{client.projects.length === 1 ? "" : "s"}</span>
             <span><span className="font-semibold text-brand-300">{activeProjects}</span> in prod.</span>

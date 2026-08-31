@@ -16,6 +16,7 @@ import {
 import { createClientAction, createProjectAction, deleteClientAction } from "@/lib/actions/projects";
 import type { ClientCard } from "@/lib/data";
 import type { DeliverableType } from "@/lib/types";
+import { formatClientName } from "@/lib/utils";
 import { Modal, EmptyState } from "@/components/ui";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
@@ -314,8 +315,8 @@ export default function ClientsView({
                     {initials(c.company || c.name)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-white truncate">{c.company || c.name}</p>
-                    <p className="text-[11px] text-slate-500 truncate">{c.company ? c.name : "—"}</p>
+                    <p className="font-semibold text-sm text-white truncate">{formatClientName(c.company, c.name)}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{c.company ? `Contact: ${c.name}` : "—"}</p>
                   </div>
                   {canCreate && (
                     <button
@@ -446,7 +447,7 @@ export default function ClientsView({
               name="client_id"
               options={clients.map((c) => ({
                 value: c.id,
-                label: c.company ? `${c.company} — ${c.name}` : c.name,
+                label: formatClientName(c.company, c.name),
                 search: `${c.name} ${c.company || ""} ${c.email || ""}`,
               }))}
               value={selectedClient}
