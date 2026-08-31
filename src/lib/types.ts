@@ -381,10 +381,12 @@ export interface ChatMessage {
   id: string;
   project_id: string | null;
   task_id: string | null;
+  conversation_id: string | null;
+  recipient_id: string | null;
   sender_id: string;
   sender_name: string;
   content: string;
   attachments: ChatAttachment[];
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }

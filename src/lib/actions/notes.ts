@@ -24,29 +24,31 @@ export async function getNotesAction(search?: string): Promise<{ error?: string;
   if (!session) return { error: "Not authorized." };
   if (!hasPermission(session.permissions, "notes:manage")) return { error: "Not authorized." };
 
-  let rows: NoteRow[];
+  // PRIVACY: only the Super Admin (admin:* wildcard) may read everyone's notes.
+  // Every other user is strictly scoped to their own notes (author_id = current_user).
+  const isAdmin = hasPermission(session.permissions, "admin:*");
+
+  let where = "WHERE 1=1";
+  const params: any[] = [];
   if (search && search.trim()) {
-    const q = `%${search.trim()}%`;
-    rows = await query<NoteRow>(
-      `SELECT n.id, n.title, n.body, n.author_id, u.full_name AS author_name, u.email AS author_email,
-              n.project_id, p.name AS project_name, n.created_at, n.updated_at
-       FROM notes n
-       JOIN users u ON u.id = n.author_id
-       LEFT JOIN projects p ON p.id = n.project_id
-       WHERE n.title ILIKE $1 OR n.body ILIKE $1
-       ORDER BY n.updated_at DESC`,
-      [q]
-    );
-  } else {
-    rows = await query<NoteRow>(
-      `SELECT n.id, n.title, n.body, n.author_id, u.full_name AS author_name, u.email AS author_email,
-              n.project_id, p.name AS project_name, n.created_at, n.updated_at
-       FROM notes n
-       JOIN users u ON u.id = n.author_id
-       LEFT JOIN projects p ON p.id = n.project_id
-       ORDER BY n.updated_at DESC`
-    );
+    params.push(`%${search.trim()}%`);
+    where += ` AND (n.title ILIKE $${params.length} OR n.body ILIKE $${params.length})`;
   }
+  if (!isAdmin) {
+    params.push(session.sub);
+    where += ` AND n.author_id = $${params.length}`;
+  }
+
+  const rows = await query<NoteRow>(
+    `SELECT n.id, n.title, n.body, n.author_id, u.full_name AS author_name, u.email AS author_email,
+            n.project_id, p.name AS project_name, n.created_at, n.updated_at
+     FROM notes n
+     JOIN users u ON u.id = n.author_id
+     LEFT JOIN projects p ON p.id = n.project_id
+     ${where}
+     ORDER BY n.updated_at DESC`,
+    params
+  );
 
   return { notes: rows };
 }
@@ -56,14 +58,16 @@ export async function getNoteByIdAction(id: string): Promise<{ error?: string; n
   if (!session) return { error: "Not authorized." };
   if (!hasPermission(session.permissions, "notes:manage")) return { error: "Not authorized." };
 
+  const isAdmin = hasPermission(session.permissions, "admin:*");
+
   const rows = await query<NoteRow>(
     `SELECT n.id, n.title, n.body, n.author_id, u.full_name AS author_name, u.email AS author_email,
             n.project_id, p.name AS project_name, n.created_at, n.updated_at
      FROM notes n
      JOIN users u ON u.id = n.author_id
      LEFT JOIN projects p ON p.id = n.project_id
-     WHERE n.id = $1`,
-    [id]
+     WHERE n.id = $1${isAdmin ? "" : " AND n.author_id = $2"}`,
+    isAdmin ? [id] : [id, session.sub]
   );
   if (!rows[0]) return { error: "Note not found." };
   return { note: rows[0] };

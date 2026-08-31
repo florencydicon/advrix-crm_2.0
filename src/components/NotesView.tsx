@@ -39,11 +39,13 @@ export default function NotesView({
   userName,
   roleKey,
   permissions,
+  isAdmin = false,
 }: {
   userId: string;
   userName: string;
   roleKey: string;
   permissions: string[];
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -246,6 +248,11 @@ export default function NotesView({
                     <div className="h-3.5 w-3.5 rounded-full bg-white/10 flex items-center justify-center text-[7px] font-bold text-slate-400">
                       {initials(note.author_name)}
                     </div>
+                    {isAdmin && (
+                      <span className="text-[9px] font-medium text-slate-300 truncate max-w-[110px]" title={note.author_email}>
+                        {note.author_name}
+                      </span>
+                    )}
                     <span className="text-[9px] text-slate-600">{timeAgo(note.updated_at)}</span>
                     {note.project_name && (
                       <span className="text-[9px] text-brand-300/60 flex items-center gap-0.5">

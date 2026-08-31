@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
-import { ChatPanel } from "@/components/ChatPanel";
+import ChatPanel from "@/components/ChatPanel";
 
 export default async function ChatPage() {
   const session = await getSession();
@@ -12,8 +12,10 @@ export default async function ChatPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-5rem)]">
-      <ChatPanel currentUserId={session.sub} title="Team Chat" />
-    </div>
+    <ChatPanel
+      currentUserId={session.sub}
+      roleKey={session.role_key}
+      permissions={session.permissions ?? []}
+    />
   );
 }

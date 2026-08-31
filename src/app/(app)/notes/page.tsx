@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import NotesView from "@/components/NotesView";
 
 export default async function NotesPage() {
@@ -12,6 +13,7 @@ export default async function NotesPage() {
       userName={session.name}
       roleKey={session.role_key}
       permissions={session.permissions ?? []}
+      isAdmin={hasPermission(session.permissions ?? [], "admin:*")}
     />
   );
 }
