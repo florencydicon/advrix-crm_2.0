@@ -44,7 +44,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/attendance", label: "Attendance", icon: Clock },
   { href: "/updates", label: "Updates", icon: Bell },
-  { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
+  { href: "/projects", label: "Master Board", icon: FolderKanban, permission: "projects:view" },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
   { href: "/notes", label: "Notes", icon: FileText, permission: "notes:manage" },
@@ -326,45 +326,52 @@ export default function AppShell({
           {items.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
+            const isWorkspaceStart = item.href === "/projects" && !mini;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                title={mini ? item.label : undefined}
-                className={`group relative flex items-center rounded-xl text-sm font-medium transition-all ${
-                  mini ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
-                } ${
-                  active
-                    ? "bg-brand-300/10 text-brand-300"
-                    : "text-slate-400 hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                {active && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full bg-brand-300" />
+              <div key={item.href} className={isWorkspaceStart ? "pt-2" : ""}>
+                {isWorkspaceStart && (
+                  <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+                    Workspaces
+                  </p>
                 )}
-                <span className="relative shrink-0">
-                  <Icon className="h-[18px] w-[18px]" />
-                  {mini && item.href === "/updates" && unread > 0 && (
-                    <span className="absolute -top-1 -right-1.5 h-2 w-2 rounded-full bg-brand-300 ring-2 ring-night-950" />
+                <Link
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  title={mini ? item.label : undefined}
+                  className={`group relative flex items-center rounded-xl text-sm font-medium transition-all ${
+                    mini ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+                  } ${
+                    active
+                      ? "bg-brand-300/10 text-brand-300"
+                      : "text-slate-400 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full bg-brand-300" />
                   )}
-                </span>
-                {!mini && (
-                  <>
-                    <span className="flex-1">{item.label}</span>
-                    {item.href === "/updates" && unread > 0 && (
-                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-300 text-night-950 text-[10px] font-bold flex items-center justify-center">
-                        {unread}
-                      </span>
+                  <span className="relative shrink-0">
+                    <Icon className="h-[18px] w-[18px]" />
+                    {mini && item.href === "/updates" && unread > 0 && (
+                      <span className="absolute -top-1 -right-1.5 h-2 w-2 rounded-full bg-brand-300 ring-2 ring-night-950" />
                     )}
-                  </>
-                )}
-                {mini && (
-                  <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-lg bg-night-700 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-xl shadow-black/40 ring-1 ring-white/10 transition-opacity group-hover:opacity-100">
-                    {item.label}
                   </span>
-                )}
-              </Link>
+                  {!mini && (
+                    <>
+                      <span className="flex-1">{item.label}</span>
+                      {item.href === "/updates" && unread > 0 && (
+                        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-300 text-night-950 text-[10px] font-bold flex items-center justify-center">
+                          {unread}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {mini && (
+                    <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-lg bg-night-700 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-xl shadow-black/40 ring-1 ring-white/10 transition-opacity group-hover:opacity-100">
+                      {item.label}
+                    </span>
+                  )}
+                </Link>
+              </div>
             );
           })}
         </nav>

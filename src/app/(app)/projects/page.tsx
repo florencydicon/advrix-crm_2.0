@@ -1,31 +1,31 @@
 ﻿import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
-import { getPipelineByClient } from "@/lib/data";
-import type { PipelineClient } from "@/lib/data";
-import ClientPipeline from "@/components/ClientPipeline";
+import { getMasterBoardAction } from "@/lib/actions/masterboard";
+import { getTeam } from "@/lib/data";
+import MasterBoard from "@/components/MasterBoard";
+import ClientPortfolioHub from "@/components/ClientPortfolioHub";
 
-export const metadata = { title: "Project Pipeline — Advrix CRM" };
+export const metadata = { title: "Master Board — Advrix CRM" };
 
-export default async function ProjectsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ client?: string }>;
-}) {
+export default async function ProjectsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!hasPermission(session.permissions, "projects:view")) redirect("/dashboard");
 
-  const params = await searchParams;
+  const [board, team] = await Promise.all([
+    getMasterBoardAction(),
+    getTeam().catch(() => []),
+  ]);
 
-  if (params.client) redirect(`/projects/${params.client}`);
+  const canShare = hasPermission(session.permissions, "projects:manage");
 
-  let pipeline: PipelineClient[] = [];
-  try {
-    pipeline = await getPipelineByClient();
-  } catch (err) {
-    console.error("Failed to load project pipeline:", err);
-  }
-
-  return <ClientPipeline pipeline={pipeline} />;
+  return (
+    <div className="h-full">
+      <div className="h-full flex">
+        <MasterBoard initial={board} userId={session.sub} team={team} />
+        <ClientPortfolioHub clients={board.clients} canShare={canShare} />
+      </div>
+    </div>
+  );
 }

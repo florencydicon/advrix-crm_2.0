@@ -56,6 +56,12 @@ export async function middleware(req: NextRequest) {
 
   const isPublic = pathname === "/" || pathname === "/login";
 
+  // Client shared dashboards are public magic-links: always let them through
+  // so a client with a token never hits the login wall (rate limit still runs).
+  if (pathname.startsWith("/shared")) {
+    return NextResponse.next();
+  }
+
   if (isPublic) {
     if (token) {
       try {
