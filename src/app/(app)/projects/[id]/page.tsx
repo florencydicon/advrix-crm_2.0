@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import { getPipelineByClient, getTeam } from "@/lib/data";
 import ProjectDetailView from "@/components/ProjectDetailView";
 
@@ -14,7 +15,7 @@ export default async function ClientPipelinePage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (!["PROJECT_MANAGER", "SUPER_ADMIN"].includes(session.role_key)) redirect("/dashboard");
+  if (!hasPermission(session.permissions, "projects:view")) redirect("/dashboard");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -47,6 +48,7 @@ export default async function ClientPipelinePage({
       client={client}
       team={team}
       roleKey={session.role_key}
+      permissions={session.permissions}
       userId={session.sub}
       highlightProject={sp.project || null}
       highlightTask={sp.task ? decodeURIComponent(sp.task) : null}

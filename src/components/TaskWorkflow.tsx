@@ -20,13 +20,26 @@ import {
 import type { Task } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { PLATFORMS } from "@/components/ui";
+import { hasPermission } from "@/lib/permissions";
 
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
 const CONTENT_ROLES = ["WRITER", "DESIGNER"];
-const REVIEWER_ROLES = ["PROJECT_MANAGER", "SUPER_ADMIN"];
 
 const isUnifiedTask = (t: Task) => !!t.step_key?.includes("_d_");
 const isCurrentMember = (t: Task, userId: string) => t.assigned_to === userId;
+
+/**
+ * Effective permission list. Callers (ProjectDetailView, StaffDashboard) pass
+ * real `permissions`; legacy fallback preserves the old PM/SUPER_ADMIN behavior
+ * for any site that still only knows the role key.
+ */
+const effectivePerms = (permissions: string[] | undefined, roleKey: string): string[] =>
+  permissions ??
+  (roleKey === "SUPER_ADMIN"
+    ? ["admin:*"]
+    : roleKey === "PROJECT_MANAGER"
+      ? ["tasks:review", "projects:manage"]
+      : []);
 
 /**
  * Read-only content preview. Shown for completed tasks, and inside review /
@@ -128,14 +141,17 @@ export function TaskDetails({
   task,
   roleKey,
   userId,
+  permissions,
 }: {
   task: Task;
   roleKey: string;
   userId: string;
+  permissions?: string[];
 }) {
-  const reviewable = task.status === "submitted" && REVIEWER_ROLES.includes(roleKey);
+  const perms = effectivePerms(permissions, roleKey);
+  const reviewable = task.status === "submitted" && hasPermission(perms, "tasks:review");
   const unified = isUnifiedTask(task);
-  const isSuperAdmin = roleKey === "SUPER_ADMIN";
+  const isSuperAdmin = roleKey === "SUPER_ADMIN" || hasPermission(perms, "admin:*");
   const showContent =
     task.content &&
     (!EDITABLE_STATUSES.includes(task.status) || isSuperAdmin) &&
@@ -167,7 +183,7 @@ export function TaskDetails({
         </div>
       )}
       {unified && <ContributionsTimeline task={task} />}
-      <ContentEditor task={task} roleKey={roleKey} userId={userId} />
+      <ContentEditor task={task} roleKey={roleKey} userId={userId} permissions={perms} />
       {task.brief_copy && (task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER") && (
         <div className="rounded-lg border border-brand-300/30 bg-brand-300/[0.07] p-3">
           <div className="flex items-center gap-1.5 mb-1">
@@ -204,11 +220,12 @@ export function TaskDetails({
  * Review" saves the draft AND submits in a single action — no separate Save
  * click required.
  */
-export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: string; userId: string }) {
+export function ContentEditor({ task, roleKey, userId, permissions }: { task: Task; roleKey: string; userId: string; permissions?: string[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const { toast } = useToast();
 
+  const perms = effectivePerms(permissions, roleKey);
   const isUnified = isUnifiedTask(task);
   const isProducer =
     isUnified ||
@@ -217,7 +234,7 @@ export function ContentEditor({ task, roleKey, userId }: { task: Task; roleKey: 
     task.role_key === "EDITOR" ||
     task.role_key === "VIDEOGRAPHER" ||
     task.role_key === "SMM";
-  const canManage = roleKey === "SUPER_ADMIN" || roleKey === "PROJECT_MANAGER";
+  const canManage = hasPermission(perms, "projects:manage");
   const isAssignee = isUnified
     ? isCurrentMember(task, userId)
     : task.assigned_to === userId ||
@@ -640,18 +657,21 @@ export function TaskActions({
   task,
   roleKey,
   userId,
+  permissions,
   onExpand,
 }: {
   task: Task;
   roleKey: string;
   userId: string;
+  permissions?: string[];
   onExpand?: (taskId: string) => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const { toast } = useToast();
 
-  const isReviewer = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
+  const perms = effectivePerms(permissions, roleKey);
+  const isReviewer = hasPermission(perms, "tasks:review");
   const isSmm = roleKey === "SMM";
   const isAssignee =
     task.assigned_to === userId ||

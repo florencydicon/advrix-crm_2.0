@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
 
 async function ensureLocationColumns() {
   try {
@@ -69,6 +70,19 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
     );
   }
 
+  await logActivity({
+    action: "attendance_check_in",
+    entityType: "attendance",
+    entityId: today,
+    metadata: {
+      status,
+      punch_in: now,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      location_text: loc.location_text,
+    },
+  });
+
   revalidatePath("/attendance");
   return { ok: true, status };
 }
@@ -112,6 +126,20 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
     `UPDATE attendance SET punch_out = $1, hours_worked = $2, latitude = $3, longitude = $4, location_text = $5 WHERE id = $6`,
     [punchOut.toISOString(), Math.round(hours * 100) / 100, loc.latitude, loc.longitude, loc.location_text, record.id]
   );
+
+  await logActivity({
+    action: "attendance_check_out",
+    entityType: "attendance",
+    entityId: record.date,
+    metadata: {
+      punch_in: record.punch_in,
+      punch_out: punchOut.toISOString(),
+      hours_worked: Math.round(hours * 100) / 100,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      location_text: loc.location_text,
+    },
+  });
 
   revalidatePath("/attendance");
   return { ok: true, hoursWorked: Math.round(hours * 100) / 100 };

@@ -1,5 +1,6 @@
 ﻿import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import { getClientCards, getDeliverableTypes } from "@/lib/data";
 import ClientsView from "@/components/ClientsView";
 
@@ -12,7 +13,7 @@ export default async function ClientsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (!["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) redirect("/dashboard");
+  if (!hasPermission(session.permissions, "projects:view")) redirect("/dashboard");
 
   const params = await searchParams;
   const page = Number(params.page) || 1;
@@ -23,8 +24,8 @@ export default async function ClientsPage({
     getClientCards({ page, pageSize, search }),
     getDeliverableTypes(),
   ]);
-  const canCreate = ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key);
-  const canDelete = session.role_key === "SUPER_ADMIN";
+  const canCreate = hasPermission(session.permissions, "projects:create");
+  const canDelete = hasPermission(session.permissions, "projects:delete");
 
   return (
     <ClientsView

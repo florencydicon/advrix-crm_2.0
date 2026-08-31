@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
+import { hasPermission, hasAnyPermission } from "@/lib/permissions";
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
 import { BrandMark, BrandLogoFull } from "@/components/brand";
@@ -32,17 +33,24 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   roles?: string[];
+  permission?: string;
+  anyPermission?: string[];
 }
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/attendance", label: "Attendance", icon: Clock },
   { href: "/updates", label: "Updates", icon: Bell },
-  { href: "/projects", label: "Project Pipeline", icon: FolderKanban, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
-  { href: "/leads", label: "Leads", icon: Target, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
-  { href: "/clients", label: "Clients", icon: Users, roles: ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"] },
-  { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "PROJECT_MANAGER"] },
-  { href: "/settings", label: "Settings", icon: Settings, roles: ["SUPER_ADMIN"] },
+  { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
+  { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
+  { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, permission: "reports:view" },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: Settings,
+    anyPermission: ["settings:manage", "users:manage", "roles:manage"],
+  },
 ];
 
 const ROLE_STYLES: Record<string, string> = {
@@ -228,7 +236,12 @@ export default function AppShell({
     window.dispatchEvent(new Event("advrix:collapse"));
   }
 
-  const items = NAV.filter((n) => !n.roles || n.roles.includes(session.role_key));
+  const items = NAV.filter((n) => {
+    if (n.permission) return hasPermission(session.permissions, n.permission);
+    if (n.anyPermission) return hasAnyPermission(session.permissions, n.anyPermission);
+    if (n.roles) return n.roles.includes(session.role_key);
+    return true;
+  });
   const initials = session.name
     .split(" ")
     .map((w) => w[0])

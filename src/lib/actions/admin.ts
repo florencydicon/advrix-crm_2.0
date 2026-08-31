@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 
 export type FlushEntity =
   | "clients"
@@ -25,7 +26,9 @@ const ALLOWED: Set<FlushEntity> = new Set([
 
 async function requireSuperAdmin() {
   const session = await getSession();
-  if (!session || session.role_key !== "SUPER_ADMIN") return { error: "Not authorized. SUPER_ADMIN only." } as const;
+  if (!session || !hasPermission(session.permissions, "settings:manage")) {
+    return { error: "Not authorized. Super Admin access required." } as const;
+  }
   return { session } as const;
 }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { hasAnyPermission } from "@/lib/permissions";
 import {
   getEmployeeAttendanceDetail,
   getEmployeeAttendanceSummary,
@@ -10,7 +11,10 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const isAdmin = session.role_key === "SUPER_ADMIN" || session.role_key === "PROJECT_MANAGER";
+  const isAdmin =
+    hasAnyPermission(session.permissions, ["attendance:view", "leaves:approve"]) ||
+    session.role_key === "SUPER_ADMIN" ||
+    session.role_key === "PROJECT_MANAGER";
   if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = req.nextUrl;

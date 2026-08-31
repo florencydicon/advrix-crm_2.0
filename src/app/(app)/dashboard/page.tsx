@@ -23,7 +23,7 @@ export default async function DashboardPage() {
   if (!session) redirect("/login");
   const firstName = session.name.split(" ")[0];
 
-  if (STAFF_ROLES.includes(session.role_key)) {
+  if (STAFF_ROLES.includes(session.role_key) || session.dashboard === "staff") {
     const tasks = await getMyTasks(session.sub).catch(() => [] as import("@/lib/types").Task[]);
     const open = tasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
@@ -41,15 +41,15 @@ export default async function DashboardPage() {
           </p>
         </div>
         {session.role_key === "SMM" ? (
-          <SmmDashboard tasks={tasks} userId={session.sub} />
+          <SmmDashboard tasks={tasks} userId={session.sub} permissions={session.permissions} />
         ) : (
-          <StaffDashboard tasks={tasks} roleKey={session.role_key} userId={session.sub} />
+          <StaffDashboard tasks={tasks} roleKey={session.role_key} userId={session.sub} permissions={session.permissions} />
         )}
       </div>
     );
   }
 
-  if (session.role_key === "SALES") {
+  if (session.role_key === "SALES" || session.dashboard === "sales") {
     const projects = await getProjects();
     const mine = projects.filter((p) => p.created_by === session.sub);
     return (

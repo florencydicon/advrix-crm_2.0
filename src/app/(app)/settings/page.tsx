@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import { getTeamPaginated, getRoles } from "@/lib/data";
 import { getDatabaseCounts } from "@/lib/actions/admin";
+import { getRolesWithPermissions } from "@/lib/actions/roles";
 import SettingsView from "@/components/SettingsView";
 
 export const metadata = { title: "Settings — Advrix Media" };
@@ -13,7 +15,13 @@ export default async function SettingsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.role_key !== "SUPER_ADMIN") redirect("/dashboard");
+  if (
+    !hasPermission(session.permissions, "settings:manage") &&
+    !hasPermission(session.permissions, "users:manage") &&
+    !hasPermission(session.permissions, "roles:manage")
+  ) {
+    redirect("/dashboard");
+  }
 
   const params = await searchParams;
   const page = Number(params.page) || 1;
@@ -21,10 +29,11 @@ export default async function SettingsPage({
   const role = params.role || "";
   const pageSize = 25;
 
-  const [result, roles, counts] = await Promise.all([
+  const [result, roles, counts, permRoles] = await Promise.all([
     getTeamPaginated({ page, pageSize, search, roleKey: role }),
     getRoles(),
     getDatabaseCounts(),
+    getRolesWithPermissions(),
   ]);
 
   const filterTabs = [
@@ -48,6 +57,7 @@ export default async function SettingsPage({
       sessionRole={session.role_label}
       sessionRoleKey={session.role_key}
       counts={counts}
+      permRoles={permRoles}
     />
   );
 }

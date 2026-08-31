@@ -64,6 +64,7 @@ export default function ProjectDetailView({
   client,
   team,
   roleKey,
+  permissions,
   userId,
   highlightProject,
   highlightTask,
@@ -71,6 +72,7 @@ export default function ProjectDetailView({
   client: PipelineClient;
   team: UserRow[];
   roleKey: string;
+  permissions?: string[];
   userId: string;
   highlightProject?: string | null;
   highlightTask?: string | null;
@@ -115,8 +117,9 @@ export default function ProjectDetailView({
     window.history.replaceState(null, "", `/projects/${client.client_id}`);
   }, [highlightProject, highlightTask, client]);
 
-  const canManage = roleKey === "PROJECT_MANAGER" || roleKey === "SUPER_ADMIN";
-  const canDelete = roleKey === "SUPER_ADMIN";
+  const has = (key: string) => (permissions || []).includes("admin:*") || (permissions || []).includes(key);
+  const canManage = has("projects:manage") || roleKey === "SUPER_ADMIN" || roleKey === "PROJECT_MANAGER";
+  const canDelete = has("projects:delete") || roleKey === "SUPER_ADMIN";
 
   function run(fn: () => Promise<unknown>) {
     start(async () => {
@@ -353,7 +356,7 @@ export default function ProjectDetailView({
                                       </div>
                                     </div>
                                   )}
-                                  {["SUPER_ADMIN", "PROJECT_MANAGER", "SALES"].includes(roleKey) && (
+                                  {(has("tasks:manage") || has("leads:manage") || ["SUPER_ADMIN", "PROJECT_MANAGER", "SALES"].includes(roleKey)) && (
                                     <div className="rounded-md border border-white/10 bg-white/5 p-2">
                                       <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Remarks / Brief</p>
                                       <textarea
@@ -374,8 +377,8 @@ export default function ProjectDetailView({
                                   {canManage && t.step_key?.includes("_d_") && t.brief_approved_at && t.status !== "completed" && (
                                     <TaskSequenceEditor task={t} available={projectTeamOptions} />
                                   )}
-                                  <div className="pt-1.5 border-t border-white/10"><TaskActions task={t} roleKey={roleKey} userId={userId} onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)} /></div>
-                                  {openTaskId === t.id && (<div className="rounded-md bg-white/5 p-2 animate-fade-in"><TaskDetails task={t} roleKey={roleKey} userId={userId} /></div>)}
+                                  <div className="pt-1.5 border-t border-white/10"><TaskActions task={t} roleKey={roleKey} userId={userId} permissions={permissions} onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)} /></div>
+                                  {openTaskId === t.id && (<div className="rounded-md bg-white/5 p-2 animate-fade-in"><TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} /></div>)}
                                 </div>
                               </div>
                             )}

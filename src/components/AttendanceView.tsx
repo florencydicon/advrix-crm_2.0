@@ -19,10 +19,12 @@ import {
 } from "lucide-react";
 import { punchInAction, punchOutAction } from "@/lib/actions/attendance";
 import { getCurrentPosition } from "@/lib/geolocation";
-import { openWhatsApp, buildCheckInMessage, buildCheckOutMessage } from "@/lib/whatsapp";
+import { openWhatsApp, openWhatsAppTo, buildCheckInMessage, buildCheckOutMessage, buildLeaveDecisionMessage } from "@/lib/whatsapp";
 import type { Attendance, AttendanceStats, LeaveWithUser } from "@/lib/types";
+import type { ActivityLogRow } from "@/lib/activity";
 import LeaveApplicationModal from "@/components/LeaveApplicationModal";
 import AttendanceReports, { type LeaveReportRowLite } from "@/components/AttendanceReports";
+import ActivityLogCard from "@/components/ActivityLogCard";
 import type { AttendanceReportRow } from "@/lib/data";
 import { useToast } from "@/components/Toast";
 
@@ -35,6 +37,16 @@ function formatTime(iso: string | null | undefined) {
   } catch {
     return "—";
   }
+}
+
+/** Raw YYYY-MM-DD for wa.me messages (Postgres DATE may arrive as Date). */
+function isoDate(v: string | Date | null | undefined): string {
+  if (!v) return "";
+  if (v instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  }
+  return String(v).slice(0, 10);
 }
 
 function formatDate(dateInput: string | Date) {
@@ -83,6 +95,7 @@ export default function AttendanceView({
   reportYear,
   attendanceReport,
   leaveReport,
+  activity,
 }: {
   userName: string;
   userRole: string;
@@ -98,6 +111,7 @@ export default function AttendanceView({
   reportYear: number;
   attendanceReport: AttendanceReportRow[];
   leaveReport: LeaveReportRowLite[];
+  activity: ActivityLogRow[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -311,12 +325,15 @@ export default function AttendanceView({
       )}
 
       {activeTab === "reports" && isAdmin && (
-        <AttendanceReports
-          month={reportMonth}
-          year={reportYear}
-          attendanceReport={attendanceReport}
-          leaveReport={leaveReport}
-        />
+        <>
+          <AttendanceReports
+            month={reportMonth}
+            year={reportYear}
+            attendanceReport={attendanceReport}
+            leaveReport={leaveReport}
+          />
+          <ActivityLogCard activity={activity} />
+        </>
       )}
 
       {activeTab === "attendance" && (
@@ -517,12 +534,24 @@ export default function AttendanceView({
                               const { approveLeaveAction } = await import("@/lib/actions/leaves");
                               const res = await approveLeaveAction(l.id);
                               if (res.error) toast(res.error, "error");
-                              else toast("Leave approved.", "success");
+                              else {
+                                toast("Leave approved.", "success");
+                                const msg = buildLeaveDecisionMessage({
+                                  status: "approved",
+                                  leaveType: l.leave_type,
+                                  startDate: isoDate(l.start_date),
+                                  endDate: isoDate(l.end_date),
+                                  days: l.days,
+                                });
+                                if (!openWhatsAppTo(l.phone, msg)) {
+                                  toast(`${l.full_name.split(" ")[0]} has no WhatsApp number on file — add it in Settings → Users & Roles.`, "error");
+                                }
+                              }
                               router.refresh();
                             });
                           }}
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Approve & Notify
                         </button>
                         <button
                           className="btn-ghost !text-rose-600 !py-1 !px-3 text-xs"
@@ -534,13 +563,26 @@ export default function AttendanceView({
                               if (reason) {
                                 const res = await rejectLeaveAction(l.id, reason);
                                 if (res.error) toast(res.error, "error");
-                                else toast("Leave rejected.", "success");
+                                else {
+                                  toast("Leave rejected.", "success");
+                                  const msg = buildLeaveDecisionMessage({
+                                    status: "rejected",
+                                    leaveType: l.leave_type,
+                                    startDate: isoDate(l.start_date),
+                                    endDate: isoDate(l.end_date),
+                                    days: l.days,
+                                    reason,
+                                  });
+                                  if (!openWhatsAppTo(l.phone, msg)) {
+                                    toast(`${l.full_name.split(" ")[0]} has no WhatsApp number on file — add it in Settings → Users & Roles.`, "error");
+                                  }
+                                }
                                 router.refresh();
                               }
                             });
                           }}
                         >
-                          <XCircle className="h-3.5 w-3.5" /> Reject
+                          <XCircle className="h-3.5 w-3.5" /> Reject & Notify
                         </button>
                       </div>
                     </div>

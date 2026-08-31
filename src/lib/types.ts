@@ -12,7 +12,7 @@ export type DashboardKey = "admin" | "pm" | "sales" | "staff";
 
 export interface Role {
   id: string;
-  key: RoleKey;
+  key: string;
   label: string;
   permissions: string[];
   dashboard: DashboardKey;
@@ -201,9 +201,12 @@ export interface UserRow {
   id: string;
   full_name: string;
   email: string;
-  role_key: RoleKey;
+  role_key: string;
   role_label: string;
   is_active: boolean;
+  phone: string | null;
+  designation: string | null;
+  permissions: string[] | null;
   created_at: string;
 }
 
@@ -284,6 +287,7 @@ export interface LeaveWithUser extends Leave {
   full_name: string;
   role_label: string;
   approver_name: string | null;
+  phone: string | null;
 }
 
 export interface LeaveBalance {

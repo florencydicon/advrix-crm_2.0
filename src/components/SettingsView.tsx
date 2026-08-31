@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { UserCog, Users, ShieldCheck, KeyRound, Trash2, AlertTriangle, Database, Loader2 } from "lucide-react";
 import type { UserRow } from "@/lib/types";
 import type { FilterTab } from "@/components/SmartTable";
+import type { RoleWithPerms } from "@/lib/actions/roles";
 import TeamView from "@/components/TeamView";
+import RolesManager from "@/components/RolesManager";
 import DataExportPanel from "@/components/DataExportPanel";
 import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
@@ -26,6 +28,7 @@ export default function SettingsView({
   sessionRole,
   sessionRoleKey,
   counts,
+  permRoles,
 }: {
   users: UserRow[];
   roles: { key: string; label: string }[];
@@ -41,9 +44,10 @@ export default function SettingsView({
   sessionRole: string;
   sessionRoleKey: string;
   counts: Record<string, number>;
+  permRoles: RoleWithPerms[];
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"users" | "general">("users");
+  const [tab, setTab] = useState<"users" | "roles" | "general">("users");
   const initials = sessionName
     .split(" ")
     .map((w) => w[0])
@@ -66,6 +70,14 @@ export default function SettingsView({
           }`}
         >
           <Users className="h-4 w-4" /> Users & Roles
+        </button>
+        <button
+          onClick={() => setTab("roles")}
+          className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+            tab === "roles" ? "bg-brand-300 text-night-950" : "bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
+          }`}
+        >
+          <ShieldCheck className="h-4 w-4" /> Roles &amp; Permissions
         </button>
         <button
           onClick={() => setTab("general")}
@@ -92,6 +104,8 @@ export default function SettingsView({
           title="User Management"
           subtitle="Create users, assign roles, and control access."
         />
+      ) : tab === "roles" ? (
+        <RolesManager roles={permRoles} />
       ) : (
         <div className="space-y-6">
           <div className="grid lg:grid-cols-2 gap-6">

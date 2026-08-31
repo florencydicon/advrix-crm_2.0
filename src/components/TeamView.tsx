@@ -2,16 +2,20 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, UserX, UserCheck, Shield, Eye, EyeOff } from "lucide-react";
+import { Plus, UserX, UserCheck, Shield, Eye, EyeOff, Smartphone, ShieldCheck } from "lucide-react";
 import {
   createUserAction,
   toggleUserActiveAction,
   changeRoleAction,
+  updateUserPhoneAction,
   resetPasswordAction,
 } from "@/lib/actions/users";
+import { updateUserPermissionsAction, updateUserDesignationAction } from "@/lib/actions/roles";
+import { DEFAULT_ROLE_PERMISSIONS } from "@/lib/permissions";
 import type { UserRow } from "@/lib/types";
 import { Modal } from "@/components/ui";
 import SmartTable, { type Column, type FilterTab } from "@/components/SmartTable";
+import { PermissionPicker } from "@/components/RolesManager";
 
 const ROLE_STYLES: Record<string, string> = {
   SUPER_ADMIN: "bg-brand-300/10 text-brand-300",
@@ -84,9 +88,39 @@ export default function TeamView({
   const [error, setError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [permTarget, setPermTarget] = useState<UserRow | null>(null);
+  const [designation, setDesignation] = useState("");
+  const [perms, setPermsState] = useState<string[]>([]);
+
+  function openPerms(u: UserRow) {
+    setPermTarget(u);
+    setDesignation(u.designation || "");
+    setPermsState(u.permissions ?? DEFAULT_ROLE_PERMISSIONS[u.role_key] ?? []);
+    setError(null);
+  }
 
   function closeReset() {
     setResetTarget(null);
+  }
+
+  function closePerms() {
+    setPermTarget(null);
+  }
+
+  async function savePerms() {
+    const user = permTarget;
+    if (!user) return;
+    const overrideChanged = (user.permissions ?? []).join(",") !== perms.join(",");
+    if (overrideChanged) {
+      const res = await updateUserPermissionsAction(user.id, perms.length ? perms : null);
+      if (res.error) { setError(res.error); return; }
+    }
+    if ((user.designation || "") !== designation.trim()) {
+      const res = await updateUserDesignationAction(user.id, designation.trim());
+      if (res.error) { setError(res.error); return; }
+    }
+    setPermTarget(null);
+    router.refresh();
   }
 
   function run(fn: () => Promise<{ ok?: boolean; error?: string }>, onDone?: () => void) {
@@ -109,7 +143,7 @@ export default function TeamView({
           </div>
           <div className="min-w-0">
             <p className="font-medium text-xs text-white truncate">{u.full_name}</p>
-            <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+            <p className="text-[11px] text-slate-500 truncate">{u.designation || u.email}{u.phone ? ` · ${u.phone}` : ""}</p>
           </div>
         </div>
       ),
@@ -146,6 +180,25 @@ export default function TeamView({
       className: "w-[80px]",
       render: (u) => (
         <div className="flex items-center justify-end gap-0.5">
+          <button
+            className="btn-ghost !px-1.5 !py-0.5 text-[11px]"
+            title="Edit WhatsApp number"
+            onClick={() => {
+              const phone = prompt(`WhatsApp number for ${u.full_name} (for leave approval notifications):`, u.phone || "");
+              if (phone === null) return;
+              setError(null);
+              run(() => updateUserPhoneAction(u.id, phone));
+            }}
+          >
+            <Smartphone className="h-3.5 w-3.5" />
+          </button>
+          <button
+            className="btn-ghost !px-1.5 !py-0.5 text-[11px]"
+            title="Permissions & designation"
+            onClick={() => openPerms(u)}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+          </button>
           <button
             className="btn-ghost !px-1.5 !py-0.5 text-[11px]"
             title="Reset password"
@@ -204,6 +257,10 @@ export default function TeamView({
             <input name="email" type="email" required className="input" />
           </div>
           <div>
+            <label className="label">WhatsApp number <span className="text-slate-500 normal-case">(for leave approval alerts)</span></label>
+            <input name="phone" inputMode="tel" placeholder="+91 …" className="input" />
+          </div>
+          <div>
             <label className="label">Temporary password</label>
             <PasswordInput name="password" required minLength={6} />
           </div>
@@ -234,6 +291,38 @@ export default function TeamView({
           >
             Save new password
           </button>
+        </div>
+      </Modal>
+
+      <Modal open={!!permTarget} onClose={closePerms} title={`Permissions — ${permTarget?.full_name || ""}`}>
+        {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
+        <div className="space-y-4">
+          <div>
+            <label className="label">Designation</label>
+            <input value={designation} onChange={(e) => setDesignation(e.target.value)} placeholder="e.g. Senior Writer" className="input" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label !mb-0">Granular permissions</label>
+              <button
+                type="button"
+                className="text-[11px] text-brand-300 hover:underline"
+                onClick={() => setPermsState(DEFAULT_ROLE_PERMISSIONS[permTarget?.role_key || ""] ?? [])}
+              >
+                Reset to role defaults
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-2">
+              Effective = {permTarget?.role_label} defaults overridden below. Empty = inherit role.
+            </p>
+            <PermissionPicker value={perms} onChange={setPermsState} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={closePerms} className="btn-ghost">Cancel</button>
+            <button onClick={savePerms} className="btn-primary">
+              Save permissions
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

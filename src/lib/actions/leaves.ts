@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
+import { hasPermission } from "@/lib/permissions";
 import { createNotification, notifyRoles } from "@/lib/notifications";
+import { logActivity } from "@/lib/activity";
 import type { LeaveType } from "@/lib/types";
 
 export async function applyLeaveAction(formData: FormData) {
@@ -41,6 +43,13 @@ export async function applyLeaveAction(formData: FormData) {
     link: "/attendance",
   });
 
+  await logActivity({
+    action: "leave_requested",
+    entityType: "leave",
+    entityId: session.sub,
+    metadata: { leave_type: leaveType, start_date: startDate, end_date: endDate, days, reason: reason.trim() },
+  });
+
   revalidatePath("/attendance");
   revalidatePath("/leaves");
   return { ok: true };
@@ -49,10 +58,20 @@ export async function applyLeaveAction(formData: FormData) {
 export async function approveLeaveAction(leaveId: string) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
-  if (session.role_key !== "SUPER_ADMIN") return { error: "Only Super Admin can approve leaves" };
+  if (!hasPermission(session.permissions, "leaves:approve")) return { error: "Only the Super Admin can approve leaves" };
 
-  const leave = await query<{ user_id: string; leave_type: string; start_date: string; end_date: string }>(
-    `SELECT user_id, leave_type, start_date, end_date FROM leaves WHERE id = $1`,
+  const leave = await query<{
+    user_id: string;
+    leave_type: string;
+    start_date: string;
+    end_date: string;
+    days: number;
+    reason: string;
+    phone: string | null;
+  }>(
+    `SELECT l.user_id, l.leave_type, l.start_date, l.end_date, l.days, l.reason, u.phone
+     FROM leaves l JOIN users u ON u.id = l.user_id
+     WHERE l.id = $1`,
     [leaveId]
   );
 
@@ -71,6 +90,20 @@ export async function approveLeaveAction(leaveId: string) {
     link: "/attendance",
   });
 
+  await logActivity({
+    action: "leave_approved",
+    entityType: "leave",
+    entityId: leaveId,
+    metadata: {
+      employee_id: leave[0].user_id,
+      leave_type: leave[0].leave_type,
+      start_date: leave[0].start_date,
+      end_date: leave[0].end_date,
+      days: leave[0].days,
+      approved_by: session.name,
+    },
+  });
+
   revalidatePath("/attendance");
   revalidatePath("/leaves");
   return { ok: true };
@@ -79,14 +112,24 @@ export async function approveLeaveAction(leaveId: string) {
 export async function rejectLeaveAction(leaveId: string, rejectionReason: string) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
-  if (session.role_key !== "SUPER_ADMIN") return { error: "Only Super Admin can reject leaves" };
+  if (!hasPermission(session.permissions, "leaves:approve")) return { error: "Only the Super Admin can reject leaves" };
 
   if (!rejectionReason?.trim()) {
     return { error: "Please provide a reason for rejection" };
   }
 
-  const leave = await query<{ user_id: string; leave_type: string; start_date: string; end_date: string }>(
-    `SELECT user_id, leave_type, start_date, end_date FROM leaves WHERE id = $1`,
+  const leave = await query<{
+    user_id: string;
+    leave_type: string;
+    start_date: string;
+    end_date: string;
+    days: number;
+    reason: string;
+    phone: string | null;
+  }>(
+    `SELECT l.user_id, l.leave_type, l.start_date, l.end_date, l.days, l.reason, u.phone
+     FROM leaves l JOIN users u ON u.id = l.user_id
+     WHERE l.id = $1`,
     [leaveId]
   );
 
@@ -103,6 +146,21 @@ export async function rejectLeaveAction(leaveId: string, rejectionReason: string
     title: "Leave rejected",
     body: `Your ${leave[0].leave_type} leave (${leave[0].start_date} to ${leave[0].end_date}) was rejected.`,
     link: "/attendance",
+  });
+
+  await logActivity({
+    action: "leave_rejected",
+    entityType: "leave",
+    entityId: leaveId,
+    metadata: {
+      employee_id: leave[0].user_id,
+      leave_type: leave[0].leave_type,
+      start_date: leave[0].start_date,
+      end_date: leave[0].end_date,
+      days: leave[0].days,
+      rejection_reason: rejectionReason.trim(),
+      rejected_by: session.name,
+    },
   });
 
   revalidatePath("/attendance");

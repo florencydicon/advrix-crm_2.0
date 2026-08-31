@@ -14,6 +14,7 @@ export interface SessionPayload {
   role_key: string;
   role_label: string;
   dashboard: string;
+  permissions?: string[];
 }
 
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
@@ -62,6 +63,17 @@ export async function getSession(): Promise<SessionPayload | null> {
       [payload.sub]
     );
     if (rows.length === 0 || !rows[0].is_active) return null;
+    // Backfill current effective permissions + role from the DB so role /
+    // permission changes apply without waiting for the JWT to expire.
+    const perm = await query<{ permissions: string[] | null }>(
+      `SELECT COALESCE(u.permissions, r.permissions) AS permissions
+       FROM users u JOIN roles r ON r.id = u.role_id
+       WHERE u.id = $1`,
+      [payload.sub]
+    );
+    if (perm[0]) {
+      payload.permissions = perm[0].permissions || [];
+    }
   } catch {
     // DB check is best-effort — if it fails, let the JWT session through.
   }

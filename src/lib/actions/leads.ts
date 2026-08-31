@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { query, transaction } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import { createNotification } from "@/lib/notifications";
 import { validateEmail, validateFullName, validatePhone } from "@/lib/validation";
 
@@ -11,13 +12,17 @@ const LEAD_SOURCES = ["website", "referral", "instagram", "cold_outreach", "walk
 
 /**
  * Lead access + data isolation:
- * SALES sees only their own leads; SUPER_ADMIN and PROJECT_MANAGER see everything.
+ * SALES sees only their own leads; users with broader access (leads:view /
+ * leads:manage — PM and Super Admin by default) see everything.
  */
 async function requireLeadAccess() {
   const session = await getSession();
   if (!session) return null;
-  if (session.role_key === "SALES") return { session, ownerId: session.sub };
-  if (["SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) return { session, ownerId: null };
+  if (hasPermission(session.permissions, "leads:manage")) {
+    if (session.role_key === "SALES") return { session, ownerId: session.sub };
+    return { session, ownerId: null };
+  }
+  if (hasPermission(session.permissions, "leads:view")) return { session, ownerId: null };
   return null;
 }
 
@@ -37,7 +42,7 @@ function readForm(formData: FormData) {
 
 export async function createLeadAction(formData: FormData) {
   const access = await requireLeadAccess();
-  if (!access || !["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"].includes(access.session.role_key)) {
+  if (!access || !hasPermission(access.session.permissions, "leads:manage")) {
     return { error: "Not authorized." };
   }
 

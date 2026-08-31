@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { hasAnyPermission } from "@/lib/permissions";
 import { query } from "@/lib/db";
 import {
   getTodayAttendance,
@@ -12,6 +13,7 @@ import {
   getLeaveReport,
 } from "@/lib/data";
 import AttendanceView from "@/components/AttendanceView";
+import { getRecentActivity } from "@/lib/activity";
 
 export const metadata = { title: "Attendance & Leave — Advrix CRM" };
 
@@ -52,7 +54,7 @@ export default async function AttendancePage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  const isAdmin = session.role_key === "SUPER_ADMIN";
+  const isAdmin = hasAnyPermission(session.permissions, ["attendance:view", "leaves:approve"]);
 
   await ensureLocationColumns();
 
@@ -77,6 +79,9 @@ export default async function AttendancePage({
     ? await Promise.all([getAttendanceReport(start, end), getLeaveReport(start, end)])
     : [[], []];
 
+  // Admin-only permanent audit trail.
+  const activity = isAdmin ? await getRecentActivity(80) : [];
+
   return (
     <AttendanceView
       userName={session.name}
@@ -93,6 +98,7 @@ export default async function AttendancePage({
       reportYear={year}
       attendanceReport={attendanceReport}
       leaveReport={leaveReport}
+      activity={activity}
     />
   );
 }

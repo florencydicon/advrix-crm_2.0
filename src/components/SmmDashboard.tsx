@@ -22,9 +22,11 @@ const TABS = [
 export default function SmmDashboard({
   tasks,
   userId,
+  permissions,
 }: {
   tasks: Task[];
   userId: string;
+  permissions?: string[];
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -153,7 +155,7 @@ export default function SmmDashboard({
                   {t.status === "client_review" && <ClientFeedbackPanel task={t} />}
                   {t.status === "uploading" && <PublishPanel task={t} />}
                   {t.status !== "client_review" && t.status !== "uploading" && (
-                    <TaskDetails task={t} roleKey="SMM" userId={userId} />
+                    <TaskDetails task={t} roleKey="SMM" userId={userId} permissions={permissions} />
                   )}
                 </div>
               )}

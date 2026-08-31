@@ -14,7 +14,7 @@ interface GroupedClient {
   tasks: Task[];
 }
 
-export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task[]; roleKey: string; userId: string }) {
+export default function StaffDashboard({ tasks, roleKey, userId, permissions }: { tasks: Task[]; roleKey: string; userId: string; permissions?: string[] }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -133,6 +133,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
           task={t}
           roleKey={roleKey}
           userId={userId}
+          permissions={permissions}
           onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)}
         />
       ),
@@ -285,7 +286,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                                 {openTaskId === t.id && (
                                   <tr className="bg-white/[0.03]">
                                     <td colSpan={columns.length} className="px-4 py-2">
-                                      <TaskDetails task={t} roleKey={roleKey} userId={userId} />
+                                      <TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} />
                                     </td>
                                   </tr>
                                 )}
@@ -317,7 +318,7 @@ export default function StaffDashboard({ tasks, roleKey, userId }: { tasks: Task
                             </button>
                             {openTaskId === t.id && (
                               <div className="px-4 pb-3 pt-2 border-t border-white/[0.04] bg-white/[0.02]">
-                                <TaskDetails task={t} roleKey={roleKey} userId={userId} />
+                                <TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} />
                               </div>
                             )}
                           </div>

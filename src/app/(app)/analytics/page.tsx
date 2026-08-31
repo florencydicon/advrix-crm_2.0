@@ -2,6 +2,7 @@
 import { ArrowRight } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import { getAnalytics, getBottlenecks } from "@/lib/data";
 import { Stat, ProjectStatusBadge } from "@/components/ui";
 
@@ -10,7 +11,7 @@ export const metadata = { title: "Analytics — Advrix CRM" };
 export default async function AnalyticsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (!["SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) redirect("/dashboard");
+  if (!hasPermission(session.permissions, "reports:view")) redirect("/dashboard");
 
   const [analytics, bottlenecks] = await Promise.all([getAnalytics(), getBottlenecks()]);
   const completionRate = analytics.totalTasks ? Math.round((analytics.completedTasks / analytics.totalTasks) * 100) : 0;

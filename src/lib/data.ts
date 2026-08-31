@@ -514,7 +514,8 @@ export async function getBoard(): Promise<ProjectDetail[]> {
 
 export async function getTeam(): Promise<UserRow[]> {
   return query<UserRow>(
-    `SELECT u.id, u.full_name, u.email, u.is_active, u.created_at,
+    `SELECT u.id, u.full_name, u.email, u.is_active, u.phone, u.designation,
+            u.permissions, u.created_at,
             r.key AS role_key, r.label AS role_label
      FROM users u JOIN roles r ON r.id = u.role_id
      ORDER BY u.created_at ASC`
@@ -544,7 +545,8 @@ export async function getTeamPaginated(params: PaginatedParams = {}): Promise<Pa
   );
 
   const items = await query<UserRow>(
-    `SELECT u.id, u.full_name, u.email, u.is_active, u.created_at,
+    `SELECT u.id, u.full_name, u.email, u.is_active, u.phone, u.designation,
+            u.permissions, u.created_at,
             r.key AS role_key, r.label AS role_label
      FROM users u JOIN roles r ON r.id = u.role_id
      ${where}
@@ -712,7 +714,7 @@ export async function getAttendanceStats(date: string = new Date().toISOString()
 
 export async function getMyLeaves(userId: string): Promise<LeaveWithUser[]> {
   return query<LeaveWithUser>(
-    `SELECT l.*, u.full_name, r.label AS role_label, au.full_name AS approver_name
+    `SELECT l.*, u.full_name, u.phone, r.label AS role_label, au.full_name AS approver_name
      FROM leaves l
      JOIN users u ON u.id = l.user_id
      JOIN roles r ON r.id = u.role_id
@@ -746,7 +748,7 @@ export async function getAllLeaves(params?: {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   return query<LeaveWithUser>(
-    `SELECT l.*, u.full_name, r.label AS role_label, au.full_name AS approver_name
+    `SELECT l.*, u.full_name, u.phone, r.label AS role_label, au.full_name AS approver_name
      FROM leaves l
      JOIN users u ON u.id = l.user_id
      JOIN roles r ON r.id = u.role_id
@@ -787,7 +789,7 @@ export async function getLeaveBalance(userId: string): Promise<Record<string, { 
 
 export async function getLeavesForDateRange(startDate: string, endDate: string): Promise<LeaveWithUser[]> {
   return query<LeaveWithUser>(
-    `SELECT l.*, u.full_name, r.label AS role_label, au.full_name AS approver_name
+    `SELECT l.*, u.full_name, u.phone, r.label AS role_label, au.full_name AS approver_name
      FROM leaves l
      JOIN users u ON u.id = l.user_id
      JOIN roles r ON r.id = u.role_id

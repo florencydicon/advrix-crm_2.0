@@ -15,6 +15,7 @@ interface AuthUser {
   role_key: string;
   role_label: string;
   dashboard: string;
+  permissions: string[] | null;
 }
 
 export interface LoginState {
@@ -122,7 +123,8 @@ export async function loginAction(
 
     const rows = await query<AuthUser>(
       `SELECT u.id, u.email, u.full_name, u.password_hash, u.is_active,
-              r.key AS role_key, r.label AS role_label, r.dashboard
+              r.key AS role_key, r.label AS role_label, r.dashboard,
+              COALESCE(u.permissions, r.permissions) AS permissions
        FROM users u JOIN roles r ON r.id = u.role_id
        WHERE lower(u.email) = lower($1)`,
       [email]
@@ -154,6 +156,7 @@ export async function loginAction(
       role_key: user.role_key,
       role_label: user.role_label,
       dashboard: user.dashboard,
+      permissions: user.permissions || [],
     });
     await setSessionCookie(token);
     redirect("/dashboard");

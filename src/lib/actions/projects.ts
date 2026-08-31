@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import {
   generateDeliverableTasks,
   handleDeliverableTaskCompleted,
@@ -53,8 +54,11 @@ interface DeliverableInput {
   isCustom: boolean;
   customLabel?: string | null;
 }
-const CAN_CREATE = ["SALES", "SUPER_ADMIN", "PROJECT_MANAGER"];
-const CAN_MANAGE = ["PROJECT_MANAGER", "SUPER_ADMIN"];
+/* Permission keys (evaluated via hasPermission — `admin:*` always passes). */
+const PERM_CREATE = "projects:create";
+const PERM_MANAGE = "projects:manage";
+const PERM_REVIEW = "tasks:review";
+const PERM_DELETE = "projects:delete";
 
 function parseDeliverables(raw: string | null): DeliverableInput[] {
   if (!raw) return [];
@@ -77,7 +81,7 @@ function parseDeliverables(raw: string | null): DeliverableInput[] {
 
 export async function createClientAction(formData: FormData) {
   const session = await getSession();
-  if (!session || !CAN_CREATE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_CREATE)) {
     return { error: "Not authorized." };
   }
 
@@ -114,7 +118,7 @@ export async function createClientAction(formData: FormData) {
 
 export async function createProjectAction(formData: FormData) {
   const session = await getSession();
-  if (!session || !CAN_CREATE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_CREATE)) {
     return { error: "Not authorized." };
   }
 
@@ -176,7 +180,7 @@ export async function createProjectAction(formData: FormData) {
 
 export async function approveProjectAction(projectId: string) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
 
@@ -215,7 +219,7 @@ export async function approveProjectAction(projectId: string) {
 
 export async function rejectProjectAction(projectId: string) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
 
@@ -267,7 +271,7 @@ async function getTaskBriefRow(taskId: string): Promise<TaskBriefRow | null> {
  */
 export async function approveTaskBriefAction(taskId: string, comment?: string) {
   const session = await getSession();
-  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Not authorized." };
   }
   const t = await getTaskBriefRow(taskId);
@@ -306,7 +310,7 @@ export async function approveTaskBriefAction(taskId: string, comment?: string) {
 /** Step 2 — Brief rejected: sends the brief back for revision with a reason. */
 export async function rejectTaskBriefAction(taskId: string, reason: string) {
   const session = await getSession();
-  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Not authorized." };
   }
   if (!reason || reason.trim().length < 5) {
@@ -348,7 +352,7 @@ export async function rejectTaskBriefAction(taskId: string, reason: string) {
  */
 export async function setTaskSequenceAction(taskId: string, memberIds: string[]) {
   const session = await getSession();
-  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Not authorized." };
   }
   const t = await getTaskBriefRow(taskId);
@@ -383,7 +387,7 @@ export async function setTaskSequenceAction(taskId: string, memberIds: string[])
  */
 export async function setDeliverableSequenceAction(deliverableId: string, memberIds: string[]) {
   const session = await getSession();
-  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Not authorized." };
   }
   const clean = (memberIds || []).filter(Boolean);
@@ -423,7 +427,7 @@ export async function setDeliverableSequenceAction(deliverableId: string, member
  */
 export async function approveAllBriefsAction(projectId: string) {
   const session = await getSession();
-  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Not authorized." };
   }
   const pending = await query<{ id: string; title: string; step_key: string | null; project_id: string; deliverable_id: string | null }>(
@@ -466,7 +470,7 @@ export async function approveAllBriefsAction(projectId: string) {
 /** Completion override — force-closes a unified task at any point (Admin/PM only). */
 export async function markTaskCompleteAction(taskId: string) {
   const session = await getSession();
-  if (!session || !CAN_REVIEW_TASKS.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Not authorized." };
   }
   const t = await getTaskBriefRow(taskId);
@@ -497,7 +501,7 @@ export async function updateTaskContentAction(taskId: string, content: string) {
     [taskId]
   );
   if (!task[0]) return { error: "Task not found." };
-  if (task[0].assigned_to !== session.sub && !CAN_MANAGE.includes(session.role_key)) {
+  if (task[0].assigned_to !== session.sub && !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
 
@@ -513,7 +517,7 @@ export async function updateTaskContentAction(taskId: string, content: string) {
 export async function updateTaskStatusAction(taskId: string, status: string) {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
-  if (!CAN_MANAGE.includes(session.role_key)) {
+  if (!hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Only managers can update task status directly." };
   }
 
@@ -634,7 +638,7 @@ export async function startTaskAction(taskId: string) {
     : task.assigned_to === session.sub ||
       (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
       (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
-  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) {
+  if (!isAssignee && !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Only the current team member can start this task." };
   }
   if (task.status !== "approved" && task.status !== "pending") {
@@ -669,7 +673,7 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
     : task.assigned_to === session.sub ||
       (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0 ||
       (await query<{ id: string }>(`SELECT 1 AS id FROM assignments WHERE project_id = $1 AND user_id = $2 AND role_key = $3 LIMIT 1`, [task.project_id, session.sub, task.role_key])).length > 0;
-  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) {
+  if (!isAssignee && !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Only the current team member can submit this task." };
   }
   if (!["in_progress", "needs_improvement"].includes(task.status)) {
@@ -736,7 +740,7 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
  */
 export async function reviewTaskAction(taskId: string, decision: "needs_improvement" | "final" | "approve", comment?: string) {
   const session = await getSession();
-  if (!session || !CAN_REVIEW.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
     return { error: "Not authorized." };
   }
 
@@ -1101,7 +1105,7 @@ export async function completeTaskWithPlatformsAction(taskId: string, platforms:
 
 export async function setTaskAssigneeAction(taskId: string, assigneeId: string) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
   await query(`UPDATE tasks SET assigned_to = $2 WHERE id = $1`, [taskId, assigneeId || null]);
@@ -1144,7 +1148,7 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
 /** Removes one specific member from a task without touching other assignees. */
 export async function removeTaskAssigneeAction(taskId: string, userId: string) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
 
@@ -1210,7 +1214,7 @@ export async function assignProjectTeamAction(
   allocations: { role_key: string; user_id: string | null; deadline?: string | null }[]
 ) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
 
@@ -1240,7 +1244,7 @@ export async function assignProjectTeamAction(
 
 export async function extendDeadlineAction(projectId: string, deadline: string) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
   await query(`UPDATE projects SET deadline = $2 WHERE id = $1`, [projectId, deadline || null]);
@@ -1250,7 +1254,7 @@ export async function extendDeadlineAction(projectId: string, deadline: string) 
 
 export async function deleteProjectAction(projectId: string) {
   const session = await getSession();
-  if (!session || session.role_key !== "SUPER_ADMIN") {
+  if (!session || !hasPermission(session.permissions, PERM_DELETE)) {
     return { error: "Not authorized." };
   }
   await query(`DELETE FROM projects WHERE id = $1`, [projectId]);
@@ -1261,7 +1265,7 @@ export async function deleteProjectAction(projectId: string) {
 /** Super Admin only: cleanly removes a client and all their projects/tasks. */
 export async function deleteClientAction(clientId: string) {
   const session = await getSession();
-  if (!session || session.role_key !== "SUPER_ADMIN") {
+  if (!session || !hasPermission(session.permissions, PERM_DELETE)) {
     return { error: "Only the Super Admin can remove clients." };
   }
 
@@ -1282,7 +1286,7 @@ export async function deleteClientAction(clientId: string) {
 /** Admins/PMs can manually adjust any task deadline (editable timelines). */
 export async function updateTaskDueDateAction(taskId: string, date: string) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
   await setTaskDeadline(taskId, date);
@@ -1324,7 +1328,7 @@ export async function setMemberLeaveAction(
   reason: string
 ) {
   const session = await getSession();
-  if (!session || !CAN_MANAGE.includes(session.role_key)) {
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
   if (!reason || reason.trim().length < 3) {
@@ -1362,7 +1366,10 @@ export async function setMemberLeaveAction(
 export async function updateTaskRemarksAction(taskId: string, remarks: string) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
-  if (!["SUPER_ADMIN", "PROJECT_MANAGER", "SALES"].includes(session.role_key)) {
+  if (
+    !hasPermission(session.permissions, PERM_MANAGE) &&
+    !hasPermission(session.permissions, "leads:manage")
+  ) {
     return { error: "Not authorized" };
   }
   await query(`UPDATE tasks SET remarks = $1 WHERE id = $2`, [remarks || null, taskId]);
@@ -1377,7 +1384,7 @@ export async function updateTaskRemarksAction(taskId: string, remarks: string) {
 export async function updateTaskRoleAction(taskId: string, roleKey: string) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
-  if (!["SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) {
+  if (!hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized" };
   }
   await query(`UPDATE tasks SET role_key = $1 WHERE id = $2`, [roleKey, taskId]);
@@ -1396,7 +1403,7 @@ export async function extendPersonDeadlineAction(
 ) {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
-  if (!["SUPER_ADMIN", "PROJECT_MANAGER"].includes(session.role_key)) {
+  if (!hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized" };
   }
 
@@ -1443,7 +1450,7 @@ export async function saveWriterVideoDraftAction(taskId: string, title: string, 
     ? task.assigned_to === session.sub
     : task.assigned_to === session.sub ||
       (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0;
-  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) return { error: "Only the current writer can save this task." };
+  if (!isAssignee && !hasPermission(session.permissions, PERM_REVIEW)) return { error: "Only the current writer can save this task." };
   if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) return { error: "Task is not editable." };
 
   const cleanTitle = title.trim();
@@ -1474,7 +1481,7 @@ export async function submitWriterVideoDraftAction(taskId: string, title: string
     ? task.assigned_to === session.sub
     : task.assigned_to === session.sub ||
       (await query<{ id: string }>(`SELECT 1 AS id FROM task_assignees WHERE task_id = $1 AND user_id = $2 LIMIT 1`, [taskId, session.sub])).length > 0;
-  if (!isAssignee && !CAN_REVIEW.includes(session.role_key)) return { error: "Only the current writer can submit this task." };
+  if (!isAssignee && !hasPermission(session.permissions, PERM_REVIEW)) return { error: "Only the current writer can submit this task." };
   if (!["in_progress", "needs_improvement"].includes(task.status)) return { error: "Task is not in a submittable state." };
 
   const cleanTitle = title.trim();
