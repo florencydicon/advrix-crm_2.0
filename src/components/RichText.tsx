@@ -158,12 +158,13 @@ export function RichTextEditor({
           suppressContentEditableWarning
           role="textbox"
           aria-multiline="true"
+          dir="ltr"
           onInput={sync}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onBlur={() => onBlur?.(lastVal.current ?? sanitizeRich(ref.current?.innerHTML || ""))}
           className="px-3 py-2 text-xs text-slate-200 outline-none rich-body whitespace-pre-wrap"
-          style={{ minHeight: `${minRows * 26}px` }}
+          style={{ direction: "ltr", textAlign: "left", minHeight: `${minRows * 26}px` }}
           dangerouslySetInnerHTML={{ __html: seed }}
         />
       </div>

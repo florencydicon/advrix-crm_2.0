@@ -10,14 +10,13 @@ import {
   deleteProjectAction,
   assignProjectTeamAction,
   updateTaskDueDateAction,
-  removeTaskAssigneeAction,
   updateTaskRemarksAction,
   extendPersonDeadlineAction,
   updateTaskStatusAction,
 } from "@/lib/actions/projects";
 import type { PipelineClient } from "@/lib/data";
 import type { Assignment, UserRow } from "@/lib/types";
-import { StatusBadge, PlatformBadges } from "@/components/ui";
+import { StatusBadge } from "@/components/ui";
 import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
 import KanbanBoard from "@/components/KanbanBoard";
 import type { TaskStatus } from "@/lib/types";
@@ -25,10 +24,8 @@ import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { DynamicTeamAllotment } from "@/components/DynamicTeamAllotment";
-import { TaskBriefManager, TaskSequenceEditor, DeliverableSequenceEditor } from "@/components/TaskSequenceEditor";
-import { ApproveAllButton } from "@/components/AiButtons";
+import { DeliverableSequenceEditor } from "@/components/TaskSequenceEditor";
 import { RichTextEditor } from "@/components/RichText";
-import { ChatPanel } from "@/components/ChatPanel";
 
 function isoDate(v: string | Date | null | undefined): string {
   if (!v) return "";
@@ -91,7 +88,6 @@ export default function ProjectDetailView({
   const [extendTarget, setExtendTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
   const [boardMode, setBoardMode] = useState<Record<string, boolean>>({});
   const [boardOpenId, setBoardOpenId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Record<string, "tasks" | "chat">>({});
 
   // Deep-link: auto-expand project + task and scroll to it.
   useEffect(() => {
@@ -219,14 +215,6 @@ export default function ProjectDetailView({
 
                   {canManage && p.status === "in_progress" && (
                     <div className="px-3 pt-2.5 space-y-1.5">
-                      {(() => {
-                        const pendingCount = p.tasks.filter((t) => t.step_key?.includes("_d_") && (t.status === "pending_approval" || t.status === "rejected")).length;
-                        return (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <ApproveAllButton projectId={p.id} pendingCount={pendingCount} />
-                          </div>
-                        );
-                      })()}
                       {p.deliverables_list.map((d) => {
                         const dTasks = p.tasks.filter((t) => t.deliverable_id === d.id);
                         if (dTasks.length === 0) return null;
@@ -297,30 +285,7 @@ export default function ProjectDetailView({
                   )}
 
                   <div className="p-2.5 space-y-2">
-                    {/* Project tabs: Tasks / Chat */}
-                    {has("chat:use") && (
-                      <div className="flex items-center gap-1 border-b border-white/[0.06] -mx-2.5 px-2.5 pb-0 mb-1">
-                        {(["tasks", "chat"] as const).map((tab) => (
-                          <button
-                            key={tab}
-                            type="button"
-                            onClick={() => setActiveTab((s) => ({ ...s, [p.id]: tab }))}
-                            className={`px-3 py-1.5 text-[11px] font-medium capitalize border-b-2 -mb-px transition-colors ${
-                              (activeTab[p.id] || "tasks") === tab
-                                ? "border-brand-300 text-brand-300"
-                                : "border-transparent text-slate-500 hover:text-slate-300"
-                            }`}
-                          >
-                            {tab === "tasks" ? `Tasks (${p.tasks.length})` : "Chat"}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {(activeTab[p.id] || "tasks") === "chat" && has("chat:use") ? (
-                      <div className="h-[420px]">
-                        <ChatPanel projectId={p.id} currentUserId={userId} />
-                      </div>
-                    ) : p.tasks.length === 0 ? (
+                    {p.tasks.length === 0 ? (
                       <p className="text-[11px] text-slate-500 py-2 text-center">{p.status === "pending_approval" ? "Tasks will be generated once approved." : "No tasks yet."}</p>
                     ) : (
                       <>
@@ -368,40 +333,27 @@ export default function ProjectDetailView({
                         const overdue = t.due_date && t.status !== "completed" && new Date(isoDate(t.due_date) + "T23:59:59") < new Date();
                         return (
                           <div key={t.id} id={`task-${t.id}`} className="rounded-md border border-white/10 overflow-hidden bg-night-850/60 transition-all duration-500">
-                            <button type="button" onClick={() => setExpandedTaskId(isExpanded ? null : t.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.03] transition-colors">
+                            <button type="button" onClick={() => setExpandedTaskId(isExpanded ? null : t.id)} className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-white/[0.03] transition-colors">
                               <div className="flex-1 min-w-0">
                                 <p className="text-[12px] font-medium text-white truncate leading-tight">{t.title}</p>
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-[10px] text-slate-500">
-                                  <span className="text-slate-600">{fmtDate(t.created_at)} · {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                                  {t.role_label && <span className={`badge !px-1.5 !py-0 text-[10px] ${t.role_key ? ROLE_TINTS[t.role_key] || "bg-white/10 text-slate-400" : "bg-white/10 text-slate-400"}`}>{t.role_label}</span>}
-                                  {(t.assignees?.length ? t.assignees : t.assignee_name ? [{ id: t.assigned_to || "", name: t.assignee_name }] : []).map((m) => (
-                                    <span key={m.id} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 pl-0.5 pr-1 py-0.5">
-                                      <span className="h-4 w-4 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">{initials(m.name)}</span>
-                                      <span className="text-[10px] text-slate-300 max-w-[90px] truncate">{m.name}</span>
-                                      {canManage && t.status !== "completed" && !t.step_key?.includes("_d_") && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (confirm(`Remove ${m.name} from "${t.title}"?`)) run(() => removeTaskAssigneeAction(t.id, m.id));
-                                          }}
-                                          disabled={pending}
-                                          className="p-0.5 rounded-full text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-colors disabled:opacity-40"
-                                          title={`Remove ${m.name}`}
-                                          aria-label={`Remove ${m.name}`}
-                                        >
-                                          <X className="h-2.5 w-2.5" />
-                                        </button>
-                                      )}
-                                    </span>
-                                  ))}
-                                  {!t.assignees?.length && !t.assignee_name && <span className="text-slate-600">Unassigned</span>}
-                                  <span className={overdue ? "text-rose-300 font-medium" : "text-slate-400"}><CalendarDays className="h-3 w-3 inline-block mr-0.5" />{fmtDate(t.due_date)}{overdue && " · overdue"}</span>
-                                  <StatusBadge status={t.status} />
-                                </div>
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <PlatformBadges platforms={t.platforms} />
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span
+                                  className="h-6 w-6 rounded-full bg-brand-300/15 flex items-center justify-center text-[9px] font-bold text-brand-300"
+                                  title={(() => {
+                                    const cur = t.assignees?.find((m) => m.id === t.assigned_to) || t.assignees?.[0];
+                                    return cur?.name || "Unassigned";
+                                  })()}
+                                >
+                                  {(() => {
+                                    const cur = t.assignees?.find((m) => m.id === t.assigned_to) || t.assignees?.[0];
+                                    return cur ? initials(cur.name) : "?";
+                                  })()}
+                                </span>
+                                <span className={overdue ? "text-rose-300 font-medium text-[10px] flex items-center gap-0.5" : "text-slate-400 text-[10px] flex items-center gap-0.5"}>
+                                  <CalendarDays className="h-3 w-3" />{fmtDate(t.due_date)}{overdue && <span className="text-rose-300">· late</span>}
+                                </span>
+                                <StatusBadge status={t.status} />
                                 {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />}
                               </div>
                             </button>
@@ -451,12 +403,6 @@ export default function ProjectDetailView({
                                         placeholder="Add initial content, brief, or remarks for cross-department collaboration…"
                                       />
                                     </div>
-                                  )}
-                                  {canManage && t.step_key?.includes("_d_") && (t.status === "pending_approval" || t.status === "rejected") && (
-                                    <TaskBriefManager task={t} />
-                                  )}
-                                  {canManage && t.step_key?.includes("_d_") && t.brief_approved_at && t.status !== "completed" && (
-                                    <TaskSequenceEditor task={t} available={projectTeamOptions} />
                                   )}
                                   <div className="pt-1.5 border-t border-white/10"><TaskActions task={t} roleKey={roleKey} userId={userId} permissions={permissions} onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)} /></div>
                                   {openTaskId === t.id && (<div className="rounded-md bg-white/5 p-2 animate-fade-in"><TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} /></div>)}

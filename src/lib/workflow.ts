@@ -40,11 +40,10 @@ async function allocateTasksForRole(projectId: string, roleKey: string, userId: 
  * project (e.g. "Static Post 01", "Reel 01", ...).
  *
  * A deliverable is one task block — NOT split into content "_c_" + visual "_v_"
- * sub-tasks. Each task starts as `pending_approval` (brief awaiting approval,
- * no members yet). Once a PM approves the brief it becomes `approved` and the
- * sequence is auto-filled from the project team order; the task then travels
- * through each member (start → submit → gate approval → handoff) and completes
- * automatically after the final approval.
+ * sub-tasks. Each task is created `approved` and the sequence is auto-filled from
+ * the project team order immediately (no manual brief-approval gate); the task then
+ * travels through each member (start → submit → gate approval → handoff) and
+ * completes automatically after the final approval.
  */
 export async function generateDeliverableTasks(projectId: string) {
   try {
@@ -64,9 +63,10 @@ export async function generateDeliverableTasks(projectId: string) {
           [projectId, stepKey]
         );
         if (existing.length > 0) continue;
-        await query(
-          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
-           VALUES ($1, $2, $3, NULL, $4, 1, $5, $6, NULL, 'pending_approval', 'medium', NULL, NULL)`,
+        const rows = await query<{ id: string }>(
+          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by, brief_approved_at)
+           VALUES ($1, $2, $3, NULL, $4, 1, $5, $6, NULL, 'approved', 'medium', NULL, NULL, now())
+           RETURNING id`,
           [
             projectId,
             stepKey,
@@ -76,6 +76,17 @@ export async function generateDeliverableTasks(projectId: string) {
             `Unified deliverable "${title}". This task flows sequentially through the assigned team — each member starts, submits, and is approved before the next hand-off.`,
           ]
         );
+        // Saving the task instantly pushes it to the first employee (no brief gate).
+        if (rows[0]) {
+          const tid = rows[0].id;
+          const deliverableTeam = await getDeliverableTeam(d.id);
+          if (deliverableTeam.length > 0) {
+            await setTaskTeam(tid, deliverableTeam);
+          } else {
+            const projectMembers = await getProjectTeamOrder(projectId);
+            if (projectMembers.length > 0) await setTaskTeam(tid, projectMembers);
+          }
+        }
       }
     }
 

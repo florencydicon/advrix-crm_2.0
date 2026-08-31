@@ -379,7 +379,7 @@ export interface ChatAttachment {
 
 export interface ChatMessage {
   id: string;
-  project_id: string;
+  project_id: string | null;
   task_id: string | null;
   sender_id: string;
   sender_name: string;

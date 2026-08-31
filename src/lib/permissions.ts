@@ -37,6 +37,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   // Communication
   { key: "chat:use", label: "Use internal chat", group: "Communication" },
   { key: "notes:manage", label: "Create & edit notes", group: "Communication" },
+  { key: "todos:manage", label: "Manage global to-do list", group: "Communication" },
 ];
 
 export const PERMISSION_GROUPS = [...new Set(PERMISSION_CATALOG.map((p) => p.group))];
@@ -64,6 +65,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     "reports:view",
     "chat:use",
     "notes:manage",
+    "todos:manage",
   ],
   SALES: ["projects:view", "projects:create", "leads:view", "leads:manage", "chat:use", "notes:manage"],
   WRITER: ["tasks:execute", "chat:use", "notes:manage"],

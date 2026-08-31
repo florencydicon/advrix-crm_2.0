@@ -21,6 +21,8 @@ import {
   Download,
   Smartphone,
   FileText,
+  MessageSquare,
+  ListTodo,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -46,6 +48,8 @@ const NAV: NavItem[] = [
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
   { href: "/notes", label: "Notes", icon: FileText, permission: "notes:manage" },
+  { href: "/chat", label: "Chat", icon: MessageSquare, permission: "chat:use" },
+  { href: "/todos", label: "To-Do List", icon: ListTodo, permission: "todos:manage" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, permission: "reports:view" },
   {
     href: "/settings",

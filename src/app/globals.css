@@ -235,6 +235,8 @@ a:focus-visible {
   line-height: 1.5;
   color: #cbd5e1;
   word-break: break-word;
+  direction: ltr;
+  text-align: left;
 }
 .rich-body p {
   margin: 0 0 0.375rem;

@@ -11,8 +11,6 @@ import {
   approveClientAction,
   completeTaskWithPlatformsAction,
   updateTaskContentAction,
-  approveTaskBriefAction,
-  rejectTaskBriefAction,
   markTaskCompleteAction,
   saveWriterVideoDraftAction,
   submitWriterVideoDraftAction,
@@ -166,18 +164,6 @@ export function TaskDetails({
         {task.due_date && <span className="text-slate-500">Due {new Date(task.due_date).toLocaleDateString([], { day: "numeric", month: "short" })}</span>}
       </p>
       {unified && <SequenceStrip task={task} />}
-      {unified && (task.status === "pending_approval" || task.status === "rejected") && (
-        <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs">
-          <p className="text-[10px] font-semibold text-amber-300 uppercase tracking-wide">
-            {task.status === "pending_approval" ? "Brief awaiting approval" : "Brief rejected — needs revision"}
-          </p>
-          {task.status === "pending_approval" ? (
-            <p className="text-slate-300 mt-0.5">A manager must approve the brief before the team is allotted and work begins.</p>
-          ) : (
-            <p className="text-slate-300 mt-0.5 whitespace-pre-wrap">{task.review_comment || "No reason provided."}</p>
-          )}
-        </div>
-      )}
       {task.remarks && (
         <div className="rounded-lg border border-violet-400/20 bg-violet-400/[0.06] p-2 text-xs">
           <p className="text-[10px] font-semibold text-violet-300 uppercase tracking-wide">Remarks / Brief</p>
@@ -702,7 +688,6 @@ export function TaskActions({
 
   // ---------- Unified sequential task ----------
   if (isUnifiedTask(task)) {
-    const briefPending = task.status === "pending_approval" || task.status === "rejected";
     const myTurn = isCurrentMember(task, userId);
     const editable = task.status === "in_progress" || task.status === "needs_improvement";
 
@@ -724,12 +709,6 @@ export function TaskActions({
     if (isReviewer) {
       return (
         <div className="flex flex-wrap items-center gap-1.5">
-          {briefPending && (
-            <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => approveTaskBriefAction(task.id))} disabled={pending}>
-              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-              Approve Brief
-            </button>
-          )}
           {task.status === "approved" && myTurn && (
             <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => startTaskAction(task.id), true)} disabled={pending}>
               Start <ArrowRight className="h-3 w-3" />

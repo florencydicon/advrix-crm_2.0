@@ -13,16 +13,15 @@ interface AttachmentPayload {
   mimeType: string;
 }
 
-export async function getMessagesAction(projectId: string, taskId?: string | null): Promise<{ error?: string; messages?: ChatMessage[] }> {
+export async function getMessagesAction(projectId?: string | null, taskId?: string | null): Promise<{ error?: string; messages?: ChatMessage[] }> {
   const session = await getSession();
   if (!session) return { error: "Not authorized." };
   if (!hasPermission(session.permissions, "chat:use")) return { error: "Not authorized." };
 
-  // When taskId is null, show only project-level messages (task_id IS NULL).
-  // When taskId is provided, show messages for that task only.
+  // Global chat when projectId is null (project_id IS NULL); otherwise scoped to a project/task.
   let rows: {
     id: string;
-    project_id: string;
+    project_id: string | null;
     task_id: string | null;
     sender_id: string;
     sender_name: string;
@@ -30,21 +29,31 @@ export async function getMessagesAction(projectId: string, taskId?: string | nul
     created_at: string;
     updated_at: string;
   }[];
-  if (taskId) {
-    rows = await query(
-      `SELECT id, project_id, task_id, sender_id, sender_name, content, created_at, updated_at
-         FROM chat_messages
-        WHERE project_id = $1 AND task_id = $2
-        ORDER BY created_at ASC`,
-      [projectId, taskId]
-    );
+  if (projectId) {
+    if (taskId) {
+      rows = await query(
+        `SELECT id, project_id, task_id, sender_id, sender_name, content, created_at, updated_at
+           FROM chat_messages
+          WHERE project_id = $1 AND task_id = $2
+          ORDER BY created_at ASC`,
+        [projectId, taskId]
+      );
+    } else {
+      rows = await query(
+        `SELECT id, project_id, task_id, sender_id, sender_name, content, created_at, updated_at
+           FROM chat_messages
+          WHERE project_id = $1 AND task_id IS NULL
+          ORDER BY created_at ASC`,
+        [projectId]
+      );
+    }
   } else {
     rows = await query(
       `SELECT id, project_id, task_id, sender_id, sender_name, content, created_at, updated_at
          FROM chat_messages
-        WHERE project_id = $1 AND task_id IS NULL
+        WHERE project_id IS NULL AND task_id IS NULL
         ORDER BY created_at ASC`,
-      [projectId]
+      []
     );
   }
 
@@ -62,7 +71,7 @@ export async function getMessagesAction(projectId: string, taskId?: string | nul
 }
 
 export async function sendMessageAction(
-  projectId: string,
+  projectId: string | null,
   content: string,
   attachments: AttachmentPayload[] = [],
   taskId?: string | null
@@ -75,7 +84,7 @@ export async function sendMessageAction(
   await query(
     `INSERT INTO chat_messages (id, project_id, task_id, sender_id, sender_name, content)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [msgId, projectId, taskId ?? null, session.sub, session.name, content || ""]
+    [msgId, projectId ?? null, taskId ?? null, session.sub, session.name, content || ""]
   );
 
   if (attachments.length > 0) {
@@ -93,15 +102,17 @@ export async function sendMessageAction(
     );
   }
 
-  const creatorId = await getProjectCreatorId(projectId);
-  if (creatorId && creatorId !== session.sub) {
-    await createNotification({
-      userId: creatorId,
-      type: "task",
-      title: `New message in project`,
-      body: (content || "").slice(0, 200),
-      link: `/projects/${projectId}`,
-    }).catch(() => {});
+  if (projectId) {
+    const creatorId = await getProjectCreatorId(projectId);
+    if (creatorId && creatorId !== session.sub) {
+      await createNotification({
+        userId: creatorId,
+        type: "task",
+        title: `New message in project`,
+        body: (content || "").slice(0, 200),
+        link: `/projects/${projectId}`,
+      }).catch(() => {});
+    }
   }
 
   const row = await query<ChatMessage>(

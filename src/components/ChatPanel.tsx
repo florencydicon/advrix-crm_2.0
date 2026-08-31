@@ -7,9 +7,10 @@ import type { ChatAttachment, ChatMessage } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 
 interface ChatPanelProps {
-  projectId: string;
+  projectId?: string | null;
   taskId?: string | null;
   currentUserId: string;
+  title?: string;
 }
 
 function fmt(iso: string | null | undefined) {
@@ -23,7 +24,7 @@ function fmt(iso: string | null | undefined) {
   }
 }
 
-export function ChatPanel({ projectId, taskId, currentUserId }: ChatPanelProps) {
+export function ChatPanel({ projectId, taskId, currentUserId, title }: ChatPanelProps) {
   const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +35,7 @@ export function ChatPanel({ projectId, taskId, currentUserId }: ChatPanelProps) 
 
   const fetchMessages = async () => {
     try {
-      const res = await getMessagesAction(projectId, taskId ?? null);
+      const res = await getMessagesAction(projectId ?? null, taskId ?? null);
       if ("error" in res && res.error) {
         toast(res.error, "error");
         return;
@@ -104,7 +105,7 @@ export function ChatPanel({ projectId, taskId, currentUserId }: ChatPanelProps) 
         fileSize: a.file_size,
         mimeType: a.mime_type,
       }));
-      const res = await sendMessageAction(projectId, input.trim(), payload, taskId ?? null);
+      const res = await sendMessageAction(projectId ?? null, input.trim(), payload, taskId ?? null);
       if ("error" in res && res.error) {
         toast(res.error, "error");
         return;
@@ -127,7 +128,7 @@ export function ChatPanel({ projectId, taskId, currentUserId }: ChatPanelProps) 
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] bg-night-950">
         <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
         <p className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
-          Project Chat
+          {title || (projectId ? "Project Chat" : "Team Chat")}
         </p>
         <span className="text-[10px] text-slate-600">
           {messages.length} message{messages.length !== 1 ? "s" : ""}
