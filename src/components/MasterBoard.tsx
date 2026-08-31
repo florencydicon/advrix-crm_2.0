@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { Search, Filter, ChevronDown } from "lucide-react";
+import { useMemo, useState, useTransition, useRef, useEffect } from "react";
+import { Search, Filter, ChevronDown, MoreVertical, Square, CheckSquare } from "lucide-react";
 import { StatusBadge, PriorityBadge, EmptyState } from "@/components/ui";
 import type { MasterBoardPayload, MasterRow } from "@/lib/actions/masterboard";
 import { getMasterBoardAction } from "@/lib/actions/masterboard";
@@ -10,6 +10,13 @@ import TaskDrawer from "@/components/TaskDrawer";
 
 type ViewTab = "all" | "mine";
 type PriorityFilter = "all" | "low" | "medium" | "high";
+
+function taskTypeLabel(groupKey: string | null): string {
+  if (!groupKey || groupKey === "manual") return "Task";
+  return groupKey
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function initials(name: string) {
   return name
@@ -48,8 +55,12 @@ export default function MasterBoard({
   const [priority, setPriority] = useState<PriorityFilter>("all");
   const [group, setGroup] = useState<string>("all");
   const [client, setClient] = useState<string>("all");
+  const [project, setProject] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [pending, startTransition] = useTransition();
 
   const clients = useMemo(() => {
@@ -59,6 +70,23 @@ export default function MasterBoard({
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [rows]);
+
+  const projects = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const r of rows) {
+      if (!map.has(r.project_id))
+        map.set(r.project_id, { id: r.project_id, name: r.project_name });
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuFor(null);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   const groups = useMemo(() => {
     const set = new Set<string>();
@@ -72,6 +100,7 @@ export default function MasterBoard({
     if (priority !== "all") list = list.filter((r) => r.priority === priority);
     if (group !== "all") list = list.filter((r) => r.group_key === group);
     if (client !== "all") list = list.filter((r) => r.client_id === client);
+    if (project !== "all") list = list.filter((r) => r.project_id === project);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -83,7 +112,35 @@ export default function MasterBoard({
       );
     }
     return list;
-  }, [rows, view, priority, group, client, userId, search]);
+  }, [rows, view, priority, group, client, project, userId, search]);
+
+  const filteredIds = useMemo(
+    () => new Set(filtered.map((r) => r.id)),
+    [filtered]
+  );
+
+  const allChecked = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
+
+  function toggleAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allChecked) {
+        filtered.forEach((r) => next.delete(r.id));
+      } else {
+        filtered.forEach((r) => next.add(r.id));
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const active =
     rows.find((r) => r.id === activeId) || initial.rows.find((r) => r.id === activeId) || null;
@@ -151,10 +208,26 @@ export default function MasterBoard({
               onChange={(e) => setGroup(e.target.value)}
               className="input !py-1.5 !pl-7 !pr-6 !text-xs appearance-none"
             >
-              <option value="all">Group: All</option>
+              <option value="all">Task Type: All</option>
               {groups.map((g) => (
                 <option key={g} value={g}>
-                  {g === "manual" ? "Manual" : g}
+                  {taskTypeLabel(g)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="relative">
+            <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
+            <select
+              value={project}
+              onChange={(e) => setProject(e.target.value)}
+              className="input !py-1.5 !pl-8 !pr-6 !text-xs appearance-none max-w-[180px]"
+            >
+              <option value="all">Project: All</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -165,9 +238,9 @@ export default function MasterBoard({
             <select
               value={client}
               onChange={(e) => setClient(e.target.value)}
-              className="input !py-1.5 !pl-3 !pr-6 !text-xs appearance-none"
+              className="input !py-1.5 !pl-3 !pr-6 !text-xs appearance-none max-w-[180px]"
             >
-              <option value="all">Client: All</option>
+              <option value="all">Client Group: All</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -178,19 +251,42 @@ export default function MasterBoard({
 
           <span className="ml-auto text-[11px] text-slate-500 tabular-nums">
             {filtered.length} task{filtered.length === 1 ? "" : "s"}
+            {selected.size > 0 && (
+              <span className="ml-2 text-brand-300">· {selected.size} selected</span>
+            )}
           </span>
         </div>
 
         {/* Grid */}
         <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse min-w-[720px]">
+          <table className="w-full border-collapse min-w-[1240px]">
             <thead className="sticky top-0 z-10 bg-night-850">
               <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
-                <th className="px-4 py-2.5">Task</th>
-                <th className="px-3 py-2.5">Status</th>
-                <th className="px-3 py-2.5">Priority</th>
-                <th className="px-3 py-2.5">Assignee</th>
-                <th className="px-3 py-2.5">Deadline</th>
+                <th className="px-3 py-2.5 w-9">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleAll();
+                    }}
+                    className="text-slate-400 hover:text-white transition-colors"
+                    title="Select all visible"
+                  >
+                    {allChecked ? (
+                      <CheckSquare className="h-4 w-4 text-brand-300" />
+                    ) : (
+                      <Square className="h-4 w-4" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-3 py-2.5 w-44">Client</th>
+                <th className="px-3 py-2.5 w-44">Project</th>
+                <th className="px-3 py-2.5 min-w-[220px]">Task</th>
+                <th className="px-3 py-2.5 w-32">Task Type</th>
+                <th className="px-3 py-2.5 w-32">Status</th>
+                <th className="px-3 py-2.5 w-28">Priority</th>
+                <th className="px-3 py-2.5 w-40">Assignee</th>
+                <th className="px-3 py-2.5 w-32">Deadline</th>
+                <th className="px-3 py-2.5 w-12">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -198,19 +294,42 @@ export default function MasterBoard({
                 <tr
                   key={r.id}
                   onClick={() => setActiveId(r.id)}
-                  className="border-b border-white/[0.04] cursor-pointer hover:bg-white/[0.03] transition-colors group"
+                  className={`border-b border-white/[0.04] cursor-pointer hover:bg-white/[0.03] transition-colors group ${
+                    selected.has(r.id) ? "bg-brand-300/[0.04]" : ""
+                  }`}
                 >
-                  <td className="px-4 py-2.5">
-                    <p className="text-sm text-white font-medium leading-tight">{r.title}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      <span className="text-brand-300/90">{r.client_name}</span>
-                      {r.project_name && (
-                        <>
-                          <span className="mx-1 opacity-50">·</span>
-                          {r.project_name}
-                        </>
+                  <td
+                    className="px-3 py-2.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => toggleOne(r.id)}
+                      className="text-slate-400 hover:text-white transition-colors"
+                    >
+                      {selected.has(r.id) ? (
+                        <CheckSquare className="h-4 w-4 text-brand-300" />
+                      ) : (
+                        <Square className="h-4 w-4" />
                       )}
-                    </p>
+                    </button>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="text-xs font-medium text-brand-300/90 truncate block">
+                      {r.client_name}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="text-xs text-slate-300 truncate block">
+                      {r.project_name || "—"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <p className="text-sm text-white font-medium leading-tight">{r.title}</p>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+                      {taskTypeLabel(r.group_key)}
+                    </span>
                   </td>
                   <td className="px-3 py-2.5">
                     <StatusBadge status={r.status} />
@@ -224,7 +343,7 @@ export default function MasterBoard({
                         <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] shrink-0 ${avatarClass(r.assignee_name)}`}>
                           {initials(r.assignee_name)}
                         </span>
-                        <span className="text-xs text-slate-300">{r.assignee_name}</span>
+                        <span className="text-xs text-slate-300 truncate">{r.assignee_name}</span>
                       </div>
                     ) : (
                       <span className="text-xs text-slate-600">Unassigned</span>
@@ -232,16 +351,55 @@ export default function MasterBoard({
                   </td>
                   <td className="px-3 py-2.5">
                     <span
-                      className={`text-xs tabular-nums ${r.overdue ? "text-rose-300 font-medium" : "text-slate-400"}`}
+                      className={`text-xs tabular-nums ${
+                        r.overdue ? "text-rose-300 font-medium" : "text-slate-400"
+                      }`}
                     >
                       {r.due_date ? r.due_date.slice(0, 10) : "—"}
                     </span>
+                  </td>
+                  <td className="px-3 py-2.5 relative">
+                    <div ref={menuFor === r.id ? menuRef : undefined} className="relative inline-block">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuFor((m) => (m === r.id ? null : r.id));
+                        }}
+                        className="p-1 rounded-md text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                      {menuFor === r.id && (
+                        <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-white/10 bg-night-800 shadow-2xl z-20 py-1 text-xs">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuFor(null);
+                              setActiveId(r.id);
+                            }}
+                            className="w-full text-left px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+                          >
+                            Open details
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleOne(r.id);
+                              setMenuFor(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+                          >
+                            {selected.has(r.id) ? "Deselect" : "Select"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={10}>
                     <div className="p-6">
                       <EmptyState
                         title="No tasks match"
