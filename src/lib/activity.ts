@@ -56,7 +56,40 @@ export async function getRecentActivity(limit = 60): Promise<ActivityLogRow[]> {
      LIMIT $1`,
     [limit]
   );
-  return rows.map((r) => ({
+  return rows.map(parseActivityRow);
+}
+
+/** Audit trail entry for a single member's employee timeline. */
+export async function getUserActivity(userId: string, limit = 50): Promise<ActivityLogRow[]> {
+  const rows = await query<{
+    id: string;
+    actor_name: string;
+    action: string;
+    entity_type: string;
+    entity_id: string | null;
+    metadata: string;
+    created_at: string;
+  }>(
+    `SELECT id, actor_name, action, entity_type, entity_id, metadata::text AS metadata, created_at
+     FROM activity_log
+     WHERE actor_user_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [userId, limit]
+  );
+  return rows.map(parseActivityRow);
+}
+
+function parseActivityRow(r: {
+  id: string;
+  actor_name: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: string;
+  created_at: string;
+}): ActivityLogRow {
+  return {
     ...r,
     metadata: (() => {
       try {
@@ -65,5 +98,5 @@ export async function getRecentActivity(limit = 60): Promise<ActivityLogRow[]> {
         return {};
       }
     })(),
-  }));
+  };
 }

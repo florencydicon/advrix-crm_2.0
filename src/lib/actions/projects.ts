@@ -535,6 +535,7 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
   // Enforce workflow state machine � only valid transitions allowed
   const validTransitions: Record<string, string[]> = {
     pending: ["in_progress"],
+    approved: ["in_progress"],
     in_progress: ["submitted"],
     submitted: ["needs_improvement", "client_review", "completed"],
     needs_improvement: ["in_progress"],

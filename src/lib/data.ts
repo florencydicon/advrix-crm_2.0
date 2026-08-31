@@ -409,6 +409,22 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
   );
 }
 
+/**
+ * Full historical task involvement for a member's timeline: tasks they were
+ * assigned to (now or in the past), unassignable sequence steps they took part
+ * in, and completed-family rows they contributed to.
+ */
+export async function getMemberHistoryTasks(userId: string): Promise<Task[]> {
+  return query<Task>(
+    `${TASK_SELECT}
+     WHERE t.assigned_to = $1
+        OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1)
+        OR EXISTS (SELECT 1 FROM task_contributions tc WHERE tc.task_id = t.id AND tc.user_id = $1)
+     ORDER BY t.created_at DESC`,
+    [userId]
+  );
+}
+
 /** Tasks awaiting admin/PM review (submitted by producers). */
 export async function getSubmittedTasks(): Promise<Task[]> {
   return query<Task>(

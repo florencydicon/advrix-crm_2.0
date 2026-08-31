@@ -13,11 +13,14 @@ import {
   removeTaskAssigneeAction,
   updateTaskRemarksAction,
   extendPersonDeadlineAction,
+  updateTaskStatusAction,
 } from "@/lib/actions/projects";
 import type { PipelineClient } from "@/lib/data";
 import type { Assignment, UserRow } from "@/lib/types";
 import { StatusBadge, PlatformBadges } from "@/components/ui";
 import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
+import KanbanBoard from "@/components/KanbanBoard";
+import type { TaskStatus } from "@/lib/types";
 import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
@@ -84,6 +87,8 @@ export default function ProjectDetailView({
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [extendTarget, setExtendTarget] = useState<{ projectId: string; assignment: Assignment } | null>(null);
+  const [boardMode, setBoardMode] = useState<Record<string, boolean>>({});
+  const [boardOpenId, setBoardOpenId] = useState<string | null>(null);
 
   // Deep-link: auto-expand project + task and scroll to it.
   useEffect(() => {
@@ -130,6 +135,16 @@ export default function ProjectDetailView({
         if (e?.digest?.startsWith("NEXT_REDIRECT")) throw e;
         toast("Something went wrong. Please try again.", "error");
       }
+    });
+  }
+
+  /** Kanban drag-to-move. Surfacing the action's error message (e.g. workflow transition rules). */
+  function moveCard(taskId: string, status: TaskStatus) {
+    start(async () => {
+      const res = await updateTaskStatusAction(taskId, status);
+      if (res.error) toast(res.error, "error");
+      else toast(`Moved to "${status.replace(/_/g, " ")}"`, "success");
+      router.refresh();
     });
   }
 
@@ -282,7 +297,47 @@ export default function ProjectDetailView({
                     {p.tasks.length === 0 ? (
                       <p className="text-[11px] text-slate-500 py-2 text-center">{p.status === "pending_approval" ? "Tasks will be generated once approved." : "No tasks yet."}</p>
                     ) : (
-                      p.tasks.map((t) => {
+                      <>
+                        {canManage && (
+                          <div className="flex justify-end">
+                            <div className="inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5">
+                              {(["list", "board"] as const).map((mode) => (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  onClick={() => { setBoardMode((s) => ({ ...s, [p.id]: mode === "board" })); setBoardOpenId(null); }}
+                                  className={`px-2.5 py-0.5 rounded-md text-[10px] font-medium transition-colors capitalize ${
+                                    (boardMode[p.id] === true) === (mode === "board")
+                                      ? "bg-brand-300 text-night-950"
+                                      : "text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  {mode}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {boardMode[p.id] ? (
+                          <KanbanBoard
+                            tasks={p.tasks}
+                            canManage={canManage}
+                            openTaskId={boardOpenId}
+                            onToggleOpen={(id) => setBoardOpenId(boardOpenId === id ? null : id)}
+                            onMove={moveCard}
+                            renderExpanded={(t) => (
+                              <div className="space-y-1">
+                                <TaskActions task={t} roleKey={roleKey} userId={userId} permissions={permissions} onExpand={(id) => setOpenTaskId(openTaskId === id ? null : id)} />
+                                {openTaskId === t.id && (
+                                  <div className="rounded-md bg-white/5 p-2 animate-fade-in">
+                                    <TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          />
+                        ) : (
+                          p.tasks.map((t) => {
                         const isExpanded = expandedTaskId === t.id;
                         const overdue = t.due_date && t.status !== "completed" && new Date(isoDate(t.due_date) + "T23:59:59") < new Date();
                         return (
@@ -384,7 +439,10 @@ export default function ProjectDetailView({
                             )}
                           </div>
                         );
-                      })
+                        })
+                        )
+                      }
+                        </>
                     )}
                   </div>
                 </div>

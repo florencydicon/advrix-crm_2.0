@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, UserX, UserCheck, Shield, Eye, EyeOff, Smartphone, ShieldCheck } from "lucide-react";
+import { Plus, UserX, UserCheck, Shield, Eye, EyeOff, Smartphone, ShieldCheck, History } from "lucide-react";
 import {
   createUserAction,
   toggleUserActiveAction,
@@ -16,6 +16,7 @@ import type { UserRow } from "@/lib/types";
 import { Modal } from "@/components/ui";
 import SmartTable, { type Column, type FilterTab } from "@/components/SmartTable";
 import { PermissionPicker } from "@/components/RolesManager";
+import MemberTimeline from "@/components/MemberTimeline";
 
 const ROLE_STYLES: Record<string, string> = {
   SUPER_ADMIN: "bg-brand-300/10 text-brand-300",
@@ -91,6 +92,7 @@ export default function TeamView({
   const [permTarget, setPermTarget] = useState<UserRow | null>(null);
   const [designation, setDesignation] = useState("");
   const [perms, setPermsState] = useState<string[]>([]);
+  const [timelineTarget, setTimelineTarget] = useState<UserRow | null>(null);
 
   function openPerms(u: UserRow) {
     setPermTarget(u);
@@ -194,6 +196,13 @@ export default function TeamView({
           </button>
           <button
             className="btn-ghost !px-1.5 !py-0.5 text-[11px]"
+            title="Timeline & history"
+            onClick={() => { setTimelineTarget(u); setError(null); }}
+          >
+            <History className="h-3.5 w-3.5" />
+          </button>
+          <button
+            className="btn-ghost !px-1.5 !py-0.5 text-[11px]"
             title="Permissions & designation"
             onClick={() => openPerms(u)}
           >
@@ -293,6 +302,8 @@ export default function TeamView({
           </button>
         </div>
       </Modal>
+
+      {timelineTarget && <MemberTimeline key={timelineTarget.id} user={timelineTarget} onClose={() => setTimelineTarget(null)} />}
 
       <Modal open={!!permTarget} onClose={closePerms} title={`Permissions — ${permTarget?.full_name || ""}`}>
         {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
