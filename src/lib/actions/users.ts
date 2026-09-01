@@ -118,11 +118,9 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
   const adminId = adminRows[0]?.id ?? null;
 
   try { await query(`DELETE FROM task_contributions WHERE user_id = $1`, [userId]); } catch {}
-  try { await query(`DELETE FROM chat_messages WHERE sender_id = $1`, [userId]); } catch {}
   try { await query(`DELETE FROM notifications WHERE user_id = $1`, [userId]); } catch {}
   try { await query(`DELETE FROM leaves WHERE user_id = $1`, [userId]); } catch {}
   try { await query(`DELETE FROM attendance WHERE user_id = $1`, [userId]); } catch {}
-  try { await query(`DELETE FROM notes WHERE author_id = $1`, [userId]); } catch {}
   try { await query(`DELETE FROM assignments WHERE user_id = $1`, [userId]); } catch {}
   try { await query(`DELETE FROM task_assignees WHERE user_id = $1`, [userId]); } catch {}
   try { await query(`UPDATE projects SET created_by = NULL WHERE created_by = $1`, [userId]); } catch {}

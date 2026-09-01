@@ -584,3 +584,69 @@ export async function extendForLeave(
 export async function setTaskDeadline(taskId: string, date: string | null) {
   await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [taskId, date || null]);
 }
+
+/**
+ * Pipeline "Send Back" — pushes a task one step backward along its assigned
+ * sequence (A→B→C), the inverse of auto-advance. The previous member is
+ * re-assigned and the task is marked for rework.
+ */
+export async function stepTaskBack(taskId: string) {
+  const task = (
+    await query<{ project_id: string; current_step: number }>(
+      `SELECT project_id, current_step FROM tasks WHERE id = $1`,
+      [taskId]
+    )
+  )[0];
+  if (!task) return;
+  const seq = await query<{ user_id: string | null; role_key: string | null }>(
+    `SELECT ta.user_id, r.key AS role_key
+     FROM task_assignees ta
+     LEFT JOIN users u ON u.id = ta.user_id
+     LEFT JOIN roles r ON r.id = u.role_id
+     WHERE ta.task_id = $1 ORDER BY ta.position ASC, ta.added_at ASC`,
+    [taskId]
+  );
+  const curIdx = task.current_step ?? 0;
+  const prevIdx = Math.max(0, curIdx - 1);
+  const prev = seq[prevIdx];
+  if (!prev?.user_id) {
+    await query(`UPDATE tasks SET status = 'needs_improvement' WHERE id = $1`, [taskId]);
+    return;
+  }
+  const deadline = await assignmentDeadlineOf(task.project_id, prev.user_id, prev.role_key);
+  await query(
+    `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = 'needs_improvement',
+     due_date = COALESCE($5, due_date), reviewed_at = NULL WHERE id = $1`,
+    [taskId, prevIdx, prev.user_id, prev.role_key, deadline]
+  );
+}
+
+/**
+ * Pipeline "Re-open" (Super Admin only) — returns a completed task to the active
+ * board. The task is placed back on its previous stage member for rework, or on
+ * the first member if no sequence is available, and the project is reopened.
+ */
+export async function reopenTask(taskId: string) {
+  const task = (
+    await query<{ project_id: string; current_step: number }>(
+      `SELECT project_id, current_step FROM tasks WHERE id = $1`,
+      [taskId]
+    )
+  )[0];
+  if (!task) return;
+  const seq = await query<{ user_id: string | null }>(
+    `SELECT user_id FROM task_assignees ta WHERE ta.task_id = $1 ORDER BY ta.position ASC`,
+    [taskId]
+  );
+  const total = seq.length;
+  const ownerByIdx = Math.min(task.current_step ?? 0, total - 1);
+  const targetIdx = Math.max(0, total === 0 ? 0 : ownerByIdx);
+  const target = seq[targetIdx]?.user_id || null;
+  const status = target ? "needs_improvement" : "in_progress";
+  await query(
+    `UPDATE tasks SET status = $2, completed_at = NULL, current_step = $3, assigned_to = $4
+     WHERE id = $1`,
+    [taskId, status, targetIdx, target]
+  );
+  await query(`UPDATE projects SET status = 'in_progress' WHERE id = $1`, [task.project_id]);
+}

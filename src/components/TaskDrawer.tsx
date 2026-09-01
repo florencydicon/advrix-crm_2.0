@@ -48,12 +48,14 @@ export default function TaskDrawer({
   canManage,
   onClose,
   onChanged,
+  containerClass = "",
 }: {
   task: MasterRow | null;
   team: UserRow[];
   canManage: boolean;
   onClose: () => void;
   onChanged: () => void;
+  containerClass?: string;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState<string | null>("");
@@ -158,7 +160,7 @@ export default function TaskDrawer({
   );
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className={`fixed inset-0 z-40 ${containerClass}`}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
       <aside className="absolute right-0 top-0 h-full w-full md:w-[500px] max-w-full bg-night-850 border-l border-white/10 shadow-2xl flex flex-col">
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-white/[0.06]">

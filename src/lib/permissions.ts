@@ -34,10 +34,6 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "roles:manage", label: "Manage roles & permissions", group: "Admin" },
   { key: "settings:manage", label: "Access settings & flush data", group: "Admin" },
   { key: "reports:view", label: "View analytics & reports", group: "Admin" },
-  // Communication
-  { key: "chat:use", label: "Use internal chat", group: "Communication" },
-  { key: "notes:manage", label: "Create & edit notes", group: "Communication" },
-  { key: "todos:manage", label: "Manage global to-do list", group: "Communication" },
 ];
 
 export const PERMISSION_GROUPS = [...new Set(PERMISSION_CATALOG.map((p) => p.group))];
@@ -63,16 +59,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     "leads:view",
     "leads:manage",
     "reports:view",
-    "chat:use",
-    "notes:manage",
-    "todos:manage",
   ],
-  SALES: ["projects:view", "projects:create", "leads:view", "leads:manage", "chat:use", "notes:manage"],
-  WRITER: ["tasks:execute", "chat:use", "notes:manage"],
-  DESIGNER: ["tasks:execute", "chat:use", "notes:manage"],
-  EDITOR: ["tasks:execute", "chat:use", "notes:manage"],
-  SMM: ["tasks:execute", "chat:use", "notes:manage"],
-  VIDEOGRAPHER: ["tasks:execute", "chat:use", "notes:manage"],
+  SALES: ["projects:view", "projects:create", "leads:view", "leads:manage"],
+  WRITER: ["tasks:execute"],
+  DESIGNER: ["tasks:execute"],
+  EDITOR: ["tasks:execute"],
+  SMM: ["tasks:execute"],
+  VIDEOGRAPHER: ["tasks:execute"],
 };
 
 /** Universal checker — `admin:*` grants everything. */

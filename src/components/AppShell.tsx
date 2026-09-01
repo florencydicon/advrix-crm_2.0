@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useSyncExternalStore, useRef, useState } from "react";
+import { useEffect, useSyncExternalStore, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -20,9 +20,6 @@ import {
   Target,
   Download,
   Smartphone,
-  FileText,
-  MessageSquare,
-  ListTodo,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -44,12 +41,9 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/attendance", label: "Attendance", icon: Clock },
   { href: "/updates", label: "Updates", icon: Bell },
-  { href: "/projects", label: "Master Board", icon: FolderKanban, permission: "projects:view" },
+  { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
-  { href: "/notes", label: "Notes", icon: FileText, permission: "notes:manage" },
-  { href: "/chat", label: "Chat", icon: MessageSquare, permission: "chat:use" },
-  { href: "/todos", label: "To-Do List", icon: ListTodo, permission: "todos:manage" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, permission: "reports:view" },
   {
     href: "/settings",
@@ -128,7 +122,6 @@ export default function AppShell({
   const [missedToast, setMissedToast] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
-  const prevUnread = useRef(unreadCount);
   const awayAt = useRef<number | null>(null);
 
   // PWA: register service worker + capture install prompt
@@ -177,38 +170,8 @@ export default function AppShell({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [notifOpen]);
 
-  const pollNotifications = useCallback(async () => {
-    try {
-      const res = await fetch("/api/notifications", { cache: "no-store" });
-      if (!res.ok) return;
-      const data: { items: Notification[]; unread: number } = await res.json();
-      setNotifs(data.items || []);
-      const nextUnread = data.unread ?? 0;
-      if (nextUnread > prevUnread.current) {
-        const gained = nextUnread - prevUnread.current;
-      if (document.hidden) {
-        setMissedToast((m) => m + gained);
-      } else {
-        setRinging(true);
-        setTimeout(() => setRinging(false), 3000);
-      }
-      }
-      prevUnread.current = nextUnread;
-      setUnread(nextUnread);
-    } catch {
-      // offline — retry on the next tick
-    }
-  }, []);
-
-  // Silent background sync every 3 seconds.
-  useEffect(() => {
-    const id = setInterval(pollNotifications, 3000);
-    return () => clearInterval(id);
-  }, [pollNotifications]);
-
   // Cross-tab "Welcome Back" alert: modal popup for missed notifications.
   useEffect(() => {
-    let lastRefresh = 0;
     function onVisibility() {
       if (document.hidden) {
         awayAt.current = Date.now();
@@ -216,21 +179,14 @@ export default function AppShell({
       }
       const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 10000;
       awayAt.current = null;
-      pollNotifications();
-      // Throttle router.refresh to at most once per 30s to avoid layout disruption
-      if (wasAway && Date.now() - lastRefresh > 30000) {
-        lastRefresh = Date.now();
-        setTimeout(() => {
-          pollNotifications();
-          setRinging(true);
-          setTimeout(() => setRinging(false), 6000);
-          router.refresh();
-        }, 500);
+      if (wasAway) {
+        setRinging(true);
+        setTimeout(() => setRinging(false), 6000);
       }
     }
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [pollNotifications, router]);
+  }, []);
 
   function dismissMissedToast() {
     setMissedToast(0);
@@ -265,7 +221,6 @@ export default function AppShell({
     if (!notif.read) {
       setNotifs((list) => list.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
       setUnread((u) => Math.max(0, u - 1));
-      prevUnread.current = Math.max(0, prevUnread.current - 1);
       await markNotificationReadAction(notif.id);
     }
     // Only navigate to known internal routes — prevents phishing via compromised notifications.
@@ -278,7 +233,6 @@ export default function AppShell({
     await markAllNotificationsReadAction();
     setNotifs((list) => list.map((n) => ({ ...n, read: true })));
     setUnread(0);
-    prevUnread.current = 0;
     setNotifOpen(false);
   }
 
