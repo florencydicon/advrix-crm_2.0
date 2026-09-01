@@ -31,7 +31,7 @@ async function runWorkflow(projectId) {
       const ready = prereqs.every((g) => groupStatus[g]?.completed === true);
       if (!ready) continue;
       const assignee = (await sql("SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 AND u.is_active = true ORDER BY u.created_at ASC LIMIT 1", [s.target_role]))[0]?.id ?? null;
-      await sql("INSERT INTO tasks (project_id, step_key, group_key, role_key, title, description, status, priority, assigned_to, created_by, due_date) VALUES ($1,$2,$3,$4,$5,$6,'pending','medium',$7,NULL,NULL)",
+      await sql("INSERT INTO tasks (project_id, step_key, group_key, role_key, title, description, status, priority, assigned_to, created_by, due_date) VALUES ($1,$2,$3,$4,$5,$6,'approved','medium',$7,NULL,NULL)",
         [projectId, s.step_key, s.group_key, s.target_role, s.title_template, s.description_template, assignee]);
       changed = true;
     }
