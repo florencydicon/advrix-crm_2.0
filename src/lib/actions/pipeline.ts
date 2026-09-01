@@ -5,7 +5,8 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import type { Task, TaskStatus } from "@/lib/types";
-import { advanceTaskStep, markTaskComplete, stepTaskBack, reopenTask } from "@/lib/workflow";
+import { advanceTaskStep, markTaskComplete, stepTaskBack, reopenTask, setTaskTeam } from "@/lib/workflow";
+import { sanitizeRich } from "@/lib/rich";
 
 const PERM_PROJECTS_VIEW = "projects:view";
 const PERM_PROJECTS_MANAGE = "projects:manage";
@@ -197,6 +198,78 @@ export async function movePipelineTaskAction(
     await markTaskComplete(taskId);
   } else {
     await query(`UPDATE tasks SET status = $2 WHERE id = $1`, [taskId, status]);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Ultra-lean Remarks / Content field. Persists free-form remarks written by the
+ * current assignee (or a manager). Returns the plain-text so the UI can drive
+ * the dynamic marquee heading offline.
+ */
+export async function setPipelineTaskRemarksAction(
+  taskId: string,
+  remarks: string
+): Promise<{ ok: boolean; text?: string; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  const isAssignee = task.assigned_to === session.sub;
+  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
+    return { ok: false, error: "Not authorized." };
+  }
+  const html = sanitizeRich(String(remarks ?? ""));
+  await query(`UPDATE tasks SET remarks = $1 WHERE id = $2`, [html, taskId]);
+  const { richToPlain } = await import("@/lib/rich");
+  revalidate();
+  return { ok: true, text: richToPlain(html) };
+}
+
+/**
+ * Ultra-lean Team Assignment — replaces the sequential team (order preserved)
+ * for one task. Manager / reviewer only. Auto-points the task at the first
+ * member if it is not yet started.
+ */
+export async function updatePipelineTaskTeamAction(
+  taskId: string,
+  memberIds: string[]
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
+    return { ok: false, error: "Not authorized." };
+  }
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  if (Array.isArray(memberIds) && memberIds.length > 0) {
+    await setTaskTeam(taskId, memberIds);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Ultra-lean Review Action — advances the task one stage: approves the current
+ * member's contribution and auto-assigns the next member in sequence, or marks
+ * the task complete when the final stage is reviewed.
+ */
+export async function reviewPipelineTaskAction(
+  taskId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  if (task.status === "completed") return { ok: false, error: "Task is already completed." };
+  const isAssignee = task.assigned_to === session.sub;
+  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
+    return { ok: false, error: "Not authorized." };
+  }
+  const next = await advanceTaskStep(taskId);
+  if (next === null) {
+    await markTaskComplete(taskId);
   }
   revalidate();
   return { ok: true };

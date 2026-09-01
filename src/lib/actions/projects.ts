@@ -151,9 +151,10 @@ export async function createProjectAction(formData: FormData) {
 
   try {
     const project = await query<{ id: string }>(
-      `INSERT INTO projects (client_id, name, status, brief, deliverables, deadline, created_by)
-       VALUES ($1, $2, 'pending_approval', $3, $4, $5, $6) RETURNING id`,
-      [client_id, name, brief, deliverableSummary, deadline, session.sub]
+      `INSERT INTO projects (client_id, name, status, brief, deliverables, deadline, created_by,
+        approved_by, approved_at)
+       VALUES ($1, $2, 'in_progress', $3, $4, $5, $6, $7, now()) RETURNING id`,
+      [client_id, name, brief, deliverableSummary, deadline, session.sub, session.sub]
     );
 
     for (const d of deliverables.filter((x) => x.quantity > 0)) {
@@ -164,12 +165,19 @@ export async function createProjectAction(formData: FormData) {
       );
     }
 
+    // Ultra-lean: tasks populate directly into the Pipeline — no intermediate
+    // "Approve" gate. Generate deliverable tasks immediately and auto-fill the
+    // sequential team order + deadlines so the board is production-ready at once.
+    await generateDeliverableTasks(project[0].id);
+    await syncApprovedTaskSequences(project[0].id);
+    await computeSequentialDeadlines(project[0].id);
+
     revalidatePath("/projects");
     revalidatePath("/clients");
     await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
       type: "project",
-      title: "New project awaiting approval",
-      body: `${name} submitted by ${session.name}.`,
+      title: "New project in production",
+      body: `${name} added by ${session.name} — tasks are ready in the pipeline.`,
       link: projectLink(client_id, project[0].id),
     });
     return { ok: true, id: project[0].id };

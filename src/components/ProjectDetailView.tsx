@@ -3,10 +3,8 @@
 import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, X, Trash2, Users, CalendarDays, Coffee, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Trash2, Users, CalendarDays, Coffee, ChevronDown, ChevronRight } from "lucide-react";
 import {
-  approveProjectAction,
-  rejectProjectAction,
   deleteProjectAction,
   assignProjectTeamAction,
   updateTaskDueDateAction,
@@ -192,16 +190,6 @@ export default function ProjectDetailView({
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {canManage && p.status === "pending_approval" && (
-                    <>
-                      <button className="btn-primary !py-1 !px-2 text-[10px]" disabled={pending} onClick={() => run(() => approveProjectAction(p.id))}>
-                        <Check className="h-3 w-3" /> Approve
-                      </button>
-                      <button className="btn-ghost !text-rose-400 !py-1 !px-1.5 text-[10px]" disabled={pending} onClick={() => run(() => rejectProjectAction(p.id))}>
-                        <X className="h-3 w-3" />
-                      </button>
-                    </>
-                  )}
                   {canDelete && (
                     <button className="btn-ghost !text-rose-400 !py-1 !px-1 text-[10px]" disabled={pending} onClick={() => { if (confirm(`Delete "${p.name}"?`)) run(() => deleteProjectAction(p.id)); }}>
                       <Trash2 className="h-3 w-3" />
@@ -287,7 +275,7 @@ export default function ProjectDetailView({
 
                   <div className="p-2.5 space-y-2">
                     {p.tasks.length === 0 ? (
-                      <p className="text-[11px] text-slate-500 py-2 text-center">{p.status === "pending_approval" ? "Tasks will be generated once approved." : "No tasks yet."}</p>
+                      <p className="text-[11px] text-slate-500 py-2 text-center">No tasks yet.</p>
                     ) : (
                       <>
                         {canManage && (
