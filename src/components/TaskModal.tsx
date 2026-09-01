@@ -664,7 +664,7 @@ export default function TaskModal({
           </section>
 
           {/* ---- Danger zone: delete sub-task (manager gatekeepers only) ---- */}
-          {canManageTeam && (
+          {(canManageTeam || isManagerRole(roleKey)) && (
             <section className="pt-2">
               <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.05] p-3">
                 <div className="flex items-center justify-between gap-3">

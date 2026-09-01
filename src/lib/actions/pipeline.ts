@@ -119,6 +119,23 @@ async function taskOf(taskId: string) {
   return t || null;
 }
 
+/** Manager / admin-gatekeeper roles: Super Admin, Admin, Project Manager. */
+function isManager(session: {
+  role_key?: string | null;
+  permissions?: string[];
+}): boolean {
+  const role = (session.role_key || "").toUpperCase();
+  if (
+    role === "SUPER_ADMIN" ||
+    role === "ADMIN" ||
+    role === "PROJECT_MANAGER" ||
+    role === "PM"
+  ) {
+    return true;
+  }
+  return hasPermission(session.permissions, PERM_TASKS_MANAGE);
+}
+
 /** Roles allowed to edit the task Title / Content/Copy fields directly. */
 function isContentEditor(session: {
   role_key?: string | null;
@@ -442,15 +459,16 @@ export async function updatePipelineTaskTeamAction(
 
 /**
  * Delete a sub-task / sequence task from the pipeline. Manager gatekeepers
- * (tasks:manage) only. Dependent rows (task_assignees, task_contributions)
- * are removed automatically via ON DELETE CASCADE.
+ * (Super Admin / Admin / Project Manager, or anyone with `tasks:manage`) only.
+ * Dependent rows (task_assignees, task_contributions) are removed automatically
+ * via ON DELETE CASCADE.
  */
 export async function deletePipelineTaskAction(
   taskId: string
 ): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
-  if (!hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
+  if (!isManager(session)) {
     return { ok: false, error: "Not authorized." };
   }
   const task = await taskOf(taskId);
