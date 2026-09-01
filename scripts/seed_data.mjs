@@ -268,7 +268,7 @@ async function run() {
 
   // ---------- Seed tasks for in_progress projects ----------
   console.log("\nSeeding tasks for active projects...");
-  const taskStatuses = ["pending", "in_progress", "review", "completed"];
+  const taskStatuses = ["approved", "in_progress", "completed"];
   let totalTasks = 0;
 
   for (const pid of projectIds) {

@@ -664,7 +664,7 @@ export function TaskActions({
   const isAssignee =
     task.assigned_to === userId ||
     (Array.isArray(task.assignees) && task.assignees.some((a: any) => a.id === userId)) ||
-    (task.assigned_to === null && task.status === "pending");
+    (task.assigned_to === null && task.status === "approved");
   const isProducer = task.role_key === "WRITER" || task.role_key === "DESIGNER" || task.role_key === "EDITOR" || task.role_key === "VIDEOGRAPHER";
 
   function run(fn: () => Promise<{ ok?: boolean; error?: string }>, expand = false) {
@@ -697,13 +697,6 @@ export function TaskActions({
     }
     if (isSmm && task.status === "uploading") {
       return <PublishPanel task={task} />;
-    }
-    if (isSmm && task.status === "client_approved") {
-      return (
-        <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => run(() => approveClientAction(task.id))} disabled={pending}>
-          <Upload className="h-3 w-3" /> Shift to Uploading
-        </button>
-      );
     }
 
     if (isReviewer) {
@@ -751,19 +744,11 @@ export function TaskActions({
     if (task.status === "uploading") {
       return <PublishPanel task={task} />;
     }
-    if (task.status === "client_approved") {
-      // Legacy rows caught mid-flow: auto-shift them to uploading.
-      return (
-        <button className="btn-secondary !py-1 !px-2 text-[11px]" onClick={() => run(() => approveClientAction(task.id))} disabled={pending}>
-          <Upload className="h-3 w-3" /> Shift to Uploading
-        </button>
-      );
-    }
   }
 
   // Assignee: start or continue work — opens the content editor inline.
-  if (isAssignee && isProducer && (task.status === "pending" || EDITABLE_STATUSES.includes(task.status))) {
-    if (task.status === "pending") {
+  if (isAssignee && isProducer && (task.status === "approved" || EDITABLE_STATUSES.includes(task.status))) {
+    if (task.status === "approved") {
       return (
         <button className="btn-primary !py-1 !px-2 text-[11px]" onClick={() => run(() => startTaskAction(task.id), true)} disabled={pending}>
           Start <ArrowRight className="h-3 w-3" />

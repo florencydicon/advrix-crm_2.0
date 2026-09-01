@@ -95,29 +95,23 @@ export interface Assignment {
 }
 
 export type TaskStatus =
-  | "rejected"
   | "approved"
-  | "pending"
   | "in_progress"
   | "submitted"
   | "needs_improvement"
   | "client_review"
   | "client_feedback"
-  | "client_approved"
   | "uploading"
   | "upload_done"
   | "completed";
 
 export const TASK_STATUS_FLOW: TaskStatus[] = [
-  "rejected",
   "approved",
-  "pending",
   "in_progress",
   "submitted",
   "needs_improvement",
   "client_review",
   "client_feedback",
-  "client_approved",
   "uploading",
   "upload_done",
   "completed",

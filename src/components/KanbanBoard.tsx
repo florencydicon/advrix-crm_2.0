@@ -17,10 +17,10 @@ interface BoardColumn {
 /** Linear pipeline order — columns follow the pipeline strictly. */
 const BOARD_COLUMNS: BoardColumn[] = [
   {
-    key: "pending",
-    label: "Pending",
+    key: "approved",
+    label: "Ready to Start",
     drop: null,
-    statuses: ["pending", "approved"],
+    statuses: ["approved"],
     dot: "bg-slate-400",
     count: "text-slate-400",
   },
@@ -44,7 +44,7 @@ const BOARD_COLUMNS: BoardColumn[] = [
     key: "client_review",
     label: "Client Review",
     drop: "client_review",
-    statuses: ["client_review", "client_approved"],
+    statuses: ["client_review"],
     dot: "bg-sky-300",
     count: "text-sky-300",
   },
