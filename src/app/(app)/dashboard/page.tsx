@@ -7,7 +7,7 @@ import {
 import { getSession } from "@/lib/session";
 import {
   getMyTasks, getProjects, getLeadStats, getTaskStatusCounts,
-  getSubmittedTasks, getAllLeaves, getBottlenecks,
+  getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam,
 } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
@@ -25,6 +25,7 @@ export default async function DashboardPage() {
 
   if (STAFF_ROLES.includes(session.role_key) || session.dashboard === "staff") {
     const tasks = await getMyTasks(session.sub).catch(() => [] as import("@/lib/types").Task[]);
+    const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
     const open = tasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
       <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
@@ -41,9 +42,9 @@ export default async function DashboardPage() {
           </p>
         </div>
         {session.role_key === "SMM" ? (
-          <SmmDashboard tasks={tasks} userId={session.sub} permissions={session.permissions} />
+          <SmmDashboard tasks={tasks} team={team} userId={session.sub} permissions={session.permissions} />
         ) : (
-          <StaffDashboard tasks={tasks} roleKey={session.role_key} userId={session.sub} permissions={session.permissions} />
+          <StaffDashboard tasks={tasks} team={team} roleKey={session.role_key} userId={session.sub} permissions={session.permissions} />
         )}
       </div>
     );

@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronRight, Search, Users, Upload, CheckCircle2 } from "lucide-react";
-import type { Task } from "@/lib/types";
+import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PlatformBadges } from "@/components/ui";
 import { formatClientName } from "@/lib/utils";
-import {
-  TaskDetails,
-  ClientFeedbackPanel,
-  PublishPanel,
-} from "@/components/TaskWorkflow";
+import TaskModal from "@/components/TaskModal";
+import { hasPermission } from "@/lib/permissions";
 
 const TABS = [
   { key: "", label: "All" },
@@ -20,18 +18,35 @@ const TABS = [
   { key: "completed", label: "Completed" },
 ];
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    setMobile(mq.matches);
+    const h = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
+  return mobile;
+}
+
 export default function SmmDashboard({
   tasks,
+  team,
   userId,
   permissions,
 }: {
   tasks: Task[];
+  team: UserRow[];
   userId: string;
   permissions?: string[];
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openTask, setOpenTask] = useState<Task | null>(null);
+  const isMobile = useIsMobile();
+  const canManageTeam = hasPermission(permissions, "tasks:manage");
 
   const metrics = [
     { label: "Ready to Start", value: tasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
@@ -66,6 +81,10 @@ export default function SmmDashboard({
       : tasks.length,
   }));
 
+  const refresh = async () => {
+    router.refresh();
+  };
+
   if (tasks.length === 0) {
     return (
       <div className="card flex flex-col items-center justify-center py-8 text-center">
@@ -74,6 +93,32 @@ export default function SmmDashboard({
       </div>
     );
   }
+
+  const card = (t: Task) => (
+    <button
+      key={t.id}
+      type="button"
+      onClick={() => setOpenTask(t)}
+      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99]"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
+          <p className="text-[11px] text-slate-500 truncate">
+            {formatClientName(t.client_company, t.client_name)} · {t.project_name}
+            {t.due_date ? ` · Due ${new Date(t.due_date).toLocaleDateString()}` : ""}
+          </p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+        <PlatformBadges platforms={t.platforms} />
+        <span className="ml-auto">
+          <StatusBadge status={t.status} />
+        </span>
+      </div>
+    </button>
+  );
 
   return (
     <div className="space-y-3">
@@ -122,48 +167,26 @@ export default function SmmDashboard({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {filtered.length === 0 && (
           <div className="card py-8 text-center text-xs text-slate-500">
             No tasks match your filters.
           </div>
         )}
-        {filtered.map((t) => {
-          const open = openId === t.id;
-          return (
-            <div key={t.id} className={`card overflow-hidden transition-colors ${open ? "ring-1 ring-brand-300/30" : ""}`}>
-              <button
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors"
-                onClick={() => setOpenId(open ? null : t.id)}
-              >
-                <span className={`text-slate-300 transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
-                  <ChevronRight className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-xs text-white truncate">{t.title}</p>
-                  <p className="text-[11px] text-slate-500 truncate">
-                    {formatClientName(t.client_company, t.client_name)} · {t.project_name}
-                    {t.due_date ? ` · Due ${new Date(t.due_date).toLocaleDateString()}` : ""}
-                  </p>
-                </div>
-                <div className="hidden sm:block shrink-0">
-                  <PlatformBadges platforms={t.platforms} />
-                </div>
-                <StatusBadge status={t.status} />
-              </button>
-              {open && (
-                <div className="px-4 pb-4 pt-3 border-t border-white/[0.06] space-y-3">
-                  {t.status === "client_review" && <ClientFeedbackPanel task={t} />}
-                  {t.status === "uploading" && <PublishPanel task={t} />}
-                  {t.status !== "client_review" && t.status !== "uploading" && (
-                    <TaskDetails task={t} roleKey="SMM" userId={userId} permissions={permissions} />
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {filtered.map((t) => card(t))}
       </div>
+
+      {openTask && (
+        <TaskModal
+          key={openTask.id}
+          task={openTask}
+          team={team}
+          isMobile={isMobile}
+          canManageTeam={canManageTeam}
+          onClose={() => setOpenTask(null)}
+          refresh={refresh}
+        />
+      )}
     </div>
   );
 }

@@ -1,24 +1,40 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { PlayCircle, Clock, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
-import type { Task } from "@/lib/types";
+import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
-import { TaskActions, TaskDetails } from "@/components/TaskWorkflow";
 import { formatClientName } from "@/lib/utils";
+import TaskModal from "@/components/TaskModal";
+import { hasPermission } from "@/lib/permissions";
 
 function taskTypeLabel(groupKey: string | null): string {
   if (!groupKey || groupKey === "manual") return "Task";
   return groupKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    setMobile(mq.matches);
+    const h = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
+  return mobile;
+}
+
 export default function StaffDashboard({
   tasks,
+  team,
   roleKey,
   userId,
   permissions,
 }: {
   tasks: Task[];
+  team: UserRow[];
   roleKey: string;
   userId: string;
   permissions?: string[];
@@ -26,9 +42,12 @@ export default function StaffDashboard({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [openTask, setOpenTask] = useState<Task | null>(null);
+  const isMobile = useIsMobile();
+  const canManageTeam = hasPermission(permissions, "tasks:manage");
+  const router = useRouter();
 
-  const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "client_approved", "uploading", "approved"];
+  const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "uploading", "approved"];
 
   const FILTERS = [
     { key: "", label: "All" },
@@ -70,6 +89,36 @@ export default function StaffDashboard({
         : tasks.filter((t) => t.status === f.key).length
       : tasks.length,
   }));
+
+  const refresh = async () => {
+    router.refresh();
+  };
+
+  const mobileCard = (t: Task) => (
+    <button
+      key={t.id}
+      type="button"
+      onClick={() => setOpenTask(t)}
+      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99]"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
+          <p className="text-xs text-slate-400 mt-0.5 truncate">
+            {formatClientName(t.client_company, t.client_name)} · {t.project_name}
+          </p>
+        </div>
+        <MoreVertical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+        <StatusBadge status={t.status} />
+        <PriorityBadge priority={t.priority} />
+        <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500">
+          {taskTypeLabel(t.group_key)}
+        </span>
+      </div>
+    </button>
+  );
 
   return (
     <div className="space-y-3">
@@ -155,128 +204,85 @@ export default function StaffDashboard({
           <p className="text-xs text-slate-500 mt-1">New tasks will appear here automatically.</p>
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[880px]">
-              <thead className="sticky top-0 z-10">
-                <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
-                  <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
-                  <th className="px-3 py-2.5 min-w-[160px]">Project</th>
-                  <th className="px-3 py-2.5 min-w-[200px]">Task</th>
-                  <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
-                  <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
-                  <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
-                  <th className="px-3 py-2.5 w-32">Due</th>
-                  <th className="px-3 py-2.5 w-16">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/[0.04]">
-                {filtered.map((t) => (
-                  <FragmentRow
-                    key={t.id}
-                    task={t}
-                    roleKey={roleKey}
-                    userId={userId}
-                    permissions={permissions}
-                    open={openTaskId === t.id}
-                    onToggle={() => setOpenTaskId(openTaskId === t.id ? null : t.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* Desktop: clickable table with truncation */}
+          <div className="hidden md:block card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse min-w-[880px]">
+                <thead className="sticky top-0 z-10">
+                  <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
+                    <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
+                    <th className="px-3 py-2.5 min-w-[160px]">Project</th>
+                    <th className="px-3 py-2.5 min-w-[200px]">Task</th>
+                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
+                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
+                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
+                    <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
+                    <th className="px-3 py-2.5 w-16">Stage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {filtered.map((t) => (
+                    <tr
+                      key={t.id}
+                      onClick={() => setOpenTask(t)}
+                      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
+                        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
+                          {formatClientName(t.client_company, t.client_name)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+                          {taskTypeLabel(t.group_key)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <StatusBadge status={t.status} />
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <PriorityBadge priority={t.priority} />
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-xs tabular-nums text-slate-400">
+                          {t.due_date ? t.due_date.slice(0, 10) : "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">
+                        {(t.assignees || [])[(t.current_step ?? 0) % Math.max((t.assignees?.length || 1), 1)]?.name || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Mobile: touch-friendly stacked cards */}
+          <div className="md:hidden space-y-2.5">
+            {filtered.map((t) => mobileCard(t))}
+          </div>
+        </>
+      )}
+
+      {openTask && (
+        <TaskModal
+          key={openTask.id}
+          task={openTask}
+          team={team}
+          isMobile={isMobile}
+          canManageTeam={canManageTeam}
+          onClose={() => setOpenTask(null)}
+          refresh={refresh}
+        />
       )}
     </div>
-  );
-}
-
-function FragmentRow({
-  task: t,
-  roleKey,
-  userId,
-  permissions,
-  open,
-  onToggle,
-}: {
-  task: Task;
-  roleKey: string;
-  userId: string;
-  permissions?: string[];
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  return (
-    <>
-      <tr
-        onClick={onToggle}
-        className="hover:bg-white/[0.03] transition-colors cursor-pointer group"
-      >
-        <td className="px-4 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
-          <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[190px]">
-            {formatClientName(t.client_company, t.client_name)}
-          </span>
-        </td>
-        <td className="px-3 py-2.5">
-          <span className="text-xs text-slate-300 truncate block max-w-[150px]">{t.project_name}</span>
-        </td>
-        <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-          <p className="text-sm text-white font-medium leading-tight truncate max-w-[190px]">{t.title}</p>
-        </td>
-        <td className="px-3 py-2.5 whitespace-nowrap">
-          <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
-            {taskTypeLabel(t.group_key)}
-          </span>
-        </td>
-        <td className="px-3 py-2.5 whitespace-nowrap">
-          <StatusBadge status={t.status} />
-        </td>
-        <td className="px-3 py-2.5 whitespace-nowrap">
-          <PriorityBadge priority={t.priority} />
-        </td>
-        <td className="px-3 py-2.5">
-          <span className="text-xs tabular-nums text-slate-400">
-            {t.due_date ? t.due_date.slice(0, 10) : "—"}
-          </span>
-        </td>
-        <td className="px-3 py-2.5 relative" onClick={(e) => e.stopPropagation()}>
-          <div className="relative inline-block">
-            <button
-              onClick={() => setMenuOpen((o) => !o)}
-              className="p-1 rounded-md text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-white/10 bg-night-800 shadow-2xl z-20 py-1 text-xs">
-                <button
-                  onClick={() => { setMenuOpen(false); onToggle(); }}
-                  className="w-full text-left px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
-                >
-                  Open details
-                </button>
-                <div className="border-t border-white/[0.06] px-2 py-1">
-                  <TaskActions
-                    task={t}
-                    roleKey={roleKey}
-                    userId={userId}
-                    permissions={permissions}
-                    onExpand={(id) => { setMenuOpen(false); onToggle(); }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </td>
-      </tr>
-      {open && (
-        <tr className="bg-white/[0.03]">
-          <td colSpan={8} className="px-4 py-3">
-            <TaskDetails task={t} roleKey={roleKey} userId={userId} permissions={permissions} />
-          </td>
-        </tr>
-      )}
-    </>
   );
 }

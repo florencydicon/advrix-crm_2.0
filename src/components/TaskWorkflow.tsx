@@ -19,7 +19,7 @@ import type { Task } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import { PLATFORMS } from "@/components/ui";
 import { hasPermission } from "@/lib/permissions";
-import { RichText, RichTextEditor } from "@/components/RichText";
+import { RichText } from "@/components/RichText";
 import { isEmptyRich, richToPlain } from "@/lib/rich";
 
 const EDITABLE_STATUSES = ["in_progress", "needs_improvement", "client_feedback"];
@@ -314,12 +314,13 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
             <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">Asset Notes / Links</p>
             {saved && <span className="text-[10px] text-emerald-400">Saved</span>}
           </div>
-          <RichTextEditor
+          <textarea
             value={draft}
-            onChange={setDraft}
-            minRows={3}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={3}
             maxLength={10000}
             placeholder="Paste design/video file links, or add asset notes…"
+            className="input text-xs resize-none"
           />
           <div className="flex items-center gap-1.5 flex-wrap">
             <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending}>
@@ -365,12 +366,13 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
             <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide">Script <span className="text-rose-400">*</span></p>
             <span className="text-[10px] text-slate-500">{richToPlain(draft).length}/5000</span>
           </div>
-          <RichTextEditor
+          <textarea
             value={draft}
-            onChange={setDraft}
-            minRows={5}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={5}
             maxLength={5000}
             placeholder="Write the full 500-word script for the video editor…"
+            className="input text-xs resize-none"
           />
           <div className="flex items-center gap-1.5 flex-wrap">
             <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending || !hasVideoTitle || !hasDraft}>
@@ -414,16 +416,17 @@ export function ContentEditor({ task, roleKey, userId, permissions }: { task: Ta
           </p>
           {saved && <span className="text-[10px] text-emerald-400">Saved</span>}
         </div>
-        <RichTextEditor
-          value={draft}
-          onChange={setDraft}
-          minRows={4}
+        <textarea
+          value={richToPlain(draft)}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={4}
           maxLength={20000}
           placeholder={
             isWriter
               ? "Draft the captions, copy and script…"
               : "Add your remarks, asset notes, or paste the design / video file link…"
           }
+          className="input text-xs resize-none"
         />
         <div className="flex items-center gap-1.5 flex-wrap">
           <button className="btn-secondary !py-1 text-[11px]" onClick={save} disabled={pending}>
