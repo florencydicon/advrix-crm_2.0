@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Layers,
   History,
@@ -161,11 +162,28 @@ export default function ProjectPipeline({
   const [fltDeadline, setFltDeadline] = useState("");
 
   const isMobile = useIsMobile();
+  const searchParams = useSearchParams();
 
   const notify = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
   };
+
+  // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
+  const openedLinkId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = searchParams.get("taskId");
+    if (!id || openedLinkId.current === id) return;
+    const found = [...board.active, ...board.completed].find((t) => t.id === id);
+    if (!found) return;
+    openedLinkId.current = id;
+    if (found.status === "completed") {
+      setTab("history");
+      setHistoryTask(found);
+    } else {
+      setActiveTask(found);
+    }
+  }, [searchParams, board]);
 
   const reload = useCallback(async () => {
     const next = await getPipelineBoardAction();

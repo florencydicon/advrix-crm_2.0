@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PlayCircle, Clock, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
@@ -48,6 +48,19 @@ export default function StaffDashboard({
   const canApprove =
     canManageTeam || hasPermission(permissions, "tasks:review");
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
+  const openedLinkId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = searchParams.get("taskId");
+    if (!id || openedLinkId.current === id) return;
+    const found = tasks.find((t) => t.id === id);
+    if (found) {
+      openedLinkId.current = id;
+      setOpenTask(found);
+    }
+  }, [searchParams, tasks]);
 
   const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "uploading", "approved"];
 

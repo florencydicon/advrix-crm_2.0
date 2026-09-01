@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { ChevronRight, Search, Users, Upload, CheckCircle2 } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Users, Upload, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
-import { StatusBadge, PlatformBadges } from "@/components/ui";
+import { StatusBadge, PriorityBadge, PlatformBadges } from "@/components/ui";
 import { formatClientName } from "@/lib/utils";
 import TaskModal from "@/components/TaskModal";
 import { hasPermission } from "@/lib/permissions";
@@ -30,6 +30,8 @@ function useIsMobile() {
   return mobile;
 }
 
+const COMPLETED_KEYS = ["completed", "upload_done"];
+
 export default function SmmDashboard({
   tasks,
   team,
@@ -44,43 +46,59 @@ export default function SmmDashboard({
   permissions?: string[];
 }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const isMobile = useIsMobile();
   const canManageTeam = hasPermission(permissions, "tasks:manage");
   const canApprove =
     canManageTeam || hasPermission(permissions, "tasks:review");
 
+  // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
+  const openedLinkId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = searchParams.get("taskId");
+    if (!id || openedLinkId.current === id) return;
+    const found = tasks.find((t) => t.id === id);
+    if (found) {
+      openedLinkId.current = id;
+      setOpenTask(found);
+    }
+  }, [searchParams, tasks]);
+
+  const completed = (t: Task) => COMPLETED_KEYS.includes(t.status);
+
   const metrics = [
     { label: "Ready to Start", value: tasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
     { label: "Client Review", value: tasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
     { label: "Uploading", value: tasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-amber-300 bg-amber-400/10" },
-    { label: "Completed", value: tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+    { label: "Completed", value: tasks.filter((t) => completed(t)).length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
       if (statusFilter) {
         if (statusFilter === "completed") {
-          if (t.status !== "completed" && t.status !== "upload_done") return false;
+          if (!completed(t)) return false;
         } else if (t.status !== statusFilter) return false;
       }
       if (!q) return true;
       return (
         t.title.toLowerCase().includes(q) ||
         t.project_name.toLowerCase().includes(q) ||
-        t.client_name.toLowerCase().includes(q)
+        formatClientName(t.client_company, t.client_name).toLowerCase().includes(q)
       );
     });
-  }, [tasks, query, statusFilter]);
+  }, [tasks, search, statusFilter]);
 
   const tabCounts = TABS.map((tab) => ({
     ...tab,
     count: tab.key
       ? tab.key === "completed"
-        ? tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length
+        ? tasks.filter((t) => completed(t)).length
         : tasks.filter((t) => t.status === tab.key).length
       : tasks.length,
   }));
@@ -89,16 +107,7 @@ export default function SmmDashboard({
     router.refresh();
   };
 
-  if (tasks.length === 0) {
-    return (
-      <div className="card flex flex-col items-center justify-center py-8 text-center">
-        <p className="text-sm font-medium text-slate-300">No tasks assigned yet</p>
-        <p className="text-xs text-slate-500 mt-1">SMM tasks will appear here once projects are approved.</p>
-      </div>
-    );
-  }
-
-  const card = (t: Task) => (
+  const mobileCard = (t: Task) => (
     <button
       key={t.id}
       type="button"
@@ -108,18 +117,16 @@ export default function SmmDashboard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
-          <p className="text-[11px] text-slate-500 truncate">
+          <p className="text-xs text-slate-400 mt-0.5 truncate">
             {formatClientName(t.client_company, t.client_name)} · {t.project_name}
-            {t.due_date ? ` · Due ${new Date(t.due_date).toLocaleDateString()}` : ""}
           </p>
         </div>
-        <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+        <MoreVertical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
       </div>
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
         <PlatformBadges platforms={t.platforms} />
-        <span className="ml-auto">
-          <StatusBadge status={t.status} />
-        </span>
+        <StatusBadge status={t.status} />
+        <PriorityBadge priority={t.priority} />
       </div>
     </button>
   );
@@ -139,17 +146,15 @@ export default function SmmDashboard({
       </div>
 
       <div className="space-y-2">
-        <div className="relative flex-1 w-full sm:max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search tasks, projects, clients…"
-            className="input !pl-8 !py-1.5 text-xs"
-          />
-        </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search tasks, projects, clients…"
+          className="input !py-1.5 text-xs w-full sm:max-w-xs"
+        />
+        {/* Desktop: scrollable pills */}
+        <div className="hidden md:flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
           {tabCounts.map((tab) => (
             <button
               key={tab.key || "all"}
@@ -161,24 +166,120 @@ export default function SmmDashboard({
               }`}
             >
               {tab.label}
-              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
-                statusFilter === tab.key ? "bg-brand-300/20 text-brand-300" : "bg-white/10 text-slate-400"
-              }`}>
+              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${statusFilter === tab.key ? "bg-brand-300/20 text-brand-300" : "bg-white/10 text-slate-400"}`}>
                 {tab.count}
               </span>
             </button>
           ))}
         </div>
+        {/* Mobile: dropdown with filter icon */}
+        <div className="md:hidden relative">
+          <button
+            onClick={() => setFilterOpen((o) => !o)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-slate-300"
+          >
+            <Filter className="h-3.5 w-3.5 text-slate-400" />
+            <span>Filter: {TABS.find((f) => f.key === statusFilter)?.label || "All"}</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/10 text-[10px] text-slate-400">
+              {tabCounts.find((t) => t.key === statusFilter)?.count ?? tasks.length}
+            </span>
+            <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
+          </button>
+          {filterOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
+              <div className="absolute z-20 mt-2 w-56 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden">
+                {tabCounts.map((tab) => (
+                  <button
+                    key={tab.key || "all"}
+                    onClick={() => { setStatusFilter(tab.key); setFilterOpen(false); }}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                      statusFilter === tab.key ? "bg-brand-300/10 text-brand-300" : "text-slate-300 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${statusFilter === tab.key ? "bg-brand-300/20 text-brand-300" : "bg-white/10 text-slate-400"}`}>{tab.count}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="space-y-2.5">
-        {filtered.length === 0 && (
-          <div className="card py-8 text-center text-xs text-slate-500">
-            No tasks match your filters.
+      {filtered.length === 0 ? (
+        <div className="card py-8 text-center">
+          <p className="text-sm font-medium text-slate-300">
+            {tasks.length === 0 ? "No SMM tasks yet" : "No tasks match your search."}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">SMM tasks will appear here once projects are approved.</p>
+        </div>
+      ) : (
+        <>
+          {/* Desktop: unified clickable data table */}
+          <div className="hidden md:block card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse min-w-[880px]">
+                <thead className="sticky top-0 z-10">
+                  <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
+                    <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
+                    <th className="px-3 py-2.5 min-w-[160px]">Project</th>
+                    <th className="px-3 py-2.5 min-w-[200px]">Task</th>
+                    <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Platform</th>
+                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
+                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
+                    <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
+                    <th className="px-3 py-2.5 w-16">Stage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {filtered.map((t) => (
+                    <tr
+                      key={t.id}
+                      onClick={() => setOpenTask(t)}
+                      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
+                        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
+                          {formatClientName(t.client_company, t.client_name)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <PlatformBadges platforms={t.platforms} />
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <StatusBadge status={t.status} />
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <PriorityBadge priority={t.priority} />
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-xs tabular-nums text-slate-400">
+                          {t.due_date ? t.due_date.slice(0, 10) : "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">
+                        {(t.assignees || [])[(t.current_step ?? 0) % Math.max((t.assignees?.length || 1), 1)]?.name || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
-        {filtered.map((t) => card(t))}
-      </div>
+
+          {/* Mobile: touch-friendly stacked cards */}
+          <div className="md:hidden space-y-2.5">
+            {filtered.map((t) => mobileCard(t))}
+          </div>
+        </>
+      )}
 
       {openTask && (
         <TaskModal

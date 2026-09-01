@@ -43,8 +43,14 @@ function projectLink(clientId: string, projectId: string) {
   return `/projects/${clientId}?project=${projectId}`;
 }
 
-function taskLink(clientId: string, projectId: string, stepKey: string) {
-  return `/projects/${clientId}?project=${projectId}&task=${encodeURIComponent(stepKey)}`;
+/** Unified Project Pipeline deep link — auto-opens the TaskModal for a task. */
+function taskPipelineLink(taskId: string) {
+  return `/projects?taskId=${encodeURIComponent(taskId)}`;
+}
+
+/** Unified Employee Dashboard deep link — auto-opens the TaskModal for a task. */
+function taskDashboardLink(taskId: string) {
+  return `/dashboard?taskId=${encodeURIComponent(taskId)}`;
 }
 
 interface DeliverableInput {
@@ -227,7 +233,7 @@ export async function setTaskSequenceAction(taskId: string, memberIds: string[])
   await setTaskTeam(taskId, clean);
 
   const clientId = await getProjectClientId(t.project_id);
-  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
+  const link = taskDashboardLink(taskId);
   if (clean[0] !== session.sub) {
     await createNotification({
       userId: clean[0],
@@ -293,8 +299,7 @@ export async function markTaskCompleteAction(taskId: string) {
 
   await markTaskComplete(taskId);
 
-  const clientId = await getProjectClientId(t.project_id);
-  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
+  const link = taskPipelineLink(taskId);
   await notifyRoles(CAN_REVIEW_TASKS, {
     type: "task",
     title: "Task marked complete",
@@ -303,7 +308,6 @@ export async function markTaskCompleteAction(taskId: string) {
   });
   revalidatePath("/projects");
   revalidatePath("/dashboard");
-  if (clientId) revalidatePath(`/projects/${clientId}`);
   return { ok: true };
 }
 
@@ -399,7 +403,7 @@ export async function updateTaskStatusAction(taskId: string, status: string) {
         type: "task",
         title: status === "completed" ? "Task completed" : "Task ready for review",
         body: `${session.name} submitted a task for review.`,
-        link: taskLink(clientId, task.project_id, task.step_key),
+        link: taskPipelineLink(taskId),
       });
     }
   }
@@ -540,7 +544,7 @@ export async function submitTaskAction(taskId: string, content?: string | null) 
       type: "task",
       title: "Task ready for review",
       body: `${session.name} submitted "${task.title}" for review.`,
-      link: taskLink(clientId, task.project_id, task.step_key),
+      link: taskPipelineLink(taskId),
     });
   }
 
@@ -584,7 +588,7 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
 
   // Pre-fetch clientId for deep-linking notifications.
   const clientId = await getProjectClientId(task.project_id);
-  const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+  const taskDeepLink = taskDashboardLink(taskId);
 
   // ---------------- Unified sequential gate (-d-) ----------------
   if (task.step_key?.includes("_d_")) {
@@ -669,11 +673,10 @@ export async function reviewTaskAction(taskId: string, decision: "needs_improvem
       return { error: "Invalid review decision for this task." };
     }
 
-    revalidatePath("/projects");
-    revalidatePath("/dashboard");
-    if (clientId) revalidatePath(`/projects/${clientId}`);
-    return { ok: true };
-  }
+revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
   // ---------------- Legacy role-lane gate (non _d_) ----------------
 
   if (decision === "needs_improvement") {
@@ -804,7 +807,7 @@ export async function clientFeedbackAction(taskId: string, feedback: string) {
       [taskId, designer.user_id, designer.role_key || "DESIGNER", designer.position, feedback.trim()]
     );
     const clientId = await getProjectClientId(task.project_id);
-    const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+    const taskDeepLink = taskDashboardLink(taskId);
     await createNotification({
       userId: designer.user_id,
       type: "task",
@@ -827,7 +830,7 @@ export async function clientFeedbackAction(taskId: string, feedback: string) {
     : "the design team";
 
   const clientId = await getProjectClientId(task.project_id);
-  const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+  const taskDeepLink = taskDashboardLink(taskId);
 
   await notifyRoles(CAN_REVIEW, {
     type: "task",
@@ -852,7 +855,7 @@ export async function approveClientAction(taskId: string) {
   await query(`UPDATE tasks SET status = 'uploading', reviewed_at = now() WHERE id = $1`, [taskId]);
 
   const clientId = await getProjectClientId(task.project_id);
-  const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+  const taskDeepLink = taskDashboardLink(taskId);
 
   const creatorId = await getProjectCreatorId(task.project_id);
   if (creatorId) {
@@ -906,7 +909,7 @@ export async function completeTaskWithPlatformsAction(taskId: string, platforms:
   const creatorId = await getProjectCreatorId(task.project_id);
   if (creatorId) {
     const clientId = await getProjectClientId(task.project_id);
-    const taskDeepLink = clientId && task.step_key ? taskLink(clientId, task.project_id, task.step_key) : "/projects";
+    const taskDeepLink = taskDashboardLink(taskId);
     await createNotification({
       userId: creatorId,
       type: "task",
@@ -946,9 +949,7 @@ export async function setTaskAssigneeAction(taskId: string, assigneeId: string) 
       `SELECT title, project_id, step_key FROM tasks WHERE id = $1`, [taskId]
     );
     const clientId = taskRow[0] ? await getProjectClientId(taskRow[0].project_id) : null;
-    const taskDeepLink = clientId && taskRow[0]?.step_key
-      ? taskLink(clientId, taskRow[0].project_id, taskRow[0].step_key)
-      : "/projects";
+    const taskDeepLink = taskDashboardLink(taskId);
     await createNotification({
       userId: assigneeId,
       type: "task",
@@ -1010,9 +1011,7 @@ export async function removeTaskAssigneeAction(taskId: string, userId: string) {
       `SELECT title, project_id, step_key FROM tasks WHERE id = $1`, [taskId]
     );
     const clientId = taskRow[0] ? await getProjectClientId(taskRow[0].project_id) : null;
-    const taskDeepLink = clientId && taskRow[0]?.step_key
-      ? taskLink(clientId, taskRow[0].project_id, taskRow[0].step_key)
-      : "/projects";
+    const taskDeepLink = taskDashboardLink(taskId);
     await createNotification({
       userId,
       type: "task",
@@ -1116,9 +1115,7 @@ export async function updateTaskDueDateAction(taskId: string, date: string) {
   )[0];
   if (task?.assigned_to && task.assigned_to !== session.sub) {
     const clientId = await getProjectClientId(task.project_id);
-    const taskDeepLink = clientId && task.step_key
-      ? taskLink(clientId, task.project_id, task.step_key)
-      : "/projects";
+    const taskDeepLink = taskDashboardLink(taskId);
     await createNotification({
       userId: task.assigned_to,
       type: "task",
@@ -1332,7 +1329,7 @@ export async function submitWriterVideoDraftAction(taskId: string, title: string
       type: "task",
       title: "Task ready for review",
       body: `${session.name} submitted "${freshTitle}" for review.`,
-      link: taskLink(clientId, task.project_id, task.step_key),
+      link: taskPipelineLink(taskId),
     });
   }
   revalidatePath("/projects");

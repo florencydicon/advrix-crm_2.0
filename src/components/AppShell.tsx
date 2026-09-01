@@ -123,6 +123,8 @@ export default function AppShell({
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const awayAt = useRef<number | null>(null);
+  const unreadRef = useRef(unread);
+  unreadRef.current = unread;
 
   // PWA: register service worker + capture install prompt
   useEffect(() => {
@@ -170,16 +172,28 @@ export default function AppShell({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [notifOpen]);
 
-  // Cross-tab "Welcome Back" alert: modal popup for missed notifications.
+  // Escape also closes the "Missed Notifications" return-to-tab popup.
+  useEffect(() => {
+    if (missedToast <= 0) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMissedToast(0);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [missedToast]);
+
+  // Return-to-tab alert: if the user is away longer than 3 seconds and there are
+  // unread updates when they come back, pop the "Missed Notifications" modal.
   useEffect(() => {
     function onVisibility() {
       if (document.hidden) {
         awayAt.current = Date.now();
         return;
       }
-      const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 10000;
+      const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 3000;
       awayAt.current = null;
-      if (wasAway) {
+      if (wasAway && unreadRef.current > 0) {
+        setMissedToast(unreadRef.current);
         setRinging(true);
         setTimeout(() => setRinging(false), 6000);
       }
@@ -384,7 +398,7 @@ export default function AppShell({
             </p>
             <div className="flex gap-2">
               <button
-                onClick={() => { setNotifOpen(true); dismissMissedToast(); }}
+                onClick={() => { router.push("/updates"); dismissMissedToast(); }}
                 className="btn-primary flex-1 !py-2.5 text-sm"
               >
                 <Bell className="h-4 w-4" /> View Updates

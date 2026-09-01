@@ -12,14 +12,18 @@ import {
   Save,
   Users,
   Clock,
+  FileText,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 import {
   submitPipelineTaskAction,
   approvePipelineTaskAction,
   sendBackPipelineTaskAction,
   setPipelineTaskRemarksAction,
+  setPipelineTaskTitleAction,
+  setPipelineTaskContentAction,
   updatePipelineTaskTeamAction,
   getPipelineBoardAction,
 } from "@/lib/actions/pipeline";
@@ -38,6 +42,13 @@ function isManagerRole(roleKey?: string | null): boolean {
   if (!roleKey) return false;
   const r = roleKey.toUpperCase();
   return r === "SUPER_ADMIN" || r === "PROJECT_MANAGER" || r === "ADMIN" || r === "PM";
+}
+
+/** Content editors may rename the Task Title and edit the Content/Copy body. */
+function isContentEditor(roleKey?: string | null): boolean {
+  if (isManagerRole(roleKey)) return true;
+  const r = (roleKey || "").toUpperCase();
+  return r === "WRITER" || r === "CONTENT_WRITER";
 }
 
 function fmtTimeOnly(v?: string | null) {
@@ -65,10 +76,12 @@ function MarqueeHeading({ text }: { text: string }) {
 }
 
 /**
- * Ultra-lean unified Task Modal. Shared by the Project Pipeline and the
- * Employee Dashboard: the Task heading displays the remarks live (CSS marquee
- * when long, defaulting to the task name when empty), the Team Assignment
- * section highlights the current stage, and the actions are role-gated:
+ * Ultra-lean unified Task Modal. Shared by the Project Pipeline, the Employee
+ * Dashboard and the SMM Dashboard:
+ *  - Task Title input — renames the sub-task live (Content editors only).
+ *  - Content / Copy textarea — the draft work body (Content editors only).
+ *  - Remarks / Feedback textarea — free-form notes for every role (auto-saves).
+ * Actions are role-gated:
  *  - Employees can only "Submit for Review" (status → submitted, no advance).
  *  - Admin/PM gatekeepers can "Approve & Advance" (next team member) or
  *    "Send Back" (keep assignee, needs_improvement).
@@ -92,7 +105,10 @@ export default function TaskModal({
   onClose: () => void;
   refresh: () => Promise<void>;
 }) {
+  const { toast } = useToast();
   const [task, setTask] = useState<Task>(initialTask);
+  const [titleDraft, setTitleDraft] = useState(initialTask.title || "");
+  const [contentDraft, setContentDraft] = useState(initialTask.content || "");
   const [remarks, setRemarks] = useState(initialTask.remarks || "");
   const [editedBy, setEditedBy] = useState<{ name: string; role: string; at: string } | null>(
     initialTask.remarks_edited_by_name
@@ -108,15 +124,22 @@ export default function TaskModal({
   );
   const [teamOpen, setTeamOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const [toast, setToast] = useState<string | null>(null);
 
-  const notify = (msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 2600);
-  };
+  const taskRef = useRef(task);
+  taskRef.current = task;
+  const titleRef = useRef(titleDraft);
+  titleRef.current = titleDraft;
+  const contentRef = useRef(contentDraft);
+  contentRef.current = contentDraft;
+  const remarksRef = useRef(remarks);
+  remarksRef.current = remarks;
+
+  const canEditContent = canApprove || isContentEditor(roleKey) || isManagerRole(roleKey);
 
   const applyFresh = (fresh: Task) => {
     setTask(fresh);
+    setTitleDraft(fresh.title || "");
+    setContentDraft(fresh.content || "");
     setRemarks(fresh.remarks || "");
     setEditedBy(
       fresh.remarks_edited_by_name
@@ -130,11 +153,6 @@ export default function TaskModal({
     setTeamDraft((fresh.assignees || []).map((m) => m.id));
   };
 
-  const taskRef = useRef(task);
-  taskRef.current = task;
-  const remarksRef = useRef(remarks);
-  remarksRef.current = remarks;
-
   const persistRemarks = useCallback(
     async (silent: boolean) => {
       const res = await setPipelineTaskRemarksAction(
@@ -147,19 +165,63 @@ export default function TaskModal({
           role: res.editedByRole || "",
           at: res.editedAt || new Date().toISOString(),
         });
-        if (!silent) notify("Remarks saved.");
+        if (!silent) toast("Remarks saved.");
       } else {
-        notify(res.error || "Could not save remarks.");
+        toast(res.error || "Could not save remarks.", "error");
       }
     },
-    [notify]
+    [toast]
   );
 
-  // Auto-save ~1 second after the user stops typing.
+  const persistTitle = useCallback(
+    async (silent: boolean) => {
+      const next = titleRef.current.trim();
+      if (!next || next === taskRef.current.title) return;
+      const res = await setPipelineTaskTitleAction(taskRef.current.id, next);
+      if (res.ok && res.title) {
+        setTask((prev) => ({ ...prev, title: res.title || prev.title }));
+        if (!silent) toast("Task title updated.");
+      } else {
+        toast(res.error || "Could not save the title.", "error");
+      }
+    },
+    [toast]
+  );
+
+  const persistContent = useCallback(
+    async (silent: boolean) => {
+      if (contentRef.current === taskRef.current.content) return;
+      const res = await setPipelineTaskContentAction(
+        taskRef.current.id,
+        contentRef.current
+      );
+      if (res.ok) {
+        setTask((prev) => ({ ...prev, content: contentRef.current }));
+        if (!silent) toast("Content saved.");
+      } else {
+        toast(res.error || "Could not save the content.", "error");
+      }
+    },
+    [toast]
+  );
+
+  // Auto-save ~1 second after the user stops typing (remarks always, title & content for editors).
   useEffect(() => {
     const t = window.setTimeout(() => persistRemarks(true), 1000);
     return () => window.clearTimeout(t);
   }, [remarks, persistRemarks]);
+
+  useEffect(() => {
+    if (!canEditContent) return;
+    const t = window.setTimeout(() => persistTitle(true), 1000);
+    return () => window.clearTimeout(t);
+  }, [titleDraft, canEditContent, persistTitle]);
+
+  useEffect(() => {
+    if (!canEditContent) return;
+    const t = window.setTimeout(() => persistContent(true), 1000);
+    return () => window.clearTimeout(t);
+  }, [contentDraft, canEditContent, persistContent]);
 
   // Close the modal on the Escape key (global). Cleanup removes the listener.
   useEffect(() => {
@@ -170,7 +232,15 @@ export default function TaskModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const saveText = () => persistRemarks(false);
+  const saveAll = () => {
+    startTransition(async () => {
+      if (canEditContent) {
+        await persistTitle(false);
+        await persistContent(false);
+      }
+      await persistRemarks(false);
+    });
+  };
 
   const toggleMember = (id: string) => {
     setTeamDraft((prev) =>
@@ -182,10 +252,10 @@ export default function TaskModal({
     startTransition(async () => {
       const res = await updatePipelineTaskTeamAction(task.id, teamDraft);
       if (!res.ok) {
-        notify(res.error || "Could not update team.");
+        toast(res.error || "Could not update team.", "error");
         return;
       }
-      notify("Team updated.");
+      toast("Team updated.");
       await refresh();
       const fresh = (await getPipelineBoardAction()).active.find(
         (t) => t.id === task.id
@@ -205,7 +275,7 @@ export default function TaskModal({
         remarksRef.current
       );
       if (!res.ok) {
-        notify(res.error || "Could not send back.");
+        toast(res.error || "Could not send back.", "error");
         return;
       }
       await refresh();
@@ -213,7 +283,7 @@ export default function TaskModal({
         (t) => t.id === task.id
       );
       if (fresh) applyFresh(fresh);
-      notify("Sent back for rework.");
+      toast("Sent back for rework.");
     });
   };
 
@@ -225,7 +295,7 @@ export default function TaskModal({
       await persistRemarks(true);
       const res = await submitPipelineTaskAction(task.id, remarksRef.current);
       if (!res.ok) {
-        notify(res.error || "Could not submit.");
+        toast(res.error || "Could not submit.", "error");
         return;
       }
       await refresh();
@@ -233,7 +303,7 @@ export default function TaskModal({
         (t) => t.id === task.id
       );
       if (fresh) applyFresh(fresh);
-      notify("Submitted for QC review.");
+      toast("Submitted for QC review.");
     });
   };
 
@@ -245,16 +315,16 @@ export default function TaskModal({
       await persistRemarks(true);
       const res = await approvePipelineTaskAction(task.id);
       if (!res.ok) {
-        notify(res.error || "Could not approve.");
+        toast(res.error || "Could not approve.", "error");
         return;
       }
       await refresh();
-      notify("Advanced to the next stage.");
+      toast("Advanced to the next stage.");
       onClose();
     });
   };
 
-  const heading = remarks.trim() ? remarks.trim() : task.title;
+  const heading = titleDraft.trim() || task.title || "Untitled task";
   const isGatekeeper = canApprove || isManagerRole(roleKey);
   const isSubmitted = task.status === "submitted";
   const step = task.current_step ?? 0;
@@ -272,22 +342,15 @@ export default function TaskModal({
             : "modal-pop rounded-2xl border max-w-lg md:max-h-[85vh]"
         }`}
       >
-        {toast && (
-          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] rounded-lg border border-brand-300/40 bg-night-850 px-4 py-2 text-sm text-white shadow-xl">
-            {toast}
-          </div>
-        )}
-
         {/* Sticky header with back/close */}
         <div className="sticky top-0 z-10 bg-night-850/95 backdrop-blur px-4 py-3 border-b border-white/10 flex items-center gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center gap-1.5 btn-ghost !px-2.5 !py-2 text-sm shrink-0"
+            className="flex items-center gap-1.5 btn-ghost !px-2.5 !py-2 text-sm shrink-0 hidden md:flex"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
-            <span className="md:hidden font-medium">Back</span>
           </button>
           <div className="flex-1 min-w-0">
             <div className="text-xs text-slate-400 mb-0.5">
@@ -304,6 +367,88 @@ export default function TaskModal({
         </div>
 
         <div className="p-4 space-y-5 overflow-y-auto">
+          {/* ---- Task Title (editable by content editors) ---- */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-brand-300" /> Task Title
+            </p>
+            {canEditContent ? (
+              <input
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={() => persistTitle(true)}
+                placeholder="Task title…"
+                className="input !py-2.5 text-sm w-full"
+              />
+            ) : (
+              <p className="text-sm text-slate-200 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 break-words">
+                {titleDraft || "Untitled task"}
+              </p>
+            )}
+          </section>
+
+          {/* ---- Content / Copy (editable by content editors) ---- */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Content / Copy
+            </p>
+            {canEditContent ? (
+              <textarea
+                value={contentDraft}
+                onChange={(e) => setContentDraft(e.target.value)}
+                onBlur={() => persistContent(true)}
+                rows={4}
+                placeholder="Draft the content / copy for this task…"
+                className="input !py-2.5 text-sm resize-none"
+              />
+            ) : contentDraft ? (
+              <p className="text-sm text-slate-300 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 whitespace-pre-wrap break-words">
+                {contentDraft}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">No content written yet.</p>
+            )}
+          </section>
+
+          {/* ---- Remarks / Feedback (every role) ---- */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Remarks / Feedback
+            </p>
+            <textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              onBlur={() => persistRemarks(true)}
+              rows={3}
+              placeholder="Notes, feedback or handoff context… auto-saves as you type."
+              className="input !py-2.5 text-sm resize-none"
+            />
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-400 min-w-0 truncate">
+                {editedBy ? (
+                  <>
+                    Last updated by:{" "}
+                    <span className="text-slate-200 font-medium">
+                      {editedBy.name.split(" ")[0] || editedBy.name}
+                    </span>{" "}
+                    ({editedBy.role}) at{" "}
+                    <span className="text-slate-300">{fmtTimeOnly(editedBy.at)}</span>
+                  </>
+                ) : (
+                  <>Auto-saves as you type</>
+                )}
+              </p>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={saveAll}
+                className="btn-ghost !px-2.5 !py-1.5 text-xs shrink-0"
+              >
+                <Save className="h-3.5 w-3.5" /> Save All
+              </button>
+            </div>
+          </section>
+
           {/* ---- Team Assignment + Current Stage ---- */}
           <section>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
@@ -434,45 +579,6 @@ export default function TaskModal({
             )}
           </section>
 
-          {/* ---- Remarks / Content ---- */}
-          <section>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              Remarks / Content
-            </p>
-            <textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              onBlur={() => persistRemarks(true)}
-              rows={3}
-              placeholder="Type content or remarks here… the task heading above updates live."
-              className="input !py-2.5 text-sm resize-none"
-            />
-            <div className="mt-1.5 flex items-center justify-between gap-2">
-              <p className="text-xs text-slate-400 min-w-0 truncate">
-                {editedBy ? (
-                  <>
-                    Last updated by:{" "}
-                    <span className="text-slate-200 font-medium">
-                      {editedBy.name.split(" ")[0] || editedBy.name}
-                    </span>{" "}
-                    ({editedBy.role}) at{" "}
-                    <span className="text-slate-300">{fmtTimeOnly(editedBy.at)}</span>
-                  </>
-                ) : (
-                  <>Auto-saves as you type</>
-                )}
-              </p>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={saveText}
-                className="btn-ghost !px-2.5 !py-1.5 text-xs shrink-0"
-              >
-                <Save className="h-3.5 w-3.5" /> Save Text
-              </button>
-            </div>
-          </section>
-
           {/* ---- Actions: Gatekeeper vs Employee ---- */}
           <section className="space-y-2.5">
             {isGatekeeper ? (
@@ -541,6 +647,18 @@ export default function TaskModal({
           </section>
         </div>
       </div>
+
+      {/* Mobile FAB — bottom-right close on small screens, desktop uses the header × */}
+      {isMobile && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="fixed bottom-4 right-4 z-[70] md:hidden rounded-full shadow-lg shadow-black/50 ring-1 ring-white/20 bg-gray-800 flex items-center justify-center h-14 w-14 hover:bg-gray-700 transition-colors"
+        >
+          <X className="h-6 w-6 text-white" />
+        </button>
+      )}
     </div>
   );
 }
