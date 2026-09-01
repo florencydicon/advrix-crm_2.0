@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import {
   Layers,
   History,
@@ -10,6 +10,8 @@ import {
   ChevronRight,
   CalendarDays,
   ArrowRight,
+  Search,
+  X,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
@@ -43,6 +45,8 @@ function fmtDateTime(v?: string | null) {
   return `${d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} · ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+const clientName = (t: Task) => t.client_company || t.client_name || "";
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
   useEffect(() => {
@@ -53,6 +57,57 @@ function useIsMobile() {
     return () => mq.removeEventListener("change", h);
   }, []);
   return mobile;
+}
+
+/** "QC Review" pill shown on rows/cards whose task is awaiting gatekeeper approval. */
+function QcPill() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-300/50 bg-violet-400/10 px-2 py-0.5 text-[10px] font-semibold text-violet-300">
+      <Check className="h-3 w-3" /> QC Review
+    </span>
+  );
+}
+
+/** Dark-mode client filter: search input + datalist suggestions + clear button. */
+function ClientFilterInput({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  const listId = useId();
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+      <input
+        type="text"
+        list={listId}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Filter by Client…"
+        aria-label="Filter by client"
+        className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pl-9 pr-8 text-sm text-white placeholder:text-slate-500 transition-colors focus:border-brand-300/50 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Clear client filter"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-slate-300"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+      <datalist id={listId}>
+        {options.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
+    </div>
+  );
 }
 
 export default function ProjectPipeline({
@@ -73,6 +128,9 @@ export default function ProjectPipeline({
   // Audit log modal (completed task in History)
   const [historyTask, setHistoryTask] = useState<Task | null>(null);
 
+  // Client filter (client-side, instant)
+  const [clientFilter, setClientFilter] = useState("");
+
   const isMobile = useIsMobile();
 
   const notify = (msg: string) => {
@@ -89,9 +147,35 @@ export default function ProjectPipeline({
   const completedCount = board.completed.length;
 
   const sortedActive = useMemo(
-    () => [...board.active].sort((a, b) => (a.created_at < b.created_at ? -1 : 1)),
+    () =>
+      [...board.active].sort((a, b) => {
+        // Tasks awaiting QC review float to the top so the gatekeeper sees them.
+        if (a.status === "submitted" && b.status !== "submitted") return -1;
+        if (b.status === "submitted" && a.status !== "submitted") return 1;
+        return a.created_at < b.created_at ? -1 : 1;
+      }),
     [board.active]
   );
+
+  const clientOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const t of [...board.active, ...board.completed]) {
+      const n = clientName(t).trim();
+      if (n) names.add(n);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board.active, board.completed]);
+
+  const { filteredActive, filteredCompleted } = useMemo(() => {
+    const q = clientFilter.trim().toLowerCase();
+    if (!q) return { filteredActive: sortedActive, filteredCompleted: board.completed };
+    const match = (t: Task) => clientName(t).toLowerCase().includes(q);
+    return {
+      filteredActive: sortedActive.filter(match),
+      filteredCompleted: board.completed.filter(match),
+    };
+  }, [sortedActive, board.completed, clientFilter]);
 
   const stageLabel = (task: Task) => {
     if (task.status === "completed") return "Completed";
@@ -119,16 +203,23 @@ export default function ProjectPipeline({
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.06]">
-            {sortedActive.map((t) => (
+            {filteredActive.map((t) => (
               <tr
                 key={t.id}
                 onClick={() => setActiveTask(t)}
-                className="hover:bg-white/[0.04] transition-colors cursor-pointer"
+                className={`transition-colors cursor-pointer ${
+                  t.status === "submitted"
+                    ? "bg-violet-400/[0.07] hover:bg-violet-400/[0.12]"
+                    : "hover:bg-white/[0.04]"
+                }`}
               >
                 <td className="px-4 py-3 text-xs text-slate-300">{t.client_company || t.client_name}</td>
                 <td className="px-4 py-3 text-xs text-slate-300">{t.project_name}</td>
                 <td className="px-4 py-3">
-                  <div className="max-w-[280px] truncate text-sm font-medium text-white">{t.title}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="max-w-[260px] truncate text-sm font-medium text-white">{t.title}</div>
+                    {t.status === "submitted" && <QcPill />}
+                  </div>
                 </td>
                 <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                 <td className="px-4 py-3"><PriorityBadge priority={t.priority} /></td>
@@ -159,7 +250,7 @@ export default function ProjectPipeline({
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.06]">
-            {board.completed.map((t) => (
+            {filteredCompleted.map((t) => (
               <tr
                 key={t.id}
                 onClick={() => setHistoryTask(t)}
@@ -215,7 +306,11 @@ export default function ProjectPipeline({
       type="button"
       key={t.id}
       onClick={() => (isHistory ? setHistoryTask(t) : setActiveTask(t))}
-      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors"
+      className={`w-full text-left rounded-xl border p-3.5 transition-colors ${
+        t.status === "submitted"
+          ? "border-violet-300/40 bg-violet-400/[0.08]"
+          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -225,6 +320,7 @@ export default function ProjectPipeline({
         <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
       </div>
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+        {t.status === "submitted" && <QcPill />}
         <StatusBadge status={t.status} />
         <PriorityBadge priority={t.priority} />
         <span className="inline-flex items-center gap-1 text-xs text-slate-400 ml-auto">
@@ -246,13 +342,13 @@ export default function ProjectPipeline({
 
   const activeMobile = (
     <div className="space-y-2.5">
-      {sortedActive.map((t) => mobileCard(t, false))}
+      {filteredActive.map((t) => mobileCard(t, false))}
     </div>
   );
 
   const historyMobile = (
     <div className="space-y-2.5">
-      {board.completed.map((t) => mobileCard(t, true))}
+      {filteredCompleted.map((t) => mobileCard(t, true))}
     </div>
   );
 
@@ -356,45 +452,65 @@ export default function ProjectPipeline({
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 mb-4 shrink-0">
-        <button
-          type="button"
-          onClick={() => setTab("active")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-            tab === "active"
-              ? "bg-brand-300 text-night-950"
-              : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
-          }`}
-        >
-          <Layers className="h-4 w-4" />
-          Active Board
-          <span className={`text-xs font-semibold ${tab === "active" ? "text-night-900" : "text-slate-500"}`}>
-            {activeCount}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("history")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-            tab === "history"
-              ? "bg-brand-300 text-night-950"
-              : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
-          }`}
-        >
-          <History className="h-4 w-4" />
-          History
-          <span className={`text-xs font-semibold ${tab === "history" ? "text-night-900" : "text-slate-500"}`}>
-            {completedCount}
-          </span>
-        </button>
-      </div>
+      {/* Tabs + Client filter */}
+      <div className="mb-4 shrink-0">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setTab("active")}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              tab === "active"
+                ? "bg-brand-300 text-night-950"
+                : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            Active Board
+            <span className={`text-xs font-semibold ${tab === "active" ? "text-night-900" : "text-slate-500"}`}>
+              {activeCount}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("history")}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              tab === "history"
+                ? "bg-brand-300 text-night-950"
+                : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
+            }`}
+          >
+            <History className="h-4 w-4" />
+            History
+            <span className={`text-xs font-semibold ${tab === "history" ? "text-night-900" : "text-slate-500"}`}>
+              {completedCount}
+            </span>
+          </button>
 
-      {/* Legend */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 shrink-0">
-        <span className="inline-flex items-center gap-1"><ArrowRight className="h-3 w-3 text-brand-300" /> A → B → C sequence</span>
-        <span className="inline-flex items-center gap-1"><Check className="h-3 w-3 text-emerald-300" /> Complete auto-assigns next stage</span>
-        <span className="inline-flex items-center gap-1"><Undo2 className="h-3 w-3 text-rose-300" /> Send Back moves a stage backward</span>
+          {/* Desktop: filter aligned right of tabs */}
+          <div className="ml-auto hidden md:block w-56">
+            <ClientFilterInput
+              value={clientFilter}
+              onChange={setClientFilter}
+              options={clientOptions}
+            />
+          </div>
+        </div>
+
+        {/* Mobile: full-width filter below tabs */}
+        <div className="mt-2 md:hidden">
+          <ClientFilterInput
+            value={clientFilter}
+            onChange={setClientFilter}
+            options={clientOptions}
+          />
+        </div>
+
+        {/* Legend */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+          <span className="inline-flex items-center gap-1"><ArrowRight className="h-3 w-3 text-brand-300" /> A → B → C sequence</span>
+          <span className="inline-flex items-center gap-1"><Check className="h-3 w-3 text-emerald-300" /> Complete auto-assigns next stage</span>
+          <span className="inline-flex items-center gap-1"><Undo2 className="h-3 w-3 text-rose-300" /> Send Back moves a stage backward</span>
+        </div>
       </div>
 
       {tab === "active" ? (
@@ -404,6 +520,12 @@ export default function ProjectPipeline({
               <Layers className="h-10 w-10 text-brand-300/40 mb-3" />
               <p className="font-medium text-slate-200">No active tasks</p>
               <p className="text-sm text-slate-500 mt-1">Everything is complete or assigned elsewhere.</p>
+            </div>
+          ) : filteredActive.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <Search className="h-10 w-10 text-brand-300/40 mb-3" />
+              <p className="font-medium text-slate-200">No active tasks match “{clientFilter.trim()}”</p>
+              <p className="text-sm text-slate-500 mt-1">Try a different client name.</p>
             </div>
           ) : (
             <>
@@ -419,6 +541,12 @@ export default function ProjectPipeline({
               <History className="h-10 w-10 text-brand-300/40 mb-3" />
               <p className="font-medium text-slate-200">No completed tasks yet</p>
               <p className="text-sm text-slate-500 mt-1">Tasks you complete on the Active Board land here.</p>
+            </div>
+          ) : filteredCompleted.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <Search className="h-10 w-10 text-brand-300/40 mb-3" />
+              <p className="font-medium text-slate-200">No completed tasks match “{clientFilter.trim()}”</p>
+              <p className="text-sm text-slate-500 mt-1">Try a different client name.</p>
             </div>
           ) : (
             <>
@@ -436,6 +564,8 @@ export default function ProjectPipeline({
           team={team}
           isMobile={isMobile}
           canManageTeam={board.canManage}
+          canApprove={board.canApprove}
+          roleKey={board.roleKey}
           onClose={() => setActiveTask(null)}
           refresh={reload}
         />

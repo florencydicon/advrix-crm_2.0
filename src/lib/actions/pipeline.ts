@@ -5,18 +5,21 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import type { Task, TaskStatus } from "@/lib/types";
-import { advanceTaskStep, markTaskComplete, stepTaskBack, reopenTask, setTaskTeam } from "@/lib/workflow";
+import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam } from "@/lib/workflow";
 import { sanitizeRich, richToPlain } from "@/lib/rich";
 
 const PERM_PROJECTS_VIEW = "projects:view";
 const PERM_PROJECTS_MANAGE = "projects:manage";
 const PERM_TASKS_MANAGE = "tasks:manage";
+const PERM_TASKS_REVIEW = "tasks:review";
 
 export interface PipelineBoardPayload {
   active: Task[];
   completed: Task[];
   canManage: boolean;
   canReopen: boolean;
+  canApprove: boolean;
+  roleKey: string | null;
   userId: string | null;
   isBroad: boolean;
 }
@@ -71,13 +74,14 @@ const PIPELINE_TASK_SELECT = `
  */
 export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const session = await getSession();
-  if (!session) return { active: [], completed: [], canManage: false, canReopen: false, userId: null, isBroad: false };
+  if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
 
   const perms = session.permissions || [];
   const isBroad =
     perms.includes("admin:*") ||
     (hasPermission(perms, PERM_PROJECTS_VIEW) && hasPermission(perms, PERM_PROJECTS_MANAGE));
   const canManage = hasPermission(perms, PERM_TASKS_MANAGE);
+  const canApprove = hasPermission(perms, PERM_TASKS_MANAGE) || hasPermission(perms, PERM_TASKS_REVIEW);
   const canReopen = perms.includes("admin:*");
   const scope = isBroad
     ? ""
@@ -96,7 +100,7 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
     else active.push(r);
   }
 
-  return { active, completed, canManage, canReopen, userId: session.sub, isBroad };
+  return { active, completed, canManage, canReopen, canApprove, roleKey: session.role_key, userId: session.sub, isBroad };
 }
 
 async function requireAuth() {
@@ -114,27 +118,64 @@ async function taskOf(taskId: string) {
   return t || null;
 }
 
+/** QC Gatekeeper — only Admins/PMs (tasks:manage or tasks:review) may approve or reject work. */
+function isGatekeeper(session: { permissions?: string[] } | null): boolean {
+  return (
+    !!session &&
+    (hasPermission(session.permissions, PERM_TASKS_MANAGE) ||
+      hasPermission(session.permissions, PERM_TASKS_REVIEW))
+  );
+}
+
 function revalidate() {
   revalidatePath("/projects");
 }
 
 /**
- * Complete — advances the active task down the predefined sequence (A→B→C),
- * auto-assigning the next member, or completing the task when it reaches the
- * end of its sequence (which then moves it to History).
+ * Submit for Review (Employee) — flags the task as `submitted` for the QC
+ * gatekeeper. It does NOT advance the stageIndex or change the assignee: the
+ * task stays with the employee until an Admin/PM approves or rejects it.
  */
-export async function completePipelineTaskAction(
-  taskId: string
+export async function submitPipelineTaskAction(
+  taskId: string,
+  remarks?: string
 ): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
   const task = await taskOf(taskId);
   if (!task) return { ok: false, error: "Task not found." };
   if (task.status === "completed") return { ok: false, error: "Task is already completed." };
+  if (task.status === "submitted") return { ok: false, error: "Already submitted for review." };
   const isAssignee = task.assigned_to === session.sub;
   if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
     return { ok: false, error: "Not authorized." };
   }
+  // Persist the final remark text into the Remarks/Content box the QC sees.
+  const html = sanitizeRich(String(remarks ?? ""));
+  await query(
+    `UPDATE tasks SET remarks = $1, remarks_edited_by = $2, remarks_edited_at = now(),
+     status = 'submitted', reviewed_at = NULL
+     WHERE id = $3`,
+    [html, session.sub, taskId]
+  );
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Approve & Advance (Admin/PM gatekeeper) — the ONLY action that pushes a task
+ * down its sequence (A→B→C): marks the current stage approved, auto-assigns the
+ * next member with status `approved`, or completes the task after the final stage.
+ */
+export async function approvePipelineTaskAction(
+  taskId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isGatekeeper(session)) return { ok: false, error: "Only Admins / PMs can approve work." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  if (task.status === "completed") return { ok: false, error: "Task is already completed." };
   const next = await advanceTaskStep(taskId);
   if (next === null) {
     // Reached the end of the sequence — mark fully complete.
@@ -145,14 +186,13 @@ export async function completePipelineTaskAction(
 }
 
 /**
- * Send Back — pushes an active task one step backward along its sequence and
- * re-assigns the previous member for rework. Only the current assignee or a
- * manager may trigger it.
+ * Send Back (Admin/PM gatekeeper) — rejects the submitted work. Keeps the
+ * current assignee on the task and flips the status to `needs_improvement` for
+ * rework, WITHOUT changing the stageIndex or moving the sequence backward.
  *
- * When a manager/PM sends a stage back, the current Remarks/Content text is
- * prepended with the author's signature — `[Feedback by {FirstName} - {Role}]`
- * — and any prior remarks are preserved below, so the previous assignee always
- * knows who requested the fix and what to do.
+ * The current Remarks/Content text is prepended with the author's signature —
+ * `[Feedback by {FirstName} - {Role}]` — and any prior remarks are preserved
+ * below, so the assignee always knows who requested the fix and what to do.
  */
 export async function sendBackPipelineTaskAction(
   taskId: string,
@@ -160,13 +200,10 @@ export async function sendBackPipelineTaskAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
+  if (!isGatekeeper(session)) return { ok: false, error: "Only Admins / PMs can reject work." };
   const task = await taskOf(taskId);
   if (!task) return { ok: false, error: "Task not found." };
   if (task.status === "completed") return { ok: false, error: "Completed tasks live in History." };
-  const isAssignee = task.assigned_to === session.sub;
-  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
-    return { ok: false, error: "Not authorized." };
-  }
 
   // Compose the signed feedback and persist it into the Remarks/Content box.
   const firstName = (session.name || "User").split(" ")[0] || "User";
@@ -187,12 +224,12 @@ export async function sendBackPipelineTaskAction(
   const newRemarks = `${signature}: ${share}` + (appendPrevious ? `\n\n${existing}` : "");
 
   await query(
-    `UPDATE tasks SET remarks = $1, remarks_edited_by = $2, remarks_edited_at = now()
+    `UPDATE tasks SET remarks = $1, remarks_edited_by = $2, remarks_edited_at = now(),
+     status = 'needs_improvement', reviewed_at = now()
      WHERE id = $3`,
     [newRemarks, session.sub, taskId]
   );
 
-  await stepTaskBack(taskId);
   revalidate();
   return { ok: true };
 }
@@ -288,31 +325,6 @@ export async function updatePipelineTaskTeamAction(
   if (!task) return { ok: false, error: "Task not found." };
   if (Array.isArray(memberIds) && memberIds.length > 0) {
     await setTaskTeam(taskId, memberIds);
-  }
-  revalidate();
-  return { ok: true };
-}
-
-/**
- * Ultra-lean Review Action — advances the task one stage: approves the current
- * member's contribution and auto-assigns the next member in sequence, or marks
- * the task complete when the final stage is reviewed.
- */
-export async function reviewPipelineTaskAction(
-  taskId: string
-): Promise<{ ok: boolean; error?: string }> {
-  const session = await requireAuth();
-  if (!session) return { ok: false, error: "Not authorized." };
-  const task = await taskOf(taskId);
-  if (!task) return { ok: false, error: "Task not found." };
-  if (task.status === "completed") return { ok: false, error: "Task is already completed." };
-  const isAssignee = task.assigned_to === session.sub;
-  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
-    return { ok: false, error: "Not authorized." };
-  }
-  const next = await advanceTaskStep(taskId);
-  if (next === null) {
-    await markTaskComplete(taskId);
   }
   revalidate();
   return { ok: true };

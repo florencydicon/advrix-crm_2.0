@@ -34,11 +34,13 @@ export default function SmmDashboard({
   tasks,
   team,
   userId,
+  roleKey,
   permissions,
 }: {
   tasks: Task[];
   team: UserRow[];
   userId: string;
+  roleKey: string;
   permissions?: string[];
 }) {
   const router = useRouter();
@@ -47,6 +49,8 @@ export default function SmmDashboard({
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const isMobile = useIsMobile();
   const canManageTeam = hasPermission(permissions, "tasks:manage");
+  const canApprove =
+    canManageTeam || hasPermission(permissions, "tasks:review");
 
   const metrics = [
     { label: "Ready to Start", value: tasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
@@ -121,7 +125,7 @@ export default function SmmDashboard({
   );
 
   return (
-    <div className="space-y-3">
+    <div className="w-full max-w-none space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         {metrics.map((m) => (
           <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>
@@ -183,6 +187,8 @@ export default function SmmDashboard({
           team={team}
           isMobile={isMobile}
           canManageTeam={canManageTeam}
+          canApprove={canApprove}
+          roleKey={roleKey}
           onClose={() => setOpenTask(null)}
           refresh={refresh}
         />

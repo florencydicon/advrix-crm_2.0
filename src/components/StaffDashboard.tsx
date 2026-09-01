@@ -45,6 +45,8 @@ export default function StaffDashboard({
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const isMobile = useIsMobile();
   const canManageTeam = hasPermission(permissions, "tasks:manage");
+  const canApprove =
+    canManageTeam || hasPermission(permissions, "tasks:review");
   const router = useRouter();
 
   const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "uploading", "approved"];
@@ -121,7 +123,7 @@ export default function StaffDashboard({
   );
 
   return (
-    <div className="space-y-3">
+    <div className="w-full max-w-none space-y-3">
       <div className="grid grid-cols-3 gap-2 md:gap-3">
         {metrics.map((m) => (
           <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>
@@ -279,6 +281,8 @@ export default function StaffDashboard({
           team={team}
           isMobile={isMobile}
           canManageTeam={canManageTeam}
+          canApprove={canApprove}
+          roleKey={roleKey}
           onClose={() => setOpenTask(null)}
           refresh={refresh}
         />

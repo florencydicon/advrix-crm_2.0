@@ -28,7 +28,7 @@ export default async function DashboardPage() {
     const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
     const open = tasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
-      <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
+      <div className="w-full max-w-none space-y-4 md:space-y-6">
         <div className="rounded-2xl bg-gradient-to-br from-brand-300 to-brand-500 p-5 md:p-6 text-night-950 shadow-lg shadow-brand-300/20">
           <div className="flex items-center gap-2 text-night-950/70">
             <Sparkles className="h-4 w-4" />
@@ -42,7 +42,7 @@ export default async function DashboardPage() {
           </p>
         </div>
         {session.role_key === "SMM" ? (
-          <SmmDashboard tasks={tasks} team={team} userId={session.sub} permissions={session.permissions} />
+          <SmmDashboard tasks={tasks} team={team} userId={session.sub} roleKey={session.role_key} permissions={session.permissions} />
         ) : (
           <StaffDashboard tasks={tasks} team={team} roleKey={session.role_key} userId={session.sub} permissions={session.permissions} />
         )}

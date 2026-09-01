@@ -11,11 +11,13 @@ import {
   Plus,
   Save,
   Users,
+  Clock,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
 import {
-  completePipelineTaskAction,
+  submitPipelineTaskAction,
+  approvePipelineTaskAction,
   sendBackPipelineTaskAction,
   setPipelineTaskRemarksAction,
   updatePipelineTaskTeamAction,
@@ -29,6 +31,13 @@ function initials(name?: string | null) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+/** Admin/PM/Super-Admin-like roles act as gatekeepers and Approve & Advance. */
+function isManagerRole(roleKey?: string | null): boolean {
+  if (!roleKey) return false;
+  const r = roleKey.toUpperCase();
+  return r === "SUPER_ADMIN" || r === "PROJECT_MANAGER" || r === "ADMIN" || r === "PM";
 }
 
 function fmtTimeOnly(v?: string | null) {
@@ -59,14 +68,18 @@ function MarqueeHeading({ text }: { text: string }) {
  * Ultra-lean unified Task Modal. Shared by the Project Pipeline and the
  * Employee Dashboard: the Task heading displays the remarks live (CSS marquee
  * when long, defaulting to the task name when empty), the Team Assignment
- * section highlights the current stage, and only "Complete" (forward) and
- * "Send Back" (backward) remain — there is no Review action.
+ * section highlights the current stage, and the actions are role-gated:
+ *  - Employees can only "Submit for Review" (status → submitted, no advance).
+ *  - Admin/PM gatekeepers can "Approve & Advance" (next team member) or
+ *    "Send Back" (keep assignee, needs_improvement).
  */
 export default function TaskModal({
   task: initialTask,
   team,
   isMobile,
   canManageTeam,
+  canApprove,
+  roleKey,
   onClose,
   refresh,
 }: {
@@ -74,6 +87,8 @@ export default function TaskModal({
   team: UserRow[];
   isMobile: boolean;
   canManageTeam: boolean;
+  canApprove: boolean;
+  roleKey?: string | null;
   onClose: () => void;
   refresh: () => Promise<void>;
 }) {
@@ -98,6 +113,21 @@ export default function TaskModal({
   const notify = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
+  };
+
+  const applyFresh = (fresh: Task) => {
+    setTask(fresh);
+    setRemarks(fresh.remarks || "");
+    setEditedBy(
+      fresh.remarks_edited_by_name
+        ? {
+            name: fresh.remarks_edited_by_name,
+            role: fresh.remarks_edited_by_role || "",
+            at: fresh.remarks_edited_at || "",
+          }
+        : null
+    );
+    setTeamDraft((fresh.assignees || []).map((m) => m.id));
   };
 
   const taskRef = useRef(task);
@@ -131,6 +161,15 @@ export default function TaskModal({
     return () => window.clearTimeout(t);
   }, [remarks, persistRemarks]);
 
+  // Close the modal on the Escape key (global). Cleanup removes the listener.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   const saveText = () => persistRemarks(false);
 
   const toggleMember = (id: string) => {
@@ -156,8 +195,9 @@ export default function TaskModal({
     });
   };
 
-  // Send Back: persist current remarks to the server (which prepends the
-  // author signature), re-sync the fresh task, and refresh the parent board.
+  // Send Back (Admin/PM): reject the submitted work — keeps the current assignee,
+  // flags `needs_improvement`, and prepends the signed feedback to the remarks.
+  // Then re-sync the fresh task and refresh the parent board.
   const sendBack = () => {
     startTransition(async () => {
       const res = await sendBackPipelineTaskAction(
@@ -172,40 +212,51 @@ export default function TaskModal({
       const fresh = (await getPipelineBoardAction()).active.find(
         (t) => t.id === task.id
       );
-      if (fresh) {
-        setTask(fresh);
-        setRemarks(fresh.remarks || "");
-        setEditedBy(
-          fresh.remarks_edited_by_name
-            ? {
-                name: fresh.remarks_edited_by_name,
-                role: fresh.remarks_edited_by_role || "",
-                at: fresh.remarks_edited_at || "",
-              }
-            : null
-        );
-        setTeamDraft((fresh.assignees || []).map((m) => m.id));
-      }
-      notify("Sent back a stage.");
+      if (fresh) applyFresh(fresh);
+      notify("Sent back for rework.");
     });
   };
 
-  // Complete: persist remarks first, then advance/complete and close.
-  const complete = () => {
+  // Submit for Review (Employee): persist remarks, then flag the task as
+  // `submitted` for the QC gatekeeper. The stageIndex does NOT advance — the
+  // assignee keeps the task until an Admin/PM approves or rejects it.
+  const submitWork = () => {
     startTransition(async () => {
       await persistRemarks(true);
-      const res = await completePipelineTaskAction(task.id);
+      const res = await submitPipelineTaskAction(task.id, remarksRef.current);
       if (!res.ok) {
-        notify(res.error || "Could not complete.");
+        notify(res.error || "Could not submit.");
         return;
       }
       await refresh();
-      notify("Task advanced.");
+      const fresh = (await getPipelineBoardAction()).active.find(
+        (t) => t.id === task.id
+      );
+      if (fresh) applyFresh(fresh);
+      notify("Submitted for QC review.");
+    });
+  };
+
+  // Approve & Advance (Admin/PM gatekeeper): the only action that pushes the
+  // task down its sequence (A→B→C) — auto-assigning the next member, or
+  // completing the task after the final stage.
+  const approveWork = () => {
+    startTransition(async () => {
+      await persistRemarks(true);
+      const res = await approvePipelineTaskAction(task.id);
+      if (!res.ok) {
+        notify(res.error || "Could not approve.");
+        return;
+      }
+      await refresh();
+      notify("Advanced to the next stage.");
       onClose();
     });
   };
 
   const heading = remarks.trim() ? remarks.trim() : task.title;
+  const isGatekeeper = canApprove || isManagerRole(roleKey);
+  const isSubmitted = task.status === "submitted";
   const step = task.current_step ?? 0;
   const seq = task.assignees || [];
   const activeIdx = seq.length === 0 ? 0 : Math.min(step, seq.length - 1);
@@ -422,36 +473,71 @@ export default function TaskModal({
             </div>
           </section>
 
-          {/* ---- Actions: Complete (forward) + Send Back (backward) only ---- */}
+          {/* ---- Actions: Gatekeeper vs Employee ---- */}
           <section className="space-y-2.5">
-            <div className="rounded-xl border border-brand-300/30 bg-brand-300/[0.06] p-3 flex items-center justify-between gap-2">
-              <div>
+            {isGatekeeper ? (
+              <>
+                <div className="rounded-xl border border-violet-300/30 bg-violet-400/[0.07] p-3 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-white flex items-center gap-1.5">
+                      <Check className="h-4 w-4 text-violet-300" />{" "}
+                      {isSubmitted ? "Approve & Advance" : "Complete"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {isSubmitted
+                        ? "Approves the submitted work — auto-assigns the next member (A→B→C)."
+                        : "Completes this stage — auto-assigns the next member (A→B→C)."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={approveWork}
+                    className="btn-primary !py-2 text-sm shrink-0"
+                  >
+                    <Check className="h-4 w-4" /> {isSubmitted ? "Approve & Advance" : "Complete"}
+                  </button>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={sendBack}
+                    className="btn-ghost text-sm !px-3 !py-2"
+                  >
+                    <Undo2 className="h-4 w-4" /> Send Back
+                  </button>
+                </div>
+              </>
+            ) : isSubmitted ? (
+              <div className="rounded-xl border border-violet-300/30 bg-violet-400/[0.07] p-3">
                 <p className="text-sm font-medium text-white flex items-center gap-1.5">
-                  <Check className="h-4 w-4 text-brand-300" /> Done / Complete
+                  <Clock className="h-4 w-4 text-violet-300" /> Submitted — Awaiting Review
                 </p>
-                <p className="text-xs text-slate-500">
-                  Mark complete (auto-assigns next stage A→B→C).
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Your work is with the QC team. It advances only after Admin/PM approval.
                 </p>
               </div>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={complete}
-                className="btn-primary !py-2 text-sm shrink-0"
-              >
-                <Check className="h-4 w-4" /> Complete
-              </button>
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={sendBack}
-                className="btn-ghost text-sm !px-3 !py-2"
-              >
-                <Undo2 className="h-4 w-4" /> Send Back
-              </button>
-            </div>
+            ) : (
+              <div className="rounded-xl border border-brand-300/30 bg-brand-300/[0.06] p-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-white flex items-center gap-1.5">
+                    <Check className="h-4 w-4 text-brand-300" /> Submit for Review
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Submit work to PM/Admin for approval.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={submitWork}
+                  className="btn-primary !py-2 text-sm shrink-0"
+                >
+                  <Check className="h-4 w-4" /> Submit for Review
+                </button>
+              </div>
+            )}
           </section>
         </div>
       </div>
