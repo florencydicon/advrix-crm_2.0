@@ -23,11 +23,10 @@ export default async function AnalyticsPage() {
         <p className="text-sm text-slate-400">High-level output, throughput, and pipeline health.</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Stat label="Total Projects" value={analytics.totalProjects} />
         <Stat label="In Production" value={analytics.inProgress} accent="text-brand-300" />
         <Stat label="Delivered" value={analytics.completedProjects} accent="text-emerald-400" />
-        <Stat label="Awaiting Approval" value={analytics.pendingApproval} accent="text-amber-400" />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">

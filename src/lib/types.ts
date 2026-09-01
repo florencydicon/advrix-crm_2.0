@@ -39,7 +39,6 @@ export interface Client {
 }
 
 export type ProjectStatus =
-  | "pending_approval"
   | "in_progress"
   | "completed"
   | "rejected";
@@ -96,7 +95,6 @@ export interface Assignment {
 }
 
 export type TaskStatus =
-  | "pending_approval"
   | "rejected"
   | "approved"
   | "pending"
@@ -111,7 +109,6 @@ export type TaskStatus =
   | "completed";
 
 export const TASK_STATUS_FLOW: TaskStatus[] = [
-  "pending_approval",
   "rejected",
   "approved",
   "pending",

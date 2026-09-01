@@ -149,7 +149,6 @@ export default function ProjectDetailView({
   const totalTasks = client.projects.reduce((n, p) => n + p.total_tasks, 0);
   const doneTasks = client.projects.reduce((n, p) => n + p.completed_tasks, 0);
   const activeProjects = client.projects.filter((p) => p.status === "in_progress").length;
-  const pendingProjects = client.projects.filter((p) => p.status === "pending_approval").length;
 
   return (
     <div className="space-y-3">
@@ -163,7 +162,6 @@ export default function ProjectDetailView({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-[11px] text-slate-400">
             <span><span className="font-semibold text-white">{client.projects.length}</span> project{client.projects.length === 1 ? "" : "s"}</span>
             <span><span className="font-semibold text-brand-300">{activeProjects}</span> in prod.</span>
-            {pendingProjects > 0 && <span><span className="font-semibold text-amber-300">{pendingProjects}</span> pending</span>}
             <span><span className="font-semibold text-emerald-300">{doneTasks}</span>/{totalTasks} done</span>
           </div>
         </div>

@@ -20,7 +20,7 @@ const BOARD_COLUMNS: BoardColumn[] = [
     key: "pending",
     label: "Pending",
     drop: null,
-    statuses: ["pending", "approved", "pending_approval", "rejected"],
+    statuses: ["pending", "approved"],
     dot: "bg-slate-400",
     count: "text-slate-400",
   },

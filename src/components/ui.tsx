@@ -5,7 +5,6 @@ import { X, CircleCheck, Clock, PauseCircle, PlayCircle, Send, Undo2, Users, Upl
 
 export const STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
   pending: { label: "Pending", cls: "bg-white/10 text-slate-300", Icon: PauseCircle },
-  pending_approval: { label: "Brief Pending Approval", cls: "bg-amber-400/10 text-amber-300", Icon: Clock },
   rejected: { label: "Rejected", cls: "bg-rose-400/10 text-rose-300", Icon: Undo2 },
   approved: { label: "Ready to Start", cls: "bg-emerald-400/10 text-emerald-300", Icon: PlayCircle },
   in_progress: { label: "In Process", cls: "bg-brand-300/10 text-brand-300", Icon: Clock },
@@ -20,7 +19,6 @@ export const STATUS_META: Record<string, { label: string; cls: string; Icon: any
 };
 
 export const STATUS_ORDER = [
-  "pending_approval",
   "rejected",
   "approved",
   "pending",
@@ -93,14 +91,13 @@ export function PriorityBadge({ priority }: { priority: string }) {
 }
 
 const PROJECT_STATUS_META: Record<string, { label: string; cls: string }> = {
-  pending_approval: { label: "Awaiting PM Approval", cls: "bg-amber-400/10 text-amber-300" },
   in_progress: { label: "In Production", cls: "bg-brand-300/10 text-brand-300" },
   completed: { label: "Completed", cls: "bg-emerald-400/10 text-emerald-300" },
   rejected: { label: "Rejected", cls: "bg-rose-400/10 text-rose-300" },
 };
 
 export function ProjectStatusBadge({ status }: { status: string }) {
-  const meta = PROJECT_STATUS_META[status] || PROJECT_STATUS_META.pending_approval;
+  const meta = PROJECT_STATUS_META[status] || PROJECT_STATUS_META.in_progress;
   return <span className={`badge ${meta.cls}`}>{meta.label}</span>;
 }
 

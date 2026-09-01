@@ -434,18 +434,6 @@ export async function getSubmittedTasks(): Promise<Task[]> {
   );
 }
 
-/**
- * Unified sequential tasks whose brief is awaiting PM/Admin approval, including
- * ones rejected for revision (Step 2 gate).
- */
-export async function getBriefApprovalQueue(): Promise<Task[]> {
-  return query<Task>(
-    `${TASK_SELECT}
-     WHERE t.status IN ('pending_approval', 'rejected')
-     ORDER BY t.created_at ASC`
-  );
-}
-
 export async function getBoard(): Promise<ProjectDetail[]> {
   await ensureAssignmentPosition();
   const projects = await query<Project>(
@@ -609,7 +597,6 @@ export interface Analytics {
   totalProjects: number;
   inProgress: number;
   completedProjects: number;
-  pendingApproval: number;
   totalTasks: number;
   completedTasks: number;
   tasksByRole: { role_label: string; total: number; completed: number }[];
@@ -622,7 +609,6 @@ export async function getAnalytics(): Promise<Analytics> {
     total_projects: string;
     in_progress: string;
     completed_projects: string;
-    pending_approval: string;
     total_tasks: string;
     completed_tasks: string;
   }>(
@@ -630,7 +616,6 @@ export async function getAnalytics(): Promise<Analytics> {
        (SELECT COUNT(*) FROM projects)::text AS total_projects,
        (SELECT COUNT(*) FROM projects WHERE status='in_progress')::text AS in_progress,
        (SELECT COUNT(*) FROM projects WHERE status='completed')::text AS completed_projects,
-       (SELECT COUNT(*) FROM projects WHERE status='pending_approval')::text AS pending_approval,
        (SELECT COUNT(*) FROM tasks)::text AS total_tasks,
        (SELECT COUNT(*) FROM tasks WHERE status='completed')::text AS completed_tasks`
   );
@@ -658,7 +643,6 @@ export async function getAnalytics(): Promise<Analytics> {
     totalProjects: Number(stats[0]?.total_projects || 0),
     inProgress: Number(stats[0]?.in_progress || 0),
     completedProjects: Number(stats[0]?.completed_projects || 0),
-    pendingApproval: Number(stats[0]?.pending_approval || 0),
     totalTasks: Number(stats[0]?.total_tasks || 0),
     completedTasks: Number(stats[0]?.completed_tasks || 0),
     tasksByRole: byRole.map((r) => ({ role_label: r.role_label, total: Number(r.total), completed: Number(r.completed) })),

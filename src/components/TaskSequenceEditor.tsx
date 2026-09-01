@@ -2,12 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, ArrowDown, Check, X, ClipboardList, Layers, Loader2, Users } from "lucide-react";
+import { ArrowUp, ArrowDown, Check, Layers, Loader2, Users } from "lucide-react";
 import type { Task } from "@/lib/types";
 import {
   setTaskSequenceAction,
-  approveTaskBriefAction,
-  rejectTaskBriefAction,
   setDeliverableSequenceAction,
 } from "@/lib/actions/projects";
 import { useToast } from "@/components/Toast";
@@ -238,59 +236,6 @@ export function DeliverableSequenceEditor({
         {pending ? "Saving…" : order.length === 0 ? "Pick members to enable" : "Save deliverable sequence"}
       </button>
       <p className="text-[10px] text-slate-500">Already-approved items are re-applied so nobody starts prematurely.</p>
-    </div>
-  );
-}
-
-/**
- * Step 2 — Initial brief approval / rejection of a unified task.
- * Nothing else is unlocked until the brief is approved.
- */
-export function TaskBriefManager({ task }: { task: Task }) {
-  const router = useRouter();
-  const { toast } = useToast();
-  const [pending, start] = useTransition();
-  const [reason, setReason] = useState("");
-
-  function approve() {
-    start(async () => {
-      const res = await approveTaskBriefAction(task.id);
-      if (res.error) toast(res.error, "error");
-      router.refresh();
-    });
-  }
-  function reject() {
-    start(async () => {
-      const res = await rejectTaskBriefAction(task.id, reason);
-      if (res.error) toast(res.error, "error");
-      else setReason("");
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-2 space-y-2">
-      <p className="text-[10px] font-semibold text-amber-300 uppercase tracking-wide flex items-center gap-1">
-        <ClipboardList className="h-3 w-3" /> Brief approval — this unlocks the team sequence
-      </p>
-      <p className="text-[11px] text-slate-400">Everything is blocked until a manager approves the brief.</p>
-      {task.status === "rejected" && task.review_comment && (
-        <p className="text-[11px] text-rose-300 bg-rose-400/10 rounded px-2 py-1">Rejected: {task.review_comment}</p>
-      )}
-      <div className="flex items-center gap-1.5">
-        <button className="btn-primary !py-1 text-[11px]" onClick={approve} disabled={pending}>
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Approve Brief
-        </button>
-        <input
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          className="input !py-1 !text-[11px] flex-1"
-          placeholder="Reason to reject…"
-        />
-        <button className="btn-secondary !text-rose-400 !py-1 text-[11px]" onClick={reject} disabled={pending} title="Reject brief">
-          <X className="h-3 w-3" /> Reject
-        </button>
-      </div>
     </div>
   );
 }

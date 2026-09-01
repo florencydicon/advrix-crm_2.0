@@ -15,7 +15,6 @@ import {
   extendForLeave,
   setTaskDeadline,
   advanceTaskStep,
-  autoAllotTaskTeam,
   setTaskTeam,
   setDeliverableTeam,
   syncApprovedTaskSequences,
@@ -187,70 +186,6 @@ export async function createProjectAction(formData: FormData) {
   }
 }
 
-export async function approveProjectAction(projectId: string) {
-  const session = await getSession();
-  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
-    return { error: "Not authorized." };
-  }
-
-  const project = await query<{ id: string; name: string; client_id: string }>(
-    `SELECT id, name, client_id FROM projects WHERE id = $1 AND status = 'pending_approval'`,
-    [projectId]
-  );
-  if (!project[0]) return { error: "Project not found or already processed." };
-
-  await query(
-    `UPDATE projects SET status = 'in_progress', approved_by = $2, approved_at = now()
-     WHERE id = $1`,
-    [projectId, session.sub]
-  );
-
-  // Deliverable-based projects generate individual tasks; others use the pipeline.
-  await generateDeliverableTasks(projectId);
-  // Brief approved → auto-fill each task's sequence from the project team order.
-  await syncApprovedTaskSequences(projectId);
-  await computeSequentialDeadlines(projectId);
-
-  const creatorId = await getProjectCreatorId(projectId);
-  if (creatorId) {
-    await createNotification({
-      userId: creatorId,
-      type: "project",
-      title: "Project approved",
-      body: `"${project[0].name}" was approved and is now in production.`,
-      link: projectLink(project[0].client_id, projectId),
-    });
-  }
-
-  revalidatePath("/projects");
-  return { ok: true };
-}
-
-export async function rejectProjectAction(projectId: string) {
-  const session = await getSession();
-  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
-    return { error: "Not authorized." };
-  }
-
-  const project = await query<{ id: string; name: string; created_by: string | null; client_id: string }>(
-    `SELECT id, name, created_by, client_id FROM projects WHERE id = $1`,
-    [projectId]
-  );
-  await query(`UPDATE projects SET status = 'rejected' WHERE id = $1`, [projectId]);
-
-  if (project[0]?.created_by) {
-    await createNotification({
-      userId: project[0].created_by,
-      type: "project",
-      title: "Project rejected",
-      body: `"${project[0]?.name ?? "Project"}" was rejected. Contact your manager for details.`,
-      link: projectLink(project[0].client_id, projectId),
-    });
-  }
-  revalidatePath("/projects");
-  return { ok: true };
-}
-
 // ---------- Unified sequential task workflow (Step 2–5 + override) ----------
 
 const CAN_REVIEW_TASKS = ["PROJECT_MANAGER", "SUPER_ADMIN"];
@@ -274,90 +209,8 @@ async function getTaskBriefRow(taskId: string): Promise<TaskBriefRow | null> {
 }
 
 /**
- * Step 2 — Initial Task Approval. A PM/Admin approves the brief, which unlocks
- * team allotment and production. The task is auto-allotted from the project
- * team order so it is immediately ready for the first member.
- */
-export async function approveTaskBriefAction(taskId: string, comment?: string) {
-  const session = await getSession();
-  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
-    return { error: "Not authorized." };
-  }
-  const t = await getTaskBriefRow(taskId);
-  if (!t) return { error: "Task not found." };
-  if (t.status !== "pending_approval" && t.status !== "rejected") {
-    return { error: "Task brief is not awaiting approval." };
-  }
-  await query(
-    `UPDATE tasks SET status = 'approved', brief_approved_by = $2, brief_approved_at = now(),
-     review_comment = $3, reviewed_by = $2, reviewed_at = now()
-     WHERE id = $1`,
-    [taskId, session.sub, comment?.trim() || null]
-  );
-  await autoAllotTaskTeam(taskId, t.project_id);
-
-  const updated = (
-    await query<{ assigned_to: string | null }>(`SELECT assigned_to FROM tasks WHERE id = $1`, [taskId])
-  )[0];
-  const clientId = await getProjectClientId(t.project_id);
-  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
-  if (updated?.assigned_to && updated.assigned_to !== session.sub) {
-    await createNotification({
-      userId: updated.assigned_to,
-      type: "task",
-      title: "Brief approved — your turn",
-      body: `"${t.title}" was approved. You are first in line — start when ready.`,
-      link,
-    });
-  }
-  revalidatePath("/projects");
-  revalidatePath("/dashboard");
-  if (clientId) revalidatePath(`/projects/${clientId}`);
-  return { ok: true };
-}
-
-/** Step 2 — Brief rejected: sends the brief back for revision with a reason. */
-export async function rejectTaskBriefAction(taskId: string, reason: string) {
-  const session = await getSession();
-  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
-    return { error: "Not authorized." };
-  }
-  if (!reason || reason.trim().length < 5) {
-    return { error: "Please provide a reason for rejecting the brief." };
-  }
-  const t = await getTaskBriefRow(taskId);
-  if (!t) return { error: "Task not found." };
-  if (t.status !== "pending_approval" && t.status !== "rejected") {
-    return { error: "Task brief is not awaiting approval." };
-  }
-  await query(
-    `UPDATE tasks SET status = 'rejected', review_comment = $2, reviewed_by = $3, reviewed_at = now(),
-     assigned_to = NULL, role_key = NULL, current_step = 0
-     WHERE id = $1`,
-    [taskId, reason.trim(), session.sub]
-  );
-  await query(`DELETE FROM task_assignees WHERE task_id = $1`, [taskId]);
-
-  const clientId = await getProjectClientId(t.project_id);
-  const link = clientId && t.step_key ? taskLink(clientId, t.project_id, t.step_key) : "/projects";
-  if (t.created_by) {
-    await createNotification({
-      userId: t.created_by,
-      type: "task",
-      title: "Brief needs revision",
-      body: `"${t.title}" — ${reason.trim()}`,
-      link,
-    });
-  }
-  revalidatePath("/projects");
-  revalidatePath("/dashboard");
-  if (clientId) revalidatePath(`/projects/${clientId}`);
-  return { ok: true };
-}
-
-/**
  * Step 3 — Team Allotment (manual). Sets the exact sequential order of members
- * for one unified task. Only allowed once the brief has been approved.
+ * for one unified task.
  */
 export async function setTaskSequenceAction(taskId: string, memberIds: string[]) {
   const session = await getSession();
@@ -427,53 +280,6 @@ export async function setDeliverableSequenceAction(deliverableId: string, member
   revalidatePath("/projects");
   if (clientId) revalidatePath(`/projects/${clientId}`);
   return { ok: true };
-}
-
-/**
- * Step 2 (bulk) — Approves every pending brief in a project at once. Each task
- * auto-allots its team from the per-deliverable sequence (or project order), so
- * 50 subtasks are kicked off with a single click, not 50.
- */
-export async function approveAllBriefsAction(projectId: string) {
-  const session = await getSession();
-  if (!session || !hasPermission(session.permissions, PERM_REVIEW)) {
-    return { error: "Not authorized." };
-  }
-  const pending = await query<{ id: string; title: string; step_key: string | null; project_id: string; deliverable_id: string | null }>(
-    `SELECT id, title, step_key, project_id, deliverable_id
-     FROM tasks
-     WHERE project_id = $1 AND step_key ~ '_d_[0-9]+$' AND status IN ('pending_approval','rejected')`,
-    [projectId]
-  );
-  if (pending.length === 0) return { ok: true, approved: 0 };
-
-  let approved = 0;
-  for (const t of pending) {
-    if (t.step_key && t.step_key.match(/_d_[0-9]+$/)) {
-      await query(
-        `UPDATE tasks SET status = 'approved', brief_approved_by = $2, brief_approved_at = now(),
-         review_comment = NULL, reviewed_by = $2, reviewed_at = now()
-         WHERE id = $1`,
-        [t.id, session.sub]
-      );
-      await autoAllotTaskTeam(t.id, t.project_id);
-      approved += 1;
-    }
-  }
-
-  const clientId = await getProjectClientId(projectId);
-  const link = clientId ? projectLink(clientId, projectId) : "/projects";
-  await notifyRoles(CAN_REVIEW_TASKS, {
-    type: "task",
-    title: `${approved} brief${approved === 1 ? "" : "s"} approved`,
-    body: `${session.name} approved ${approved} brief${approved === 1 ? "" : "s"} on the project.`,
-    link,
-  });
-
-  revalidatePath("/projects");
-  revalidatePath("/dashboard");
-  if (clientId) revalidatePath(`/projects/${clientId}`);
-  return { ok: true, approved };
 }
 
 /** Completion override — force-closes a unified task at any point (Admin/PM only). */

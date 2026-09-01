@@ -7,7 +7,7 @@ import {
 import { getSession } from "@/lib/session";
 import {
   getMyTasks, getProjects, getLeadStats, getTaskStatusCounts,
-  getSubmittedTasks, getBriefApprovalQueue, getAllLeaves, getBottlenecks,
+  getSubmittedTasks, getAllLeaves, getBottlenecks,
 } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
@@ -57,16 +57,15 @@ export default async function DashboardPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold tracking-tight">Business Development</h1>
-            <p className="text-sm text-slate-400">Your projects and their approval status.</p>
+            <p className="text-sm text-slate-400">Your projects and their production status.</p>
           </div>
           <Link href="/clients" className="btn-primary !py-2 text-xs">
             + Add Tasks
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           <Stat label="My Projects" value={mine.length} />
-          <Stat label="Awaiting Approval" value={mine.filter((p) => p.status === "pending_approval").length} accent="text-amber-400" />
           <Stat label="In Production" value={mine.filter((p) => p.status === "in_progress").length} accent="text-brand-300" />
           <Stat label="Delivered" value={mine.filter((p) => p.status === "completed").length} accent="text-emerald-400" />
         </div>
@@ -95,16 +94,14 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let leadStats: any = null;
   let taskCounts: Record<string, number> = {};
   let submittedTasks: any[] = [];
-  let briefQueue: any[] = [];
   let pendingLeaves: any[] = [];
   let bottlenecks: any[] = [];
   try {
-    [projects, leadStats, taskCounts, submittedTasks, briefQueue, pendingLeaves, bottlenecks] = await Promise.all([
+    [projects, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
       getProjects().catch(() => [] as any),
       isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
       isSuperAdmin ? getTaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
       getSubmittedTasks().catch(() => [] as any),
-      getBriefApprovalQueue().catch(() => [] as any),
       getAllLeaves({ status: "pending" }).catch(() => [] as any),
       isSuperAdmin ? getBottlenecks().catch(() => [] as any) : Promise.resolve([] as any),
     ]);
@@ -112,7 +109,6 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
     // Fallback: individual catches already return safe defaults, this is absolute safety
     projects = projects || [];
   }
-  const pending = projects.filter((p) => p.status === "pending_approval");
   const active = projects.filter((p) => p.status === "in_progress");
 
   type ActionItem = {
@@ -123,25 +119,11 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
     href: string;
   };
   const actionItems: ActionItem[] = [
-    ...pending.map((p): ActionItem => ({
-      id: `proj-${p.id}`,
-      type: "project",
-      title: p.name,
-      subtitle: `Client: ${p.client_name}`,
-      href: `/projects/${p.id}`,
-    })),
     ...submittedTasks.map((t): ActionItem => ({
       id: `task-${t.id}`,
       type: "task",
       title: t.title,
       subtitle: `${t.project_name} — ${t.role_label || t.role_key}`,
-      href: `/projects/${t.project_id}?project=${t.project_id}&task=${t.step_key}`,
-    })),
-    ...briefQueue.map((t): ActionItem => ({
-      id: `brief-${t.id}`,
-      type: "task",
-      title: `Brief: ${t.title}`,
-      subtitle: `${t.project_name} — brief awaiting approval`,
       href: `/projects/${t.project_id}?project=${t.project_id}&task=${t.step_key}`,
     })),
     ...pendingLeaves.map((l): ActionItem => ({
@@ -192,7 +174,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         </div>
 
         {/* ── Row 1: 4 project stat cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           <div className="card p-3 md:p-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="h-7 w-7 rounded-lg bg-violet-400/15 flex items-center justify-center">
@@ -201,15 +183,6 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
               <p className="text-xs text-slate-400">Total Projects</p>
             </div>
             <p className="text-2xl md:text-3xl font-bold tracking-tight text-white">{projects.length}</p>
-          </div>
-          <div className="card p-3 md:p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="h-7 w-7 rounded-lg bg-amber-400/15 flex items-center justify-center">
-                <CheckCircle2 className="h-3.5 w-3.5 text-amber-400" />
-              </span>
-              <p className="text-xs text-amber-300">Pending Approval</p>
-            </div>
-            <p className="text-2xl md:text-3xl font-bold tracking-tight text-amber-300">{pending.length}</p>
           </div>
           <div className="card p-3 md:p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -245,7 +218,6 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
               {[
                 { key: "pending", label: "Pending", cls: "bg-white/[0.04] border-white/10 text-slate-300" },
-                { key: "pending_approval", label: "Pending Approval", cls: "bg-amber-400/10 border-amber-400/20 text-amber-300" },
                 { key: "in_progress", label: "In Process", cls: "bg-brand-300/10 border-brand-300/20 text-brand-300" },
                 { key: "completed", label: "Completed", cls: "bg-emerald-400/10 border-emerald-400/20 text-emerald-300" },
                 { key: "upload_done", label: "Upload Done", cls: "bg-sky-400/10 border-sky-400/20 text-sky-300" },
@@ -312,9 +284,8 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         <Stat label="Total Projects" value={projects.length} />
-        <Stat label="Pending Approval" value={pending.length} accent="text-amber-400" />
         <Stat label="In Progress" value={active.length} accent="text-brand-300" />
         <Stat label="Completed" value={projects.filter((p) => p.status === "completed").length} accent="text-emerald-400" />
       </div>

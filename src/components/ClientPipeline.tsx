@@ -30,7 +30,6 @@ export default function ClientPipeline({ pipeline }: { pipeline: PipelineClient[
           totalTasks,
           doneTasks,
           activeProjects: c.projects.filter((p) => p.status === "in_progress").length,
-          pendingProjects: c.projects.filter((p) => p.status === "pending_approval").length,
           completedProjects: c.projects.filter((p) => p.status === "completed").length,
           progress: totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0,
         };
@@ -110,9 +109,6 @@ export default function ClientPipeline({ pipeline }: { pipeline: PipelineClient[
                   <p className="font-semibold text-white truncate">{formatClientName(c.client_company, c.client_name)}</p>
                   <p className="text-[11px] text-slate-500 truncate">
                     {c.projects.length} project{c.projects.length === 1 ? "" : "s"}
-                    {c.pendingProjects > 0 && (
-                      <span className="text-amber-300"> · {c.pendingProjects} awaiting approval</span>
-                    )}
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-1" />
