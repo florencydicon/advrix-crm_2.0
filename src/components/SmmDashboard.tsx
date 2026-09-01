@@ -4,8 +4,18 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Users, Upload, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
-import { StatusBadge, PriorityBadge, PlatformBadges } from "@/components/ui";
+import { StatusBadge, PriorityBadge } from "@/components/ui";
 import { formatClientName } from "@/lib/utils";
+
+function taskTypeLabel(groupKey: string | null): string {
+  if (!groupKey || groupKey === "manual") return "Task";
+  const map: Record<string, string> = {
+    writer: "Content", designer: "Design", editor: "Editing",
+    smm: "SMM", videographer: "Video",
+  };
+  const base = groupKey.split("_d_")[0].split("_v_")[0];
+  return map[base] || "Task";
+}
 import TaskModal from "@/components/TaskModal";
 import { hasPermission } from "@/lib/permissions";
 
@@ -124,7 +134,9 @@ export default function SmmDashboard({
         <MoreVertical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
       </div>
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-        <PlatformBadges platforms={t.platforms} />
+        <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500">
+          {taskTypeLabel(t.group_key)}
+        </span>
         <StatusBadge status={t.status} />
         <PriorityBadge priority={t.priority} />
       </div>
@@ -225,7 +237,7 @@ export default function SmmDashboard({
                     <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
                     <th className="px-3 py-2.5 min-w-[160px]">Project</th>
                     <th className="px-3 py-2.5 min-w-[200px]">Task</th>
-                    <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Platform</th>
+                    <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Task Type</th>
                     <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
                     <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
                     <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
@@ -251,7 +263,9 @@ export default function SmmDashboard({
                         <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
                       </td>
                       <td className="px-3 py-2.5">
-                        <PlatformBadges platforms={t.platforms} />
+                        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+                          {taskTypeLabel(t.group_key)}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <StatusBadge status={t.status} />

@@ -125,7 +125,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
       type: "task",
       title: t.title,
       subtitle: `${t.project_name} — ${t.role_label || t.role_key}`,
-      href: `/projects/${t.project_id}?project=${t.project_id}&task=${t.step_key}`,
+      href: `/projects?taskId=${t.id}`,
     })),
     ...pendingLeaves.map((l): ActionItem => ({
       id: `leave-${l.id}`,
@@ -139,7 +139,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
       type: "bottleneck",
       title: b.title,
       subtitle: `${b.assignee_name || "Unassigned"} — ${b.days_open}d open`,
-      href: `/projects/${b.project_id}?project=${b.project_id}`,
+      href: `/projects?taskId=${b.task_id}`,
     })),
   ];
   const totalActionCount = actionItems.length;
