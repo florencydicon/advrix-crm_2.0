@@ -8,6 +8,7 @@ import { getMasterBoardAction } from "@/lib/actions/masterboard";
 import type { UserRow } from "@/lib/types";
 import { formatClientName } from "@/lib/utils";
 import TaskDrawer from "@/components/TaskDrawer";
+import TaskDetailMobile from "@/components/TaskDetailMobile";
 
 type ViewTab = "all" | "mine";
 type PriorityFilter = "all" | "low" | "medium" | "high";
@@ -59,6 +60,7 @@ export default function MasterBoard({
   const [project, setProject] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [mobileOpenId, setMobileOpenId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -152,6 +154,9 @@ export default function MasterBoard({
 
   const active =
     rows.find((r) => r.id === activeId) || initial.rows.find((r) => r.id === activeId) || null;
+
+  const mobileActive =
+    rows.find((r) => r.id === mobileOpenId) || initial.rows.find((r) => r.id === mobileOpenId) || null;
 
   function refresh() {
     startTransition(async () => {
@@ -265,8 +270,8 @@ export default function MasterBoard({
           </span>
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-auto">
+        {/* Grid (desktop, md and up) */}
+        <div className="hidden md:block flex-1 overflow-auto">
           <table className="w-full border-collapse min-w-[1240px]">
             <thead className="sticky top-0 z-10 bg-night-850">
               <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
@@ -289,9 +294,9 @@ export default function MasterBoard({
                 <th className="px-3 py-2.5 w-44">Client</th>
                 <th className="px-3 py-2.5 w-44">Project</th>
                 <th className="px-3 py-2.5 min-w-[220px] sticky left-0 bg-night-850 z-10">Task</th>
-                <th className="px-3 py-2.5 w-32">Task Type</th>
-                <th className="px-3 py-2.5 w-32">Status</th>
-                <th className="px-3 py-2.5 w-28">Priority</th>
+                <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
+                <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
+                <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
                 <th className="px-3 py-2.5 w-40">Assignee</th>
                 <th className="px-3 py-2.5 w-32">Deadline</th>
                 <th className="px-3 py-2.5 w-12">Actions</th>
@@ -334,15 +339,15 @@ export default function MasterBoard({
                   <td className="px-3 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
                     <p className="text-sm text-white font-medium leading-tight truncate max-w-[220px]">{r.title}</p>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
                     <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
                       {taskTypeLabel(r.group_key)}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
                     <PriorityBadge priority={r.priority} />
                   </td>
                   <td className="px-3 py-2.5">
@@ -422,11 +427,73 @@ export default function MasterBoard({
         </div>
       </div>
 
+      {/* Mobile task card list (below md) */}
+      <div className="md:hidden flex-1 overflow-y-auto px-3 py-3 space-y-3">
+        {filtered.map((r) => (
+          <button
+            key={r.id}
+            onClick={() => setMobileOpenId(r.id)}
+            className="w-full text-left rounded-xl border border-white/10 bg-night-800 p-4 shadow-lg shadow-black/20 active:scale-[0.99] transition-transform"
+          >
+            <p className="text-[11px] text-slate-500 truncate mb-2">
+              {formatClientName(r.client_company, r.client_name)}
+              <span className="mx-1 opacity-50">/</span>
+              {r.project_name || "No project"}
+            </p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-semibold text-white leading-snug">{r.title}</p>
+              {r.assignee_name ? (
+                <span
+                  className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-[11px] ${avatarClass(r.assignee_name)}`}
+                >
+                  {initials(r.assignee_name)}
+                </span>
+              ) : (
+                <span className="shrink-0 h-8 w-8 rounded-full border border-white/10 flex items-center justify-center text-slate-600">—</span>
+              )}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <StatusBadge status={r.status} />
+                {r.group_key && r.group_key !== "manual" && (
+                  <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+                    {taskTypeLabel(r.group_key)}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {r.overdue ? (
+                  <span className="text-[11px] font-medium text-rose-300">Overdue</span>
+                ) : (
+                  <span className="text-[11px] tabular-nums text-slate-400">
+                    {r.due_date ? r.due_date.slice(5, 10) : "—"}
+                  </span>
+                )}
+              </div>
+            </div>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <div className="p-6">
+            <EmptyState title="No tasks match" subtitle="Adjust your filters or view selection." />
+          </div>
+        )}
+      </div>
+
       <TaskDrawer
         task={active}
         team={team}
         canManage={initial.canManage}
         onClose={() => setActiveId(null)}
+        onChanged={refresh}
+        containerClass="hidden md:block"
+      />
+
+      <TaskDetailMobile
+        task={mobileActive}
+        team={team}
+        canManage={initial.canManage}
+        onClose={() => setMobileOpenId(null)}
         onChanged={refresh}
       />
     </div>

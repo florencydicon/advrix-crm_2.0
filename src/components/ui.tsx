@@ -39,7 +39,7 @@ export function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status] || STATUS_META.pending;
   const Icon = meta.Icon;
   return (
-    <span className={`badge ${meta.cls}`}>
+    <span className={`badge ${meta.cls} whitespace-nowrap`}>
       <Icon className="h-3 w-3" />
       {meta.label}
     </span>
@@ -89,7 +89,7 @@ const PRIORITY_META: Record<string, { label: string; cls: string }> = {
 
 export function PriorityBadge({ priority }: { priority: string }) {
   const meta = PRIORITY_META[priority] || PRIORITY_META.medium;
-  return <span className={`badge ${meta.cls}`}>{meta.label}</span>;
+  return <span className={`badge ${meta.cls} whitespace-nowrap`}>{meta.label}</span>;
 }
 
 const PROJECT_STATUS_META: Record<string, { label: string; cls: string }> = {

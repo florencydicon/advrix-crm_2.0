@@ -163,9 +163,9 @@ export default function StaffDashboard({
                   <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
                   <th className="px-3 py-2.5 min-w-[160px]">Project</th>
                   <th className="px-3 py-2.5 min-w-[200px]">Task</th>
-                  <th className="px-3 py-2.5 w-32">Task Type</th>
-                  <th className="px-3 py-2.5 w-32">Status</th>
-                  <th className="px-3 py-2.5 w-28">Priority</th>
+                  <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
+                  <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
+                  <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
                   <th className="px-3 py-2.5 w-32">Due</th>
                   <th className="px-3 py-2.5 w-16">Actions</th>
                 </tr>
@@ -224,15 +224,15 @@ function FragmentRow({
         <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
           <p className="text-sm text-white font-medium leading-tight truncate max-w-[190px]">{t.title}</p>
         </td>
-        <td className="px-3 py-2.5">
+        <td className="px-3 py-2.5 whitespace-nowrap">
           <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
             {taskTypeLabel(t.group_key)}
           </span>
         </td>
-        <td className="px-3 py-2.5">
+        <td className="px-3 py-2.5 whitespace-nowrap">
           <StatusBadge status={t.status} />
         </td>
-        <td className="px-3 py-2.5">
+        <td className="px-3 py-2.5 whitespace-nowrap">
           <PriorityBadge priority={t.priority} />
         </td>
         <td className="px-3 py-2.5">
