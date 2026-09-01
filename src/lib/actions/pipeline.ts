@@ -439,3 +439,23 @@ export async function updatePipelineTaskTeamAction(
   revalidate();
   return { ok: true };
 }
+
+/**
+ * Delete a sub-task / sequence task from the pipeline. Manager gatekeepers
+ * (tasks:manage) only. Dependent rows (task_assignees, task_contributions)
+ * are removed automatically via ON DELETE CASCADE.
+ */
+export async function deletePipelineTaskAction(
+  taskId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
+    return { ok: false, error: "Not authorized." };
+  }
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  await query(`DELETE FROM tasks WHERE id = $1`, [taskId]);
+  revalidate();
+  return { ok: true };
+}

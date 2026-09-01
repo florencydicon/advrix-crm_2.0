@@ -13,6 +13,7 @@ import {
   Users,
   Clock,
   FileText,
+  Trash2,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
@@ -25,6 +26,7 @@ import {
   setPipelineTaskTitleAction,
   setPipelineTaskContentAction,
   updatePipelineTaskTeamAction,
+  deletePipelineTaskAction,
   getPipelineBoardAction,
 } from "@/lib/actions/pipeline";
 
@@ -324,6 +326,21 @@ export default function TaskModal({
     });
   };
 
+  // Delete this sub-task (manager gatekeepers only). Destructive — confirms first.
+  const deleteTask = () => {
+    if (!window.confirm(`Delete "${titleDraft.trim() || task.title || "this task"}"? This cannot be undone.`)) return;
+    startTransition(async () => {
+      const res = await deletePipelineTaskAction(task.id);
+      if (!res.ok) {
+        toast(res.error || "Could not delete the task.", "error");
+        return;
+      }
+      toast("Task deleted.");
+      await refresh();
+      onClose();
+    });
+  };
+
   const heading = titleDraft.trim() || task.title || "Untitled task";
   const isGatekeeper = canApprove || isManagerRole(roleKey);
   const isSubmitted = task.status === "submitted";
@@ -366,7 +383,7 @@ export default function TaskModal({
           </div>
         </div>
 
-        <div className="p-4 space-y-5 overflow-y-auto">
+        <div className="p-4 space-y-5 overflow-y-auto pb-32 md:pb-4">
           {/* ---- Task Title (editable by content editors) ---- */}
           <section>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
@@ -645,20 +662,44 @@ export default function TaskModal({
               </div>
             )}
           </section>
+
+          {/* ---- Danger zone: delete sub-task (manager gatekeepers only) ---- */}
+          {canManageTeam && (
+            <section className="pt-2">
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.05] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-rose-300 flex items-center gap-1.5">
+                      <Trash2 className="h-4 w-4" /> Delete Sub-Task
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Permanently removes this task and its work history.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={deleteTask}
+                    className="btn-ghost !text-rose-400 !py-1.5 !px-3 text-sm shrink-0 whitespace-nowrap"
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
       </div>
 
       {/* Mobile FAB — bottom-right close on small screens, desktop uses the header × */}
-      {isMobile && (
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="fixed bottom-4 right-4 z-[70] md:hidden rounded-full shadow-lg shadow-black/50 ring-1 ring-white/20 bg-gray-800 flex items-center justify-center h-14 w-14 hover:bg-gray-700 transition-colors"
-        >
-          <X className="h-6 w-6 text-white" />
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close modal"
+        className="md:hidden fixed bottom-24 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-white shadow-2xl shadow-black/60 border border-gray-600 active:scale-95 transition-transform"
+      >
+        <X size={28} />
+      </button>
     </div>
   );
 }
