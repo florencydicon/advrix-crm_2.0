@@ -6,7 +6,7 @@
 // duplicated deliverable in any UI.
 //
 //   - Unified _d_ tasks are created exactly like generateDeliverableTasks():
-//     status 'pending_approval', role_key NULL (team null until brief approval).
+//     status 'approved', role_key NULL (team allotted by sequence).
 //   - A deliverable whose legacy content (+visual, if any) tasks were ALL
 //     completed is created directly as 'completed' with the content recorded.
 //   - Any legacy copy/content found is carried into the new _d_ task so
@@ -105,7 +105,7 @@ async function main() {
 
         if (!existing) {
           if (APPLY) {
-            const insertStatus = legacyAllDone ? "completed" : "pending_approval";
+            const insertStatus = legacyAllDone ? "completed" : "approved";
             await sql`
               INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, brief_copy, content, status, priority, assigned_to, created_by, due_date, completed_at)
               VALUES (${pid}, ${stepKey}, ${d.category_key}, NULL, ${d.id}, 1, ${title},

@@ -36,7 +36,7 @@ async function main() {
 
   const proj = (
     await sql`INSERT INTO projects (client_id, name, status, brief, deliverables, deadline, created_by)
-      VALUES (${client.id}, 'Aryush Height — Q3 Content Campaign', 'pending_approval',
+      VALUES (${client.id}, 'Aryush Height — Q3 Content Campaign', 'in_progress',
       'Q3 social media campaign promoting the new Aryush Heights residential tower. Highlight premium amenities, skyline views and the launch offer.',
       '15 x Static Posts, 5 x Reels', '2026-10-15', NULL) RETURNING id`
   )[0];
@@ -44,10 +44,7 @@ async function main() {
   await sql`INSERT INTO project_deliverables (project_id, category_key, category_label, quantity) VALUES (${proj.id}, 'static_post', 'Static Post', 15)`;
   await sql`INSERT INTO project_deliverables (project_id, category_key, category_label, quantity) VALUES (${proj.id}, 'reel', 'Reel', 5)`;
 
-  // 2. Approve (simulate approveProjectAction flow)
-  await sql`UPDATE projects SET status = 'in_progress' WHERE id = ${proj.id}`;
-
-  // 3. Run engine: generateDeliverableTasks
+  // 2. Run engine: generateDeliverableTasks
   const { generateDeliverableTasks } = await import("@/lib/workflow");
   await generateDeliverableTasks(proj.id);
 

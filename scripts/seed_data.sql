@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS projects (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id     UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'pending_approval',
+  status        TEXT NOT NULL DEFAULT 'in_progress',
   brief         TEXT,
   deliverables  TEXT,
   deadline      DATE,

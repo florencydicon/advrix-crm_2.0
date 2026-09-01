@@ -232,7 +232,7 @@ async function run() {
 
   // ---------- Seed projects (175) ----------
   console.log("\nSeeding 175 projects...");
-  const projectStatuses = ["pending_approval", "in_progress", "in_progress", "in_progress", "completed", "completed", "rejected"];
+  const projectStatuses = ["in_progress", "in_progress", "in_progress", "in_progress", "completed", "completed", "rejected"];
   const projectIds = [];
 
   for (let i = 0; i < 175; i++) {

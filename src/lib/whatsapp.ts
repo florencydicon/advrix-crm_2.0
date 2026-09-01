@@ -47,17 +47,16 @@ export function buildCheckInMessage(args: {
 }) {
   const link = mapsLink(args.latitude ?? null, args.longitude ?? null);
   const lines = [
-    "🟢 CHECK-IN",
+    "[CHECK IN]",
     "",
-    `Name: ${args.name} (${args.role})`,
+    `Name: ${args.name}`,
+    `Role: ${args.role}`,
     `Date: ${args.date}`,
     `Time: ${args.time}`,
     `Status: ${args.status}`,
   ];
-  if (args.location) lines.push(`Location: ${args.location}`);
-  lines.push(`Latitude: ${fmtCoord(args.latitude ?? null)}`);
-  lines.push(`Longitude: ${fmtCoord(args.longitude ?? null)}`);
-  if (link) lines.push(`Map: ${link}`);
+  lines.push(`Lat/Long: ${fmtCoord(args.latitude ?? null)}, ${fmtCoord(args.longitude ?? null)}`);
+  if (link) lines.push(`Location Link: ${link}`);
   return lines.join("\n");
 }
 
@@ -73,17 +72,16 @@ export function buildCheckOutMessage(args: {
 }) {
   const link = mapsLink(args.latitude ?? null, args.longitude ?? null);
   const lines = [
-    "🔴 CHECK-OUT",
+    "[CHECK OUT]",
     "",
-    `Name: ${args.name} (${args.role})`,
+    `Name: ${args.name}`,
+    `Role: ${args.role}`,
     `Date: ${args.date}`,
     `Time: ${args.time}`,
     `Hours Worked: ${args.hoursWorked}h`,
   ];
-  if (args.location) lines.push(`Location: ${args.location}`);
-  lines.push(`Latitude: ${fmtCoord(args.latitude ?? null)}`);
-  lines.push(`Longitude: ${fmtCoord(args.longitude ?? null)}`);
-  if (link) lines.push(`Map: ${link}`);
+  lines.push(`Lat/Long: ${fmtCoord(args.latitude ?? null)}, ${fmtCoord(args.longitude ?? null)}`);
+  if (link) lines.push(`Location Link: ${link}`);
   return lines.join("\n");
 }
 

@@ -37,7 +37,6 @@ const P = async () => {
   await q(`SELECT (SELECT COUNT(*) FROM projects)::text AS total_projects,
                   (SELECT COUNT(*) FROM projects WHERE status='in_progress')::text AS in_progress,
                   (SELECT COUNT(*) FROM projects WHERE status='completed')::text AS completed_projects,
-                  (SELECT COUNT(*) FROM projects WHERE status='pending_approval')::text AS pending_approval,
                   (SELECT COUNT(*) FROM tasks)::text AS total_tasks,
                   (SELECT COUNT(*) FROM tasks WHERE status='completed')::text AS completed_tasks`);
 

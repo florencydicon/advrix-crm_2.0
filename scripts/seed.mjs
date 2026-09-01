@@ -119,7 +119,7 @@ async function main() {
   let projectId;
   if (projRes.length === 0 && pmRes.length > 0) {
     const inserted = await sql`INSERT INTO projects (client_id, name, status, brief, deliverables, deadline, created_by)
-              VALUES (${clientId}, 'Summer Glow Campaign 2026', 'pending_approval',
+              VALUES (${clientId}, 'Summer Glow Campaign 2026', 'in_progress',
               'Launch campaign for the new vitamin-C skincare range. Create a 60s brand film and a set of social thumbnails.',
               '8 x Static Posts, 2 x Reels',
               '2026-09-30', ${salesRes[0]?.id}) RETURNING id`;

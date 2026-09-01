@@ -49,11 +49,9 @@ const t = async (label, text, params) => {
   const projId = randomUUID();
   const clientId = randomUUID();
   const salesId = (await t("sales", "SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id WHERE r.key='SALES' LIMIT 1"))[0].id;
-  const pmId = (await t("pm", "SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id WHERE r.key='PROJECT_MANAGER' LIMIT 1"))[0].id;
 
   await t("client", "INSERT INTO clients (id, name, company) VALUES ($1,'WF Test Client','T')", [clientId]);
-  await t("project", "INSERT INTO projects (id, client_id, name, status, created_by) VALUES ($1,$2,'WF Test Project','pending_approval',$3)", [projId, clientId, salesId]);
-  await t("approve", "UPDATE projects SET status='in_progress', approved_by=$2, approved_at=now() WHERE id=$1", [projId, pmId]);
+  await t("project", "INSERT INTO projects (id, client_id, name, status, created_by) VALUES ($1,$2,'WF Test Project','in_progress',$3)", [projId, clientId, salesId]);
 
   await runWorkflow(projId);
   let tasks = await t("t1", "SELECT id, step_key, group_key, status, assigned_to FROM tasks WHERE project_id=$1", [projId]);

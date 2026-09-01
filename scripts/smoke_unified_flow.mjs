@@ -2,8 +2,8 @@
 // workflow (Steps 1–5) against the LIVE database.
 //
 // It drives a throwaway project through the exact SQL the server actions run:
-//   1. Project approval  -> unified _d_ task created (pending_approval)
-//   2. Brief approval    -> team auto-allotted from project order (WRITER->DESIGNER->SMM)
+//   1. Project creation -> unified _d_ task created (approved)
+//   2. Team allotment   -> auto-allotted from project order (WRITER->DESIGNER->SMM)
 //   3. Start / Submit    -> work snapshot into task_contributions
 //   4. Gate approval     -> auto handoff to next member (advanceTaskStep)
 //   5. Final approval    -> task auto-completed, project auto-completed
@@ -69,7 +69,7 @@ async function main() {
     RETURNING id`)[0];
   const project = (await sql`
     INSERT INTO projects (client_id, name, status, brief, created_by)
-    VALUES (${client.id}, 'Smoke Project', 'pending_approval', 'smoke brief', ${writer.id})
+    VALUES (${client.id}, 'Smoke Project', 'in_progress', 'smoke brief', ${writer.id})
     RETURNING id`)[0];
   const deliv = (await sql`
     INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
@@ -80,15 +80,14 @@ async function main() {
   await sql`INSERT INTO assignments (user_id, project_id, role_key, position) VALUES (${smm.id}, ${project.id}, 'SMM', 2)`;
   console.log("  client/project/deliverable/assignments created.");
 
-  // ── 1. Project approval (approveProjectAction) ─────────
-  console.log("\n── Step 1: project approval ────────────────");
-  await sql`UPDATE projects SET status = 'in_progress', approved_by = ${writer.id}, approved_at = now() WHERE id = ${project.id}`;
+  // ── 1. Project created in_progress -> unified approved task ──
+  console.log("\n── Step 1: project + unified task creation ──");
   // generateDeliverableTasks
   await sql`
     INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
     VALUES (${project.id}, 'static_post_d_1', 'static_post', NULL, ${deliv.id}, 1, 'Static Post 01',
             'Unified deliverable "Static Post 01". This task flows sequentially through the assigned team — each member starts, submits, and is approved before the next hand-off.',
-            NULL, 'pending_approval', 'medium', NULL, NULL)`;
+            NULL, 'approved', 'medium', NULL, NULL)`;
   const created_ = await sql`
     SELECT id, step_key FROM tasks WHERE project_id = ${project.id} AND step_key = 'static_post_d_1'`;
   assert("unified task created", created_, created_.length === 1);
@@ -98,13 +97,13 @@ async function main() {
 
   let t = (await sql`SELECT * FROM tasks WHERE id = ${id}`)[0];
   assert(
-    "task pending_approval, role_key NULL, current_step 0",
+    "task approved, role_key NULL, current_step 0",
     t,
-    t.status === "pending_approval" && t.role_key === null && t.current_step === 0
+    t.status === "approved" && t.role_key === null && t.current_step === 0
   );
 
-  // ── 2. Brief approval + auto team (approveTaskBriefAction) ──
-  console.log("\n── Step 2: brief approval + team allotment ──");
+  // ── 2. Team allotment (auto-allot from project order) ──
+  console.log("\n── Step 2: team allotment ──────────────────");
   await sql`
     UPDATE tasks SET status = 'approved', brief_approved_by = ${writer.id}, brief_approved_at = now(),
       reviewed_by = ${writer.id}, reviewed_at = now() WHERE id = ${id}`;
@@ -227,7 +226,7 @@ async function main() {
   console.log("\n── Step 8: deliverable sequences + bulk approve ──");
   const p2 = (await sql`
     INSERT INTO projects (client_id, name, status, brief, created_by)
-    VALUES (${client.id}, 'Smoke Project DelivSeq', 'pending_approval', 'divseq brief', ${writer.id})
+    VALUES (${client.id}, 'Smoke Project DelivSeq', 'in_progress', 'divseq brief', ${writer.id})
     RETURNING id`)[0];
   const d2 = (await sql`
     INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
@@ -243,7 +242,7 @@ async function main() {
       await sql`
         INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by)
         VALUES (${p2.id}, ${stepKey}, 'story_post', NULL, ${d2.id}, ${seq}, ${"Story Post " + seq}, 'Unified deliverable "Story Post".',
-                NULL, 'pending_approval', 'medium', NULL, NULL)
+                NULL, 'approved', 'medium', NULL, NULL)
         RETURNING id`
     )[0].id;
 
