@@ -6,7 +6,7 @@ import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import type { Task, TaskStatus } from "@/lib/types";
 import { advanceTaskStep, markTaskComplete, stepTaskBack, reopenTask, setTaskTeam } from "@/lib/workflow";
-import { sanitizeRich } from "@/lib/rich";
+import { sanitizeRich, richToPlain } from "@/lib/rich";
 
 const PERM_PROJECTS_VIEW = "projects:view";
 const PERM_PROJECTS_MANAGE = "projects:manage";
@@ -45,12 +45,16 @@ const PIPELINE_TASK_SELECT = `
            ) ORDER BY tc.step ASC, tc.submitted_at ASC)
            FROM task_contributions tc
            WHERE tc.task_id = t.id
-         ), '[]'::json) AS contributions
+         ), '[]'::json) AS contributions,
+         reu.id AS remarks_edited_by, reu.full_name AS remarks_edited_by_name,
+         rer.label AS remarks_edited_by_role, t.remarks_edited_at::text AS remarks_edited_at
   FROM tasks t
   JOIN projects p ON p.id = t.project_id
   JOIN clients c ON c.id = p.client_id
   LEFT JOIN users u ON u.id = t.assigned_to
   LEFT JOIN roles r ON r.key = t.role_key
+  LEFT JOIN users reu ON reu.id = t.remarks_edited_by
+  LEFT JOIN roles rer ON rer.id = reu.role_id
 `;
 
 /**
@@ -144,9 +148,15 @@ export async function completePipelineTaskAction(
  * Send Back — pushes an active task one step backward along its sequence and
  * re-assigns the previous member for rework. Only the current assignee or a
  * manager may trigger it.
+ *
+ * When a manager/PM sends a stage back, the current Remarks/Content text is
+ * prepended with the author's signature — `[Feedback by {FirstName} - {Role}]`
+ * — and any prior remarks are preserved below, so the previous assignee always
+ * knows who requested the fix and what to do.
  */
 export async function sendBackPipelineTaskAction(
-  taskId: string
+  taskId: string,
+  feedback?: string
 ): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
@@ -157,6 +167,31 @@ export async function sendBackPipelineTaskAction(
   if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
     return { ok: false, error: "Not authorized." };
   }
+
+  // Compose the signed feedback and persist it into the Remarks/Content box.
+  const firstName = (session.name || "User").split(" ")[0] || "User";
+  const role = session.role_label || session.role_key || "Team";
+  const signature = `[Feedback by ${firstName} - ${role}]`;
+  const typed = richToPlain(sanitizeRich(String(feedback ?? ""))).trim();
+
+  const existingRow = await query<{ remarks: string | null }>(
+    `SELECT remarks FROM tasks WHERE id = $1`,
+    [taskId]
+  );
+  const existing = existingRow[0]?.remarks || "";
+  const existingPlain = existing ? richToPlain(existing).trim() : "";
+
+  // Skip re-appending the current text if it was already saved by auto-save.
+  const appendPrevious = existingPlain && existingPlain !== typed;
+  const share = typed || "requested rework.";
+  const newRemarks = `${signature}: ${share}` + (appendPrevious ? `\n\n${existing}` : "");
+
+  await query(
+    `UPDATE tasks SET remarks = $1, remarks_edited_by = $2, remarks_edited_at = now()
+     WHERE id = $3`,
+    [newRemarks, session.sub, taskId]
+  );
+
   await stepTaskBack(taskId);
   revalidate();
   return { ok: true };
@@ -211,7 +246,7 @@ export async function movePipelineTaskAction(
 export async function setPipelineTaskRemarksAction(
   taskId: string,
   remarks: string
-): Promise<{ ok: boolean; text?: string; error?: string }> {
+): Promise<{ ok: boolean; text?: string; editedByName?: string; editedByRole?: string; editedAt?: string; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
   const task = await taskOf(taskId);
@@ -221,10 +256,18 @@ export async function setPipelineTaskRemarksAction(
     return { ok: false, error: "Not authorized." };
   }
   const html = sanitizeRich(String(remarks ?? ""));
-  await query(`UPDATE tasks SET remarks = $1 WHERE id = $2`, [html, taskId]);
-  const { richToPlain } = await import("@/lib/rich");
+  await query(
+    `UPDATE tasks SET remarks = $1, remarks_edited_by = $2, remarks_edited_at = now() WHERE id = $3`,
+    [html, session.sub, taskId]
+  );
   revalidate();
-  return { ok: true, text: richToPlain(html) };
+  return {
+    ok: true,
+    text: richToPlain(html),
+    editedByName: session.name,
+    editedByRole: session.role_label,
+    editedAt: new Date().toISOString(),
+  };
 }
 
 /**

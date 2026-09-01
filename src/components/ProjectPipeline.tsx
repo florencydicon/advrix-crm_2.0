@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Layers,
   History,
@@ -14,6 +14,7 @@ import {
   CalendarDays,
   ShieldCheck,
   ArrowRight,
+  Save,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
@@ -49,6 +50,13 @@ function fmtDateTime(v?: string | null) {
   const d = new Date(v);
   if (isNaN(d.getTime())) return "—";
   return `${d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} · ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function fmtTimeOnly(v?: string | null) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function useIsMobile() {
@@ -95,6 +103,7 @@ export default function ProjectPipeline({
   // Ultra-lean modal (active task)
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [localRemarks, setLocalRemarks] = useState("");
+  const [editedBy, setEditedBy] = useState<{ name: string; role: string; at: string } | null>(null);
   // Team assignment draft for the open modal
   const [teamDraft, setTeamDraft] = useState<string[]>([]);
   const [teamOpen, setTeamOpen] = useState(false);
@@ -137,14 +146,49 @@ export default function ProjectPipeline({
     setActiveTask(task);
     const t = task.remarks || "";
     setLocalRemarks(t);
+    setEditedBy(
+      task.remarks_edited_by_name
+        ? { name: task.remarks_edited_by_name, role: task.remarks_edited_by_role || "", at: task.remarks_edited_at || "" }
+        : null
+    );
     setTeamDraft((task.assignees || []).map((m) => m.id));
     setTeamOpen(false);
   };
 
-  const saveRemarks = () => {
+  // Keep latest values in refs so the debounced auto-save never closes over a
+  // stale payload.
+  const activeTaskRef = useRef(activeTask);
+  activeTaskRef.current = activeTask;
+  const localRemarksRef = useRef(localRemarks);
+  localRemarksRef.current = localRemarks;
+
+  const persistRemarks = useCallback(
+    async (silent: boolean) => {
+      const task = activeTaskRef.current;
+      if (!task) return;
+      const res = await setPipelineTaskRemarksAction(task.id, localRemarksRef.current);
+      if (res.ok) {
+        setEditedBy({
+          name: res.editedByName || "",
+          role: res.editedByRole || "",
+          at: res.editedAt || new Date().toISOString(),
+        });
+        if (!silent) notify("Remarks saved.");
+      } else {
+        notify(res.error || "Could not save remarks.");
+      }
+    },
+    [notify]
+  );
+
+  // Auto-save ~1 second after the user stops typing.
+  useEffect(() => {
     if (!activeTask) return;
-    run(() => setPipelineTaskRemarksAction(activeTask.id, localRemarks), "Remarks saved.");
-  };
+    const t = window.setTimeout(() => persistRemarks(true), 1000);
+    return () => window.clearTimeout(t);
+  }, [localRemarks, activeTask, persistRemarks]);
+
+  const saveText = () => persistRemarks(false);
 
   const saveTeam = () => {
     if (!activeTask) return;
@@ -156,6 +200,33 @@ export default function ProjectPipeline({
     setTeamDraft((prev) =>
       prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
     );
+  };
+
+  // Send Back: pass the current textarea contents so the server can prepend the
+  // author signature, then re-sync the open modal from the fresh board.
+  const sendBack = () => {
+    const task = activeTask;
+    if (!task) return;
+    startTransition(async () => {
+      const res = await sendBackPipelineTaskAction(task.id, localRemarksRef.current);
+      if (!res.ok) {
+        notify(res.error || "Could not send back.");
+        return;
+      }
+      const next = await getPipelineBoardAction();
+      setBoard(next);
+      const fresh = next.active.find((t) => t.id === task.id);
+      if (fresh) {
+        setActiveTask(fresh);
+        setLocalRemarks(fresh.remarks || "");
+        setEditedBy(
+          fresh.remarks_edited_by_name
+            ? { name: fresh.remarks_edited_by_name, role: fresh.remarks_edited_by_role || "", at: fresh.remarks_edited_at || "" }
+            : null
+        );
+      }
+      notify("Sent back a stage.");
+    });
   };
 
   const activeCount = board.active.length;
@@ -446,11 +517,32 @@ export default function ProjectPipeline({
             <textarea
               value={localRemarks}
               onChange={(e) => setLocalRemarks(e.target.value)}
-              onBlur={saveRemarks}
+              onBlur={() => persistRemarks(true)}
               rows={3}
               placeholder="Type content or remarks here… the task heading above updates live."
               className="input !py-2.5 text-sm resize-none"
             />
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-400 min-w-0 truncate">
+                {editedBy ? (
+                  <>
+                    Last updated by:{" "}
+                    <span className="text-slate-200 font-medium">{editedBy.name.split(" ")[0] || editedBy.name}</span>{" "}
+                    ({editedBy.role}) at <span className="text-slate-300">{fmtTimeOnly(editedBy.at)}</span>
+                  </>
+                ) : (
+                  <>Auto-saves as you type</>
+                )}
+              </p>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={saveText}
+                className="btn-ghost !px-2.5 !py-1.5 text-xs shrink-0"
+              >
+                <Save className="h-3.5 w-3.5" /> Save Text
+              </button>
+            </div>
           </section>
 
           {/* ---- Actions ---- */}
@@ -491,7 +583,7 @@ export default function ProjectPipeline({
               <button
                 type="button"
                 disabled={isPending}
-                onClick={() => run(() => sendBackPipelineTaskAction(activeTask.id), "Sent back a stage.")}
+                onClick={sendBack}
                 className="btn-ghost text-sm !px-3 !py-2"
               >
                 <Undo2 className="h-4 w-4" /> Send Back

@@ -177,6 +177,10 @@ export interface Task {
    due_date: string | null;
    on_leave_note: string | null;
    remarks: string | null;
+   remarks_edited_by: string | null;
+   remarks_edited_by_name: string | null;
+   remarks_edited_by_role: string | null;
+   remarks_edited_at: string | null;
    created_at: string;
    completed_at: string | null;
 }
