@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, CheckCircle2, Plus, Search } from "lucide-react";
-import type { Client, ContentItem, UserRow } from "@/lib/types";
+import type { Client, ContentItem, UserRow, StandaloneContentStatus } from "@/lib/types";
 import ContentModal from "@/components/ContentModal";
+import BulkActionBar from "@/components/BulkActionBar";
+import { useToast } from "@/components/Toast";
+import {
+  bulkAssignContentAction,
+  bulkDeleteContentAction,
+  bulkSetContentStatusAction,
+} from "@/lib/actions/content";
 
 function preview(body: string | null): string {
   const t = (body || "").trim().replace(/\s+/g, " ");
@@ -49,7 +56,17 @@ export default function ContentHub({
   const [tab, setTab] = useState<"active" | "history">("active");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ContentItem | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const { toast } = useToast();
   const router = useRouter();
+
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+
+  // Prune bulk selection to rows that still exist.
+  useEffect(() => {
+    setSelected((prev) => prev.filter((id) => items.some((t) => t.id === id)));
+  }, [items]);
 
   const refresh = async () => {
     router.refresh();
@@ -84,6 +101,46 @@ export default function ContentHub({
   const activeCount = items.filter((t) => t.status !== "completed").length;
   const historyCount = items.filter((t) => t.status === "completed").length;
 
+  const switchTab = (next: "active" | "history") => {
+    setTab(next);
+    setSelected([]);
+  };
+
+  const bulkAssign = async (memberIds: string[]) => {
+    const res = await bulkAssignContentAction(selected, memberIds[0] || null);
+    if (!res.ok) {
+      toast(res.error || "Bulk assign failed.", "error");
+      return;
+    }
+    toast(`Assignee updated on ${res.count} item${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await refresh();
+  };
+
+  const bulkDelete = async () => {
+    const res = await bulkDeleteContentAction(selected);
+    if (!res.ok) {
+      toast(res.error || "Bulk delete failed.", "error");
+      return;
+    }
+    toast(`Deleted ${res.count} item${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await refresh();
+  };
+
+  const bulkStatus = async (status: string) => {
+    const res = await bulkSetContentStatusAction(selected, status as StandaloneContentStatus);
+    if (!res.ok) {
+      toast(res.error || "Bulk status update failed.", "error");
+      return;
+    }
+    toast(`Updated ${res.count} item${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await refresh();
+  };
+
+  const bulkVisible = canManage || canEdit;
+
   const mobileCard = (t: ContentItem) => (
     <button
       key={t.id}
@@ -93,9 +150,21 @@ export default function ContentHub({
     >
       <p className="text-sm font-semibold text-white leading-snug">{t.title}</p>
       <p className="text-xs text-slate-400 mt-1 leading-snug line-clamp-3">{preview(t.body)}</p>
-      <p className="text-xs text-slate-500 mt-1.5 truncate">
-        {t.client_company || t.client_name} · {t.assignee_name || "Unassigned"}
-      </p>
+      <div className="flex items-start justify-between gap-2 mt-1.5">
+        <p className="text-xs text-slate-500 truncate min-w-0 flex-1">
+          {t.client_company || t.client_name} · {t.assignee_name || "Unassigned"}
+        </p>
+        {bulkVisible && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={selected.includes(t.id)}
+            onChange={() => toggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 accent-emerald-400 cursor-pointer shrink-0"
+          />
+        )}
+      </div>
       <div className="flex items-center gap-1.5 mt-2.5">
         <StatusPill status={t.status} />
       </div>
@@ -109,7 +178,7 @@ export default function ContentHub({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setTab("active")}
+            onClick={() => switchTab("active")}
             className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
               tab === "active"
                 ? "bg-brand-300 text-night-950"
@@ -124,7 +193,7 @@ export default function ContentHub({
           </button>
           <button
             type="button"
-            onClick={() => setTab("history")}
+            onClick={() => switchTab("history")}
             className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
               tab === "history"
                 ? "bg-brand-300 text-night-950"
@@ -178,12 +247,54 @@ export default function ContentHub({
         </div>
       ) : (
         <>
+          {bulkVisible && (
+            <BulkActionBar
+              selectedCount={selected.length}
+              team={team}
+              canAssign={canManage}
+              canDelete={canManage}
+              statusOptions={
+                canEdit
+                  ? [
+                      { value: "active", label: "Active" },
+                      { value: "completed", label: "Completed" },
+                    ]
+                  : []
+              }
+              statusLabel="Status"
+              singleAssign
+              assignLabel="Assign"
+              onAssign={bulkAssign}
+              onDelete={bulkDelete}
+              onStatus={bulkStatus}
+              onClear={() => setSelected([])}
+            />
+          )}
           {/* Desktop table */}
           <div className="hidden md:block card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse min-w-[880px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
+                    {bulkVisible && (
+                      <th className="px-3 py-2.5 w-10">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all content"
+                          checked={filtered.length > 0 && selected.length === filtered.length}
+                          ref={(el) => {
+                            if (el) el.indeterminate = selected.length > 0 && selected.length < filtered.length;
+                          }}
+                          onChange={() =>
+                            setSelected((prev) =>
+                              prev.length === filtered.length ? [] : filtered.map((t) => t.id)
+                            )
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-4 w-4 accent-emerald-400 cursor-pointer"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-2.5 min-w-[320px] sticky left-0 bg-night-850 z-20">Content / Copy</th>
                     <th className="px-3 py-2.5 min-w-[160px]">Client Name</th>
                     <th className="px-3 py-2.5 min-w-[140px]">Assignee</th>
@@ -197,6 +308,18 @@ export default function ContentHub({
                       onClick={() => openRow(t)}
                       className="hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
+                      {bulkVisible && (
+                        <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${t.title}`}
+                            checked={selected.includes(t.id)}
+                            onChange={() => toggleSelect(t.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-4 w-4 accent-emerald-400 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
                         <p className="text-sm text-white font-medium leading-tight truncate max-w-[300px]">
                           {t.title}

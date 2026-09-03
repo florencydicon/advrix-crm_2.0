@@ -23,6 +23,8 @@ export default function BulkActionBar({
   canDelete,
   statusOptions,
   statusLabel = "Status",
+  singleAssign = false,
+  assignLabel = "Assign Team",
   onAssign,
   onDelete,
   onStatus,
@@ -34,6 +36,8 @@ export default function BulkActionBar({
   canDelete: boolean;
   statusOptions: BulkStatusOption[];
   statusLabel?: string;
+  singleAssign?: boolean;
+  assignLabel?: string;
   onAssign: (memberIds: string[]) => Promise<void>;
   onDelete: () => Promise<void>;
   onStatus: (status: string) => Promise<void>;
@@ -47,7 +51,15 @@ export default function BulkActionBar({
   if (selectedCount === 0) return null;
 
   const togglePick = (id: string) =>
-    setPicked((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
+    setPicked((prev) =>
+      singleAssign
+        ? prev.includes(id)
+          ? []
+          : [id]
+        : prev.includes(id)
+          ? prev.filter((m) => m !== id)
+          : [...prev, id]
+    );
 
   const runAssign = async () => {
     if (picked.length === 0 || busy) return;
@@ -106,7 +118,7 @@ export default function BulkActionBar({
                 onClick={() => { setAssignOpen((o) => !o); setStatusOpen(false); }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
-                <Users className="h-3.5 w-3.5" /> Assign Team
+                <Users className="h-3.5 w-3.5" /> {assignLabel}
               </button>
               {assignOpen && (
                 <>

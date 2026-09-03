@@ -171,3 +171,69 @@ export async function deleteContentItemAction(
   revalidate();
   return { ok: true };
 }
+
+/** Safety cap for multi-select bulk operations. */
+const MAX_BULK = 100;
+
+function cleanIdList(ids: string[] | null | undefined): string[] {
+  return [...new Set((ids || []).filter(Boolean))].slice(0, MAX_BULK);
+}
+
+/** Bulk: assign one writer to every selected item. Managers only. */
+export async function bulkAssignContentAction(
+  ids: string[],
+  assigneeId: string | null
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await getSession();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) return { ok: false, error: "Not authorized." };
+  const list = cleanIdList(ids);
+  if (list.length === 0) return { ok: false, error: "No content selected." };
+  for (const id of list) {
+    await query(`UPDATE contents SET assignee_id = $2, updated_at = now() WHERE id = $1`, [
+      id,
+      assigneeId || null,
+    ]);
+  }
+  revalidate();
+  return { ok: true, count: list.length };
+}
+
+/** Bulk: delete every selected item. Managers only. */
+export async function bulkDeleteContentAction(
+  ids: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await getSession();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) return { ok: false, error: "Not authorized." };
+  const list = cleanIdList(ids);
+  if (list.length === 0) return { ok: false, error: "No content selected." };
+  for (const id of list) {
+    await query(`DELETE FROM contents WHERE id = $1`, [id]);
+  }
+  revalidate();
+  return { ok: true, count: list.length };
+}
+
+/**
+ * Bulk: move every selected item between Active and History.
+ * Content team + managers (writers can change status, never delete).
+ */
+export async function bulkSetContentStatusAction(
+  ids: string[],
+  status: StandaloneContentStatus
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await getSession();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isContentEditor(session)) return { ok: false, error: "Not authorized." };
+  if (status !== "active" && status !== "completed") {
+    return { ok: false, error: "Invalid status." };
+  }
+  const list = cleanIdList(ids);
+  if (list.length === 0) return { ok: false, error: "No content selected." };
+  for (const id of list) {
+    await query(`UPDATE contents SET status = $2, updated_at = now() WHERE id = $1`, [id, status]);
+  }
+  revalidate();
+  return { ok: true, count: list.length };
+}
