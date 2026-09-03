@@ -527,11 +527,19 @@ export default function ProjectPipeline({
 
   // ---- Mobile stacked cards ----
   const mobileCard = (t: Task, isHistory: boolean) => (
-    <button
-      type="button"
+    <div
       key={t.id}
+      role="button"
+      tabIndex={0}
       onClick={() => (isHistory ? setHistoryTask(t) : setActiveTask(t))}
-      className={`w-full text-left rounded-xl border p-3.5 transition-colors ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (isHistory) setHistoryTask(t);
+          else setActiveTask(t);
+        }
+      }}
+      className={`w-full text-left rounded-xl border p-3.5 transition-colors cursor-pointer ${
         t.status === "submitted"
           ? "border-violet-300/40 bg-violet-400/[0.08]"
           : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
@@ -572,7 +580,7 @@ export default function ProjectPipeline({
           <span className="text-slate-400">Stage · <span className="text-brand-300">{stageLabel(t)}</span></span>
         </div>
       )}
-    </button>
+    </div>
   );
 
   const activeMobile = (

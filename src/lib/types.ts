@@ -150,6 +150,7 @@ export interface ContentItem {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  completed_at: string | null;
 }
 
 export interface TaskAssignee {

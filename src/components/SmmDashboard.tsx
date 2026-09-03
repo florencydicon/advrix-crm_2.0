@@ -177,11 +177,18 @@ export default function SmmDashboard({
   }));
 
   const mobileCard = (t: Task) => (
-    <button
+    <div
       key={t.id}
-      type="button"
+      role="button"
+      tabIndex={0}
       onClick={() => setOpenTask(t)}
-      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99]"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setOpenTask(t);
+        }
+      }}
+      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -209,11 +216,11 @@ export default function SmmDashboard({
         <StatusBadge status={t.status} />
         <PriorityBadge priority={t.priority} />
       </div>
-    </button>
+    </div>
   );
 
   return (
-    <div className="w-full max-w-none space-y-3">
+    <div className="w-full max-w-none space-y-3 pb-20 md:pb-0">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         {metrics.map((m) => (
           <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>

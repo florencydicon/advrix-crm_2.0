@@ -19,6 +19,13 @@ function preview(body: string | null): string {
   return t.length > 140 ? `${t.slice(0, 140)}…` : t;
 }
 
+function fmtDate(v?: string | null): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+}
+
 function StatusPill({ status }: { status: ContentItem["status"] }) {
   if (status === "completed") {
     return (
@@ -54,6 +61,8 @@ export default function ContentHub({
 }) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"active" | "history">("active");
+  const [fltClient, setFltClient] = useState("");
+  const [fltAssignee, setFltAssignee] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ContentItem | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -87,16 +96,38 @@ export default function ContentHub({
     const inTab = items.filter((t) =>
       tab === "history" ? t.status === "completed" : t.status !== "completed"
     );
-    if (!q) return inTab;
-    return inTab.filter(
-      (t) =>
+    return inTab.filter((t) => {
+      if (fltClient && (t.client_company || t.client_name) !== fltClient) return false;
+      if (fltAssignee && (t.assignee_name || "Unassigned") !== fltAssignee) return false;
+      if (!q) return true;
+      return (
         t.title.toLowerCase().includes(q) ||
         (t.body || "").toLowerCase().includes(q) ||
         t.client_name.toLowerCase().includes(q) ||
         (t.client_company || "").toLowerCase().includes(q) ||
         (t.assignee_name || "").toLowerCase().includes(q)
-    );
-  }, [items, search, tab]);
+      );
+    });
+  }, [items, search, tab, fltClient, fltAssignee]);
+
+  const clientOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of items) s.add(t.client_company || t.client_name);
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const assigneeOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of items) s.add(t.assignee_name || "Unassigned");
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const hasFilters = !!(search.trim() || fltClient || fltAssignee);
+  const clearFilters = () => {
+    setSearch("");
+    setFltClient("");
+    setFltAssignee("");
+  };
 
   const activeCount = items.filter((t) => t.status !== "completed").length;
   const historyCount = items.filter((t) => t.status === "completed").length;
@@ -142,11 +173,18 @@ export default function ContentHub({
   const bulkVisible = canManage || canEdit;
 
   const mobileCard = (t: ContentItem) => (
-    <button
+    <div
       key={t.id}
-      type="button"
+      role="button"
+      tabIndex={0}
       onClick={() => openRow(t)}
-      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99]"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openRow(t);
+        }
+      }}
+      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
     >
       <p className="text-sm font-semibold text-white leading-snug">{t.title}</p>
       <p className="text-xs text-slate-400 mt-1 leading-snug line-clamp-3">{preview(t.body)}</p>
@@ -165,14 +203,18 @@ export default function ContentHub({
           />
         )}
       </div>
-      <div className="flex items-center gap-1.5 mt-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5">
         <StatusPill status={t.status} />
+        <span className="text-[10px] text-slate-500">
+          Added {fmtDate(t.created_at)}
+          {t.completed_at ? ` · Uploaded ${fmtDate(t.completed_at)}` : ""}
+        </span>
       </div>
-    </button>
+    </div>
   );
 
   return (
-    <div className="w-full max-w-none space-y-3">
+    <div className="w-full max-w-none space-y-3 pb-20 md:pb-0">
       {/* Tabs + Add */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
@@ -218,16 +260,49 @@ export default function ContentHub({
         )}
       </div>
 
-      {/* Search */}
-      <div className="relative w-full sm:max-w-xs">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search content, clients, assignees…"
-          className="input !py-1.5 text-xs w-full !pl-9"
-        />
+      {/* Search + filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:max-w-xs sm:flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search content, clients, assignees…"
+            className="input !py-1.5 text-xs w-full !pl-9"
+          />
+        </div>
+        <select
+          aria-label="Filter by client"
+          value={fltClient}
+          onChange={(e) => setFltClient(e.target.value)}
+          className="rounded-lg border border-white/10 bg-night-900 px-2.5 py-1.5 text-xs text-slate-300 focus:border-brand-300/50 focus:outline-none cursor-pointer max-w-[160px]"
+        >
+          <option value="">All Clients</option>
+          {clientOptions.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by assignee"
+          value={fltAssignee}
+          onChange={(e) => setFltAssignee(e.target.value)}
+          className="rounded-lg border border-white/10 bg-night-900 px-2.5 py-1.5 text-xs text-slate-300 focus:border-brand-300/50 focus:outline-none cursor-pointer max-w-[160px]"
+        >
+          <option value="">All Assignees</option>
+          {assigneeOptions.map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-[11px] text-slate-400 hover:text-white transition-colors"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -273,7 +348,7 @@ export default function ContentHub({
           {/* Desktop table */}
           <div className="hidden md:block card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[880px]">
+              <table className="w-full border-collapse min-w-[1020px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
                     {bulkVisible && (
@@ -298,6 +373,8 @@ export default function ContentHub({
                     <th className="px-4 py-2.5 min-w-[320px] sticky left-0 bg-night-850 z-20">Content / Copy</th>
                     <th className="px-3 py-2.5 min-w-[160px]">Client Name</th>
                     <th className="px-3 py-2.5 min-w-[140px]">Assignee</th>
+                    <th className="px-3 py-2.5 w-28 whitespace-nowrap">Added</th>
+                    <th className="px-3 py-2.5 w-28 whitespace-nowrap">Uploaded</th>
                     <th className="px-3 py-2.5 w-32">Status</th>
                   </tr>
                 </thead>
@@ -335,6 +412,12 @@ export default function ContentHub({
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <span className="text-xs text-slate-300">{t.assignee_name || "Unassigned"}</span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-xs tabular-nums text-slate-400">{fmtDate(t.created_at)}</span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-xs tabular-nums text-slate-400">{fmtDate(t.completed_at)}</span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <StatusPill status={t.status} />

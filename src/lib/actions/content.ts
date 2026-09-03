@@ -34,7 +34,8 @@ function revalidate() {
 const CONTENT_SELECT = `
   SELECT c.*, cl.name AS client_name, cl.company AS client_company,
          u.full_name AS assignee_name,
-         c.created_at::text AS created_at, c.updated_at::text AS updated_at
+         c.created_at::text AS created_at, c.updated_at::text AS updated_at,
+         c.completed_at::text AS completed_at
   FROM contents c
   JOIN clients cl ON cl.id = c.client_id
   LEFT JOIN users u ON u.id = c.assignee_id
@@ -155,7 +156,12 @@ export async function setContentItemStatusAction(
   }
   const existing = await query<{ id: string }>(`SELECT id FROM contents WHERE id = $1`, [id]);
   if (!existing[0]) return { ok: false, error: "Content not found." };
-  await query(`UPDATE contents SET status = $2, updated_at = now() WHERE id = $1`, [id, status]);
+  await query(
+    `UPDATE contents SET status = $2, updated_at = now(),
+       completed_at = CASE WHEN $2 = 'completed' THEN now() ELSE NULL END
+     WHERE id = $1`,
+    [id, status]
+  );
   revalidate();
   return { ok: true };
 }
@@ -232,7 +238,12 @@ export async function bulkSetContentStatusAction(
   const list = cleanIdList(ids);
   if (list.length === 0) return { ok: false, error: "No content selected." };
   for (const id of list) {
-    await query(`UPDATE contents SET status = $2, updated_at = now() WHERE id = $1`, [id, status]);
+    await query(
+      `UPDATE contents SET status = $2, updated_at = now(),
+         completed_at = CASE WHEN $2 = 'completed' THEN now() ELSE NULL END
+       WHERE id = $1`,
+      [id, status]
+    );
   }
   revalidate();
   return { ok: true, count: list.length };
