@@ -133,6 +133,25 @@ export const CONTENT_STATUSES: { key: ContentStatus; label: string }[] = [
   { key: "uploaded_scheduled", label: "Uploaded/Scheduled" },
 ];
 
+/** Standalone Content Management item (contents table — independent of the pipeline). */
+export type StandaloneContentStatus = "active" | "completed";
+
+export interface ContentItem {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_company: string | null;
+  title: string;
+  body: string | null;
+  remarks: string | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  status: StandaloneContentStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TaskAssignee {
   id: string;
   name: string;

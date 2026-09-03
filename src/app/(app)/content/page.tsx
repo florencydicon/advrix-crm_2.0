@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { hasAnyPermission } from "@/lib/permissions";
-import { getContentBoardAction } from "@/lib/actions/pipeline";
-import { getTeam } from "@/lib/data";
+import { getContentItemsAction } from "@/lib/actions/content";
+import { getClients, getTeam } from "@/lib/data";
 import ContentHub from "@/components/ContentHub";
 
 export const metadata = { title: "Content Management — Advrix CRM" };
@@ -14,8 +14,9 @@ export default async function ContentPage() {
     redirect("/dashboard");
   }
 
-  const [board, team] = await Promise.all([
-    getContentBoardAction(),
+  const [board, clients, team] = await Promise.all([
+    getContentItemsAction(),
+    getClients().catch(() => []),
     getTeam().catch(() => []),
   ]);
 
@@ -24,15 +25,16 @@ export default async function ContentPage() {
       <div className="mb-4">
         <h1 className="text-xl font-bold tracking-tight">Content Management</h1>
         <p className="text-sm text-slate-400">
-          Every content deliverable across clients — {board.active.length} open, {board.completed.length} done.
+          Standalone content workspace — {board.items.filter((i) => i.status !== "completed").length} active,{" "}
+          {board.items.filter((i) => i.status === "completed").length} in history.
         </p>
       </div>
       <ContentHub
-        tasks={[...board.active, ...board.completed]}
+        items={board.items}
+        clients={clients}
         team={team}
-        roleKey={session.role_key}
-        userId={session.sub}
-        permissions={session.permissions}
+        canManage={board.canManage}
+        canEdit={board.canEdit}
       />
     </div>
   );
