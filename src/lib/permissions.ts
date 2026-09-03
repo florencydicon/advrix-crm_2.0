@@ -62,6 +62,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   SALES: ["projects:view", "projects:create", "leads:view", "leads:manage"],
   WRITER: ["tasks:execute"],
+  CONTENT_WRITER: ["projects:view", "tasks:execute"],
   DESIGNER: ["tasks:execute"],
   EDITOR: ["tasks:execute"],
   SMM: ["tasks:execute"],

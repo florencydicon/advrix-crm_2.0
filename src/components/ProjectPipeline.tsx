@@ -17,13 +17,18 @@ import {
   X,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
-import { StatusBadge, PriorityBadge } from "@/components/ui";
+import { TASK_STATUS_FLOW } from "@/lib/types";
+import { StatusBadge, PriorityBadge, STATUS_META } from "@/components/ui";
 import {
   getPipelineBoardAction,
   reopenPipelineTaskAction,
+  bulkAssignPipelineTeamAction,
+  bulkDeletePipelineTasksAction,
+  bulkSetPipelineStatusAction,
 } from "@/lib/actions/pipeline";
 import type { PipelineBoardPayload } from "@/lib/actions/pipeline";
 import TaskModal from "@/components/TaskModal";
+import BulkActionBar from "@/components/BulkActionBar";
 
 function initials(name?: string | null) {
   return (name || "?")
@@ -161,6 +166,11 @@ export default function ProjectPipeline({
   const [fltStage, setFltStage] = useState("");
   const [fltDeadline, setFltDeadline] = useState("");
 
+  // Multi-select bulk actions (active board only).
+  const [selected, setSelected] = useState<string[]>([]);
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
 
@@ -188,7 +198,54 @@ export default function ProjectPipeline({
   const reload = useCallback(async () => {
     const next = await getPipelineBoardAction();
     setBoard(next);
+    // Prune bulk selection to rows that still exist.
+    setSelected((prev) => prev.filter((id) => next.active.some((t) => t.id === id)));
   }, []);
+
+  // Managers (role key or tasks:manage) get bulk assign/delete/status.
+  const isManager =
+    board.canManage ||
+    ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"].includes(
+      (board.roleKey || "").toUpperCase()
+    );
+
+  const bulkAssign = async (memberIds: string[]) => {
+    const res = await bulkAssignPipelineTeamAction(selected, memberIds);
+    if (!res.ok) {
+      notify(res.error || "Bulk assign failed.");
+      return;
+    }
+    notify(`Team updated on ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await reload();
+  };
+
+  const bulkDelete = async () => {
+    const res = await bulkDeletePipelineTasksAction(selected);
+    if (!res.ok) {
+      notify(res.error || "Bulk delete failed.");
+      return;
+    }
+    notify(`Deleted ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await reload();
+  };
+
+  const bulkStatus = async (status: string) => {
+    const res = await bulkSetPipelineStatusAction(selected, status as Task["status"]);
+    if (!res.ok) {
+      notify(res.error || "Bulk status update failed.");
+      return;
+    }
+    notify(`Updated ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await reload();
+  };
+
+  const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
+    value: s,
+    label: STATUS_META[s]?.label || s,
+  }));
 
   const activeCount = board.active.length;
   const completedCount = board.completed.length;
@@ -330,6 +387,25 @@ export default function ProjectPipeline({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/10 bg-white/[0.03]">
+              {isManager && (
+                <th className="px-3 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all tasks"
+                    checked={filteredActive.length > 0 && selected.length === filteredActive.length}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selected.length > 0 && selected.length < filteredActive.length;
+                    }}
+                    onChange={() =>
+                      setSelected((prev) =>
+                        prev.length === filteredActive.length ? [] : filteredActive.map((t) => t.id)
+                      )
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-4 w-4 accent-emerald-400 cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Project</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Task</th>
@@ -350,6 +426,18 @@ export default function ProjectPipeline({
                     : "hover:bg-white/[0.04]"
                 }`}
               >
+                {isManager && (
+                  <td className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${t.title}`}
+                      checked={selected.includes(t.id)}
+                      onChange={() => toggleSelect(t.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-4 w-4 accent-emerald-400 cursor-pointer"
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-3 text-xs text-slate-300">{t.client_company || t.client_name}</td>
                 <td className="px-4 py-3 text-xs text-slate-300">{t.project_name}</td>
                 <td className="px-4 py-3">
@@ -454,6 +542,16 @@ export default function ProjectPipeline({
           <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
           <p className="text-xs text-slate-400 mt-0.5 truncate">{t.client_company || t.client_name} · {t.project_name}</p>
         </div>
+        {isManager && !isHistory && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={selected.includes(t.id)}
+            onChange={() => toggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 mt-1 accent-emerald-400 cursor-pointer shrink-0"
+          />
+        )}
         <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
       </div>
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
@@ -697,6 +795,22 @@ export default function ProjectPipeline({
             </div>
           ) : (
             <>
+              {isManager && (
+                <div className="mb-2">
+                  <BulkActionBar
+                    selectedCount={selected.length}
+                    team={team}
+                    canAssign
+                    canDelete
+                    statusOptions={bulkStatusOptions}
+                    statusLabel="Status"
+                    onAssign={bulkAssign}
+                    onDelete={bulkDelete}
+                    onStatus={bulkStatus}
+                    onClear={() => setSelected([])}
+                  />
+                </div>
+              )}
               <div className="hidden md:block">{activeTable}</div>
               <div className="md:hidden">{activeMobile}</div>
             </>

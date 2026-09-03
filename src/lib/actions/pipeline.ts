@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
-import type { Task, TaskStatus } from "@/lib/types";
+import type { Task, TaskStatus, ContentStatus } from "@/lib/types";
 import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam } from "@/lib/workflow";
 import { sanitizeRich, richToPlain } from "@/lib/rich";
 import { createNotification, notifyRoles } from "@/lib/notifications";
@@ -176,6 +176,8 @@ function isGatekeeper(session: { permissions?: string[] } | null): boolean {
 
 function revalidate() {
   revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  revalidatePath("/content");
 }
 
 /**
@@ -476,4 +478,188 @@ export async function deletePipelineTaskAction(
   await query(`DELETE FROM tasks WHERE id = $1`, [taskId]);
   revalidate();
   return { ok: true };
+}
+
+/** Valid content-lifecycle keys for tasks.content_status (NULL reads as Pending). */
+const CONTENT_STATUS_KEYS: ContentStatus[] = [
+  "pending",
+  "in_process",
+  "approval",
+  "designer_completed",
+  "uploaded_scheduled",
+];
+
+/** Safety cap for multi-select bulk operations. */
+const MAX_BULK = 100;
+
+function cleanIdList(ids: string[] | null | undefined): string[] {
+  const out = [...new Set((ids || []).filter(Boolean))];
+  return out.slice(0, MAX_BULK);
+}
+
+/**
+ * Content Status (single) — independent content-hub lifecycle, never touches
+ * the ultra-lean task status flow. Content team (WRITER/CONTENT_WRITER) and
+ * managers may update it.
+ */
+export async function setPipelineTaskContentStatusAction(
+  taskId: string,
+  status: ContentStatus
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isContentEditor(session)) {
+    return { ok: false, error: "Only the content team and managers can update content status." };
+  }
+  if (!CONTENT_STATUS_KEYS.includes(status)) {
+    return { ok: false, error: "Invalid content status." };
+  }
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  await query(`UPDATE tasks SET content_status = $2 WHERE id = $1`, [taskId, status]);
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Bulk: assign the same team to every selected task (replaces each task's
+ * sequential team, order preserved). Managers only.
+ */
+export async function bulkAssignPipelineTeamAction(
+  taskIds: string[],
+  memberIds: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) return { ok: false, error: "Not authorized." };
+  const ids = cleanIdList(taskIds);
+  const members = [...new Set((memberIds || []).filter(Boolean))];
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  if (members.length === 0) return { ok: false, error: "Pick at least one team member." };
+  for (const id of ids) {
+    await setTaskTeam(id, members);
+  }
+  revalidate();
+  return { ok: true, count: ids.length };
+}
+
+/**
+ * Bulk: delete every selected task. Managers only — writers can never delete.
+ * Dependents cascade automatically.
+ */
+export async function bulkDeletePipelineTasksAction(
+  taskIds: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) return { ok: false, error: "Not authorized." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  for (const id of ids) {
+    await query(`DELETE FROM tasks WHERE id = $1`, [id]);
+  }
+  revalidate();
+  return { ok: true, count: ids.length };
+}
+
+/**
+ * Bulk: move every selected task to a target status (same direct-move
+ * semantics as the board drag & drop — no stage advance, no snapshots).
+ * Managers only.
+ */
+export async function bulkSetPipelineStatusAction(
+  taskIds: string[],
+  status: TaskStatus
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) return { ok: false, error: "Not authorized." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  const allowed: string[] = [
+    "approved",
+    "in_progress",
+    "submitted",
+    "needs_improvement",
+    "client_review",
+    "client_feedback",
+    "uploading",
+    "upload_done",
+    "completed",
+  ];
+  if (!allowed.includes(status)) return { ok: false, error: "Invalid status." };
+  for (const id of ids) {
+    if (status === "completed") {
+      await markTaskComplete(id);
+    } else {
+      await query(`UPDATE tasks SET status = $2 WHERE id = $1`, [id, status]);
+    }
+  }
+  revalidate();
+  return { ok: true, count: ids.length };
+}
+
+/**
+ * Bulk: set the content-lifecycle status on every selected task. Content team
+ * and managers (writers included — they can change status but never delete).
+ */
+export async function bulkSetPipelineContentStatusAction(
+  taskIds: string[],
+  status: ContentStatus
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isContentEditor(session)) {
+    return { ok: false, error: "Only the content team and managers can update content status." };
+  }
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  if (!CONTENT_STATUS_KEYS.includes(status)) {
+    return { ok: false, error: "Invalid content status." };
+  }
+  for (const id of ids) {
+    await query(`UPDATE tasks SET content_status = $2 WHERE id = $1`, [id, status]);
+  }
+  revalidate();
+  return { ok: true, count: ids.length };
+}
+
+/**
+ * Content Hub board — existing tasks whose deliverable type carries a
+ * content_role (Client -> Project/Task -> Content Hub; no orphans by
+ * construction). Same RBAC scoping as the pipeline: broad viewers see
+ * everything, everyone else only their own assigned tasks.
+ */
+export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
+  const session = await getSession();
+  if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
+
+  const perms = session.permissions || [];
+  const isBroad =
+    perms.includes("admin:*") ||
+    (hasPermission(perms, PERM_PROJECTS_VIEW) && hasPermission(perms, PERM_PROJECTS_MANAGE));
+  const canManage = hasPermission(perms, PERM_TASKS_MANAGE);
+  const canApprove = hasPermission(perms, PERM_TASKS_MANAGE) || hasPermission(perms, PERM_TASKS_REVIEW);
+  const canReopen = perms.includes("admin:*");
+  const scope = isBroad
+    ? ""
+    : `WHERE (t.assigned_to = $1 OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))`;
+  const params: (string | null)[] = isBroad ? [] : [session.sub];
+  const where = scope
+    ? `${scope} AND dt.content_role IS NOT NULL`
+    : `WHERE dt.content_role IS NOT NULL`;
+
+  const rows = await query<Task>(
+    `${PIPELINE_TASK_SELECT} JOIN project_deliverables pd ON pd.id = t.deliverable_id JOIN deliverable_types dt ON dt.key = pd.category_key ${where} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
+    params
+  );
+
+  const active: Task[] = [];
+  const completed: Task[] = [];
+  for (const r of rows) {
+    if (r.status === "completed") completed.push(r);
+    else active.push(r);
+  }
+
+  return { active, completed, canManage, canReopen, canApprove, roleKey: session.role_key, userId: session.sub, isBroad };
 }

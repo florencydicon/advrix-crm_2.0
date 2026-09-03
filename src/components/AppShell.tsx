@@ -20,6 +20,7 @@ import {
   Target,
   Download,
   Smartphone,
+  FileText,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -42,6 +43,7 @@ const NAV: NavItem[] = [
   { href: "/attendance", label: "Attendance", icon: Clock },
   { href: "/updates", label: "Updates", icon: Bell },
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
+  { href: "/content", label: "Content Management", icon: FileText, anyPermission: ["tasks:execute", "tasks:manage", "tasks:review"] },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, permission: "reports:view" },

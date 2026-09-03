@@ -4,8 +4,17 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Users, Upload, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
-import { StatusBadge, PriorityBadge } from "@/components/ui";
+import { TASK_STATUS_FLOW } from "@/lib/types";
+import { StatusBadge, PriorityBadge, STATUS_META } from "@/components/ui";
 import { formatClientName } from "@/lib/utils";
+import TaskModal from "@/components/TaskModal";
+import BulkActionBar from "@/components/BulkActionBar";
+import { useToast } from "@/components/Toast";
+import {
+  bulkAssignPipelineTeamAction,
+  bulkDeletePipelineTasksAction,
+  bulkSetPipelineStatusAction,
+} from "@/lib/actions/pipeline";
 
 function taskTypeLabel(groupKey: string | null): string {
   if (!groupKey || groupKey === "manual") return "Task";
@@ -16,7 +25,6 @@ function taskTypeLabel(groupKey: string | null): string {
   const base = groupKey.split("_d_")[0].split("_v_")[0];
   return map[base] || "Task";
 }
-import TaskModal from "@/components/TaskModal";
 import { hasPermission } from "@/lib/permissions";
 
 const TABS = [
@@ -62,9 +70,17 @@ export default function SmmDashboard({
   const [filterOpen, setFilterOpen] = useState(false);
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const isMobile = useIsMobile();
+  const { toast } = useToast();
   const canManageTeam = hasPermission(permissions, "tasks:manage");
   const canApprove =
     canManageTeam || hasPermission(permissions, "tasks:review");
+  // Managers (role key or tasks:manage) get bulk assign/delete/status.
+  const isManager =
+    canManageTeam ||
+    ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"].includes((roleKey || "").toUpperCase());
+  const [selected, setSelected] = useState<string[]>([]);
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
 
   // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
   const openedLinkId = useRef<string | null>(null);
@@ -117,6 +133,49 @@ export default function SmmDashboard({
     router.refresh();
   };
 
+  // Prune bulk selection to rows that still exist.
+  useEffect(() => {
+    setSelected((prev) => prev.filter((id) => tasks.some((t) => t.id === id)));
+  }, [tasks]);
+
+  const bulkAssign = async (memberIds: string[]) => {
+    const res = await bulkAssignPipelineTeamAction(selected, memberIds);
+    if (!res.ok) {
+      toast(res.error || "Bulk assign failed.", "error");
+      return;
+    }
+    toast(`Team updated on ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await refresh();
+  };
+
+  const bulkDelete = async () => {
+    const res = await bulkDeletePipelineTasksAction(selected);
+    if (!res.ok) {
+      toast(res.error || "Bulk delete failed.", "error");
+      return;
+    }
+    toast(`Deleted ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await refresh();
+  };
+
+  const bulkStatus = async (status: string) => {
+    const res = await bulkSetPipelineStatusAction(selected, status as Task["status"]);
+    if (!res.ok) {
+      toast(res.error || "Bulk status update failed.", "error");
+      return;
+    }
+    toast(`Updated ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await refresh();
+  };
+
+  const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
+    value: s,
+    label: STATUS_META[s]?.label || s,
+  }));
+
   const mobileCard = (t: Task) => (
     <button
       key={t.id}
@@ -131,6 +190,16 @@ export default function SmmDashboard({
             {formatClientName(t.client_company, t.client_name)} · {t.project_name}
           </p>
         </div>
+        {isManager && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={selected.includes(t.id)}
+            onChange={() => toggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 mt-1 accent-emerald-400 cursor-pointer shrink-0"
+          />
+        )}
         <MoreVertical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
       </div>
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
@@ -228,12 +297,45 @@ export default function SmmDashboard({
         </div>
       ) : (
         <>
+          {isManager && (
+            <BulkActionBar
+              selectedCount={selected.length}
+              team={team}
+              canAssign
+              canDelete
+              statusOptions={bulkStatusOptions}
+              statusLabel="Status"
+              onAssign={bulkAssign}
+              onDelete={bulkDelete}
+              onStatus={bulkStatus}
+              onClear={() => setSelected([])}
+            />
+          )}
           {/* Desktop: unified clickable data table */}
           <div className="hidden md:block card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse min-w-[880px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
+                    {isManager && (
+                      <th className="px-3 py-2.5 w-10">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all tasks"
+                          checked={filtered.length > 0 && selected.length === filtered.length}
+                          ref={(el) => {
+                            if (el) el.indeterminate = selected.length > 0 && selected.length < filtered.length;
+                          }}
+                          onChange={() =>
+                            setSelected((prev) =>
+                              prev.length === filtered.length ? [] : filtered.map((t) => t.id)
+                            )
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-4 w-4 accent-emerald-400 cursor-pointer"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
                     <th className="px-3 py-2.5 min-w-[160px]">Project</th>
                     <th className="px-3 py-2.5 min-w-[200px]">Task</th>
@@ -251,6 +353,18 @@ export default function SmmDashboard({
                       onClick={() => setOpenTask(t)}
                       className="hover:bg-white/[0.03] transition-colors cursor-pointer"
                     >
+                      {isManager && (
+                        <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${t.title}`}
+                            checked={selected.includes(t.id)}
+                            onChange={() => toggleSelect(t.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-4 w-4 accent-emerald-400 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
                         <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
                           {formatClientName(t.client_company, t.client_name)}

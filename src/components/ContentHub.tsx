@@ -2,24 +2,48 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PlayCircle, Clock, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
-import type { Task, UserRow } from "@/lib/types";
-import { TASK_STATUS_FLOW } from "@/lib/types";
-import { StatusBadge, PriorityBadge, STATUS_META } from "@/components/ui";
+import { FileText, Clock, Send, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
+import type { Task, UserRow, ContentStatus } from "@/lib/types";
+import { CONTENT_STATUSES } from "@/lib/types";
+import { ContentStatusBadge } from "@/components/ui";
 import { formatClientName } from "@/lib/utils";
 import TaskModal from "@/components/TaskModal";
 import BulkActionBar from "@/components/BulkActionBar";
 import { useToast } from "@/components/Toast";
 import {
+  setPipelineTaskContentStatusAction,
   bulkAssignPipelineTeamAction,
   bulkDeletePipelineTasksAction,
-  bulkSetPipelineStatusAction,
+  bulkSetPipelineContentStatusAction,
 } from "@/lib/actions/pipeline";
 import { hasPermission } from "@/lib/permissions";
 
-function taskTypeLabel(groupKey: string | null): string {
-  if (!groupKey || groupKey === "manual") return "Task";
-  return groupKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"];
+const EDITOR_ROLES = [...MANAGER_ROLES, "WRITER", "CONTENT_WRITER"];
+
+function isManagerRole(roleKey?: string | null): boolean {
+  return !!roleKey && MANAGER_ROLES.includes(roleKey.toUpperCase());
+}
+
+function isContentEditorRole(roleKey?: string | null, permissions?: string[]): boolean {
+  if (!!roleKey && EDITOR_ROLES.includes(roleKey.toUpperCase())) return true;
+  return hasPermission(permissions, "tasks:manage");
+}
+
+/** NULL reads as Pending. */
+function contentStatusOf(t: Task): ContentStatus {
+  const s = (t.content_status || "pending") as ContentStatus;
+  return CONTENT_STATUSES.some((c) => c.key === s) ? s : "pending";
+}
+
+/** Current holder of the task (stage person), falling back to the assignee. */
+function assigneeOf(t: Task): string {
+  const seq = t.assignees || [];
+  if (seq.length > 0) {
+    const idx = Math.min(t.current_step ?? 0, seq.length - 1);
+    if (seq[idx]?.name) return seq[idx].name;
+  }
+  return t.assignee_name || "—";
 }
 
 function useIsMobile() {
@@ -34,7 +58,7 @@ function useIsMobile() {
   return mobile;
 }
 
-export default function StaffDashboard({
+export default function ContentHub({
   tasks,
   team,
   roleKey,
@@ -53,18 +77,18 @@ export default function StaffDashboard({
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const isMobile = useIsMobile();
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const canManageTeam = hasPermission(permissions, "tasks:manage");
-  const canApprove =
-    canManageTeam || hasPermission(permissions, "tasks:review");
-  // Managers (role key or tasks:manage) get bulk assign/delete/status.
-  const isManager =
-    canManageTeam ||
-    ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"].includes((roleKey || "").toUpperCase());
+  const canApprove = canManageTeam || hasPermission(permissions, "tasks:review");
+  // Writers can edit content + change (content) status, but can never delete/assign.
+  const canEditContent = isContentEditorRole(roleKey, permissions);
+  const isManager = isManagerRole(roleKey) || canManageTeam;
+
   const [selected, setSelected] = useState<string[]>([]);
   const toggleSelect = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
-  const router = useRouter();
-  const searchParams = useSearchParams();
 
   // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
   const openedLinkId = useRef<string | null>(null);
@@ -78,47 +102,32 @@ export default function StaffDashboard({
     }
   }, [searchParams, tasks]);
 
-  const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "uploading", "approved"];
-
-  const FILTERS = [
-    { key: "", label: "All" },
-    { key: "in_progress", label: "Active" },
-    { key: "approved", label: "Ready to Start" },
-    { key: "submitted", label: "Awaiting Review" },
-    { key: "needs_improvement", label: "Improvement Needed" },
-    { key: "completed", label: "Done" },
-  ];
+  const FILTERS = [{ key: "", label: "All" }, ...CONTENT_STATUSES.map((c) => ({ key: c.key, label: c.label }))];
 
   const metrics = [
-    { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
-    { label: "Ready", value: tasks.filter((t) => t.status === "approved").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
-    { label: "Done", value: tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+    { label: "Pending", value: tasks.filter((t) => contentStatusOf(t) === "pending").length, Icon: FileText, cls: "text-slate-300 bg-white/[0.05]" },
+    { label: "In Process", value: tasks.filter((t) => contentStatusOf(t) === "in_process").length, Icon: Clock, cls: "text-brand-300 bg-brand-300/[0.07]" },
+    { label: "In Approval", value: tasks.filter((t) => contentStatusOf(t) === "approval").length, Icon: Send, cls: "text-violet-300 bg-violet-400/10" },
+    { label: "Uploaded", value: tasks.filter((t) => contentStatusOf(t) === "uploaded_scheduled").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
-      if (statusFilter) {
-        if (statusFilter === "completed") {
-          if (t.status !== "completed" && t.status !== "upload_done") return false;
-        } else if (t.status !== statusFilter) return false;
-      }
+      if (statusFilter && contentStatusOf(t) !== statusFilter) return false;
       if (!q) return true;
       return (
         t.title.toLowerCase().includes(q) ||
         t.project_name.toLowerCase().includes(q) ||
-        formatClientName(t.client_company, t.client_name).toLowerCase().includes(q)
+        formatClientName(t.client_company, t.client_name).toLowerCase().includes(q) ||
+        assigneeOf(t).toLowerCase().includes(q)
       );
     });
   }, [tasks, search, statusFilter]);
 
   const tabCounts = FILTERS.map((f) => ({
     ...f,
-    count: f.key
-      ? f.key === "completed"
-        ? tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length
-        : tasks.filter((t) => t.status === f.key).length
-      : tasks.length,
+    count: f.key ? tasks.filter((t) => contentStatusOf(t) === f.key).length : tasks.length,
   }));
 
   const refresh = async () => {
@@ -129,6 +138,16 @@ export default function StaffDashboard({
   useEffect(() => {
     setSelected((prev) => prev.filter((id) => tasks.some((t) => t.id === id)));
   }, [tasks]);
+
+  const setSingleStatus = async (taskId: string, status: ContentStatus) => {
+    const res = await setPipelineTaskContentStatusAction(taskId, status);
+    if (!res.ok) {
+      toast(res.error || "Could not update content status.", "error");
+      return;
+    }
+    toast("Content status updated.");
+    await refresh();
+  };
 
   const bulkAssign = async (memberIds: string[]) => {
     const res = await bulkAssignPipelineTeamAction(selected, memberIds);
@@ -153,7 +172,7 @@ export default function StaffDashboard({
   };
 
   const bulkStatus = async (status: string) => {
-    const res = await bulkSetPipelineStatusAction(selected, status as Task["status"]);
+    const res = await bulkSetPipelineContentStatusAction(selected, status as ContentStatus);
     if (!res.ok) {
       toast(res.error || "Bulk status update failed.", "error");
       return;
@@ -162,11 +181,6 @@ export default function StaffDashboard({
     setSelected([]);
     await refresh();
   };
-
-  const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
-    value: s,
-    label: STATUS_META[s]?.label || s,
-  }));
 
   const mobileCard = (t: Task) => (
     <button
@@ -195,10 +209,9 @@ export default function StaffDashboard({
         <MoreVertical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
       </div>
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-        <StatusBadge status={t.status} />
-        <PriorityBadge priority={t.priority} />
+        <ContentStatusBadge status={contentStatusOf(t)} />
         <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500">
-          {taskTypeLabel(t.group_key)}
+          {assigneeOf(t)}
         </span>
       </div>
     </button>
@@ -206,13 +219,13 @@ export default function StaffDashboard({
 
   return (
     <div className="w-full max-w-none space-y-3">
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         {metrics.map((m) => (
           <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>
             <m.Icon className="h-5 w-5 shrink-0" />
             <div className="min-w-0">
               <p className="text-xl md:text-2xl font-bold leading-none">{m.value}</p>
-              <p className="text-[10px] md:text-[11px] font-medium mt-1 opacity-80">{m.label}</p>
+              <p className="text-[10px] md:text-[11px] font-medium mt-1 opacity-80 truncate">{m.label}</p>
             </div>
           </div>
         ))}
@@ -223,7 +236,7 @@ export default function StaffDashboard({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search tasks, projects, clients…"
+          placeholder="Search content, projects, clients, assignees…"
           className="input !py-1.5 text-xs w-full sm:max-w-xs"
         />
         {/* Desktop: scrollable pills */}
@@ -283,20 +296,20 @@ export default function StaffDashboard({
       {filtered.length === 0 ? (
         <div className="card py-8 text-center">
           <p className="text-sm font-medium text-slate-300">
-            {tasks.length === 0 ? "No assignments yet" : "No tasks match your search."}
+            {tasks.length === 0 ? "No content tasks yet" : "No content matches your search."}
           </p>
-          <p className="text-xs text-slate-500 mt-1">New tasks will appear here automatically.</p>
+          <p className="text-xs text-slate-500 mt-1">Content appears here once projects with content deliverables are created.</p>
         </div>
       ) : (
         <>
-          {isManager && (
+          {(isManager || canEditContent) && (
             <BulkActionBar
               selectedCount={selected.length}
               team={team}
-              canAssign
-              canDelete
-              statusOptions={bulkStatusOptions}
-              statusLabel="Status"
+              canAssign={isManager}
+              canDelete={isManager}
+              statusOptions={canEditContent ? CONTENT_STATUSES.map((c) => ({ value: c.key, label: c.label })) : []}
+              statusLabel="Content Status"
               onAssign={bulkAssign}
               onDelete={bulkDelete}
               onStatus={bulkStatus}
@@ -313,7 +326,7 @@ export default function StaffDashboard({
                       <th className="px-3 py-2.5 w-10">
                         <input
                           type="checkbox"
-                          aria-label="Select all tasks"
+                          aria-label="Select all content tasks"
                           checked={filtered.length > 0 && selected.length === filtered.length}
                           ref={(el) => {
                             if (el) el.indeterminate = selected.length > 0 && selected.length < filtered.length;
@@ -328,14 +341,11 @@ export default function StaffDashboard({
                         />
                       </th>
                     )}
-                    <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
+                    <th className="px-4 py-2.5 min-w-[160px] sticky left-0 bg-night-850 z-20">Client</th>
                     <th className="px-3 py-2.5 min-w-[160px]">Project</th>
-                    <th className="px-3 py-2.5 min-w-[200px]">Task</th>
-                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
-                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
-                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
-                    <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
-                    <th className="px-3 py-2.5 w-16">Stage</th>
+                    <th className="px-3 py-2.5 min-w-[200px]">Task Title</th>
+                    <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Assignee</th>
+                    <th className="px-3 py-2.5 min-w-[170px] whitespace-nowrap">Content Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
@@ -357,7 +367,7 @@ export default function StaffDashboard({
                           />
                         </td>
                       )}
-                      <td className="px-4 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
+                      <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
                         <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
                           {formatClientName(t.client_company, t.client_name)}
                         </span>
@@ -366,26 +376,28 @@ export default function StaffDashboard({
                         <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
                       </td>
                       <td className="px-3 py-2.5">
-                        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+                        <p className="text-sm text-white font-medium leading-tight truncate max-w-[200px]">{t.title}</p>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
-                          {taskTypeLabel(t.group_key)}
+                        <span className="text-xs text-slate-300">{assigneeOf(t)}</span>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <span className="inline-flex items-center gap-2">
+                          <ContentStatusBadge status={contentStatusOf(t)} />
+                          {canEditContent && (
+                            <select
+                              aria-label={`Change content status for ${t.title}`}
+                              value={contentStatusOf(t)}
+                              onChange={(e) => setSingleStatus(t.id, e.target.value as ContentStatus)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded-lg border border-white/10 bg-night-900 px-1.5 py-1 text-[11px] text-slate-300 focus:border-brand-300/50 focus:outline-none cursor-pointer"
+                            >
+                              {CONTENT_STATUSES.map((c) => (
+                                <option key={c.key} value={c.key}>{c.label}</option>
+                              ))}
+                            </select>
+                          )}
                         </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <StatusBadge status={t.status} />
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <PriorityBadge priority={t.priority} />
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="text-xs tabular-nums text-slate-400">
-                          {t.due_date ? t.due_date.slice(0, 10) : "—"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">
-                        {(t.assignees || [])[(t.current_step ?? 0) % Math.max((t.assignees?.length || 1), 1)]?.name || "—"}
                       </td>
                     </tr>
                   ))}

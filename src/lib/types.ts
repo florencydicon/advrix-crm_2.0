@@ -117,6 +117,22 @@ export const TASK_STATUS_FLOW: TaskStatus[] = [
   "completed",
 ];
 
+/** Independent content-lifecycle status for the Content Hub (tasks.content_status). NULL = Pending. */
+export type ContentStatus =
+  | "pending"
+  | "in_process"
+  | "approval"
+  | "designer_completed"
+  | "uploaded_scheduled";
+
+export const CONTENT_STATUSES: { key: ContentStatus; label: string }[] = [
+  { key: "pending", label: "Pending" },
+  { key: "in_process", label: "In Process" },
+  { key: "approval", label: "Approval" },
+  { key: "designer_completed", label: "Designer Completed" },
+  { key: "uploaded_scheduled", label: "Uploaded/Scheduled" },
+];
+
 export interface TaskAssignee {
   id: string;
   name: string;
@@ -175,6 +191,7 @@ export interface Task {
    remarks_edited_by_name: string | null;
    remarks_edited_by_role: string | null;
    remarks_edited_at: string | null;
+   content_status: ContentStatus | string | null;
    created_at: string;
    completed_at: string | null;
 }

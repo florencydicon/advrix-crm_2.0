@@ -44,6 +44,25 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const CONTENT_STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
+  pending: { label: "Pending", cls: "bg-white/10 text-slate-300", Icon: PauseCircle },
+  in_process: { label: "In Process", cls: "bg-brand-300/10 text-brand-300", Icon: PlayCircle },
+  approval: { label: "Approval", cls: "bg-violet-400/10 text-violet-300", Icon: Send },
+  designer_completed: { label: "Designer Completed", cls: "bg-cyan-400/10 text-cyan-300", Icon: CircleCheck },
+  uploaded_scheduled: { label: "Uploaded/Scheduled", cls: "bg-emerald-400/10 text-emerald-300", Icon: Upload },
+};
+
+export function ContentStatusBadge({ status }: { status: string | null | undefined }) {
+  const meta = CONTENT_STATUS_META[status || "pending"] || CONTENT_STATUS_META.pending;
+  const Icon = meta.Icon;
+  return (
+    <span className={`badge ${meta.cls} whitespace-nowrap`}>
+      <Icon className="h-3 w-3" />
+      {meta.label}
+    </span>
+  );
+}
+
 export const PLATFORMS = [
   { key: "instagram", label: "Instagram", icon: "📸" },
   { key: "facebook", label: "Facebook", icon: "📘" },
