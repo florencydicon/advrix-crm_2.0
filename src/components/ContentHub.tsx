@@ -75,6 +75,7 @@ export default function ContentHub({
   const [statusFilter, setStatusFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  const [tab, setTab] = useState<"active" | "history">("active");
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const router = useRouter();
@@ -91,6 +92,7 @@ export default function ContentHub({
     setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
 
   // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
+  // Completed content lands on the History tab first.
   const openedLinkId = useRef<string | null>(null);
   useEffect(() => {
     const id = searchParams.get("taskId");
@@ -98,6 +100,7 @@ export default function ContentHub({
     const found = tasks.find((t) => t.id === id);
     if (found) {
       openedLinkId.current = id;
+      setTab(found.status === "completed" ? "history" : "active");
       setOpenTask(found);
     }
   }, [searchParams, tasks]);
@@ -113,7 +116,10 @@ export default function ContentHub({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return tasks.filter((t) => {
+    const inTab = tasks.filter((t) =>
+      tab === "history" ? t.status === "completed" : t.status !== "completed"
+    );
+    return inTab.filter((t) => {
       if (statusFilter && contentStatusOf(t) !== statusFilter) return false;
       if (!q) return true;
       return (
@@ -123,7 +129,16 @@ export default function ContentHub({
         assigneeOf(t).toLowerCase().includes(q)
       );
     });
-  }, [tasks, search, statusFilter]);
+  }, [tasks, search, statusFilter, tab]);
+
+  const activeCount = tasks.filter((t) => t.status !== "completed").length;
+  const historyCount = tasks.filter((t) => t.status === "completed").length;
+
+  const switchTab = (next: "active" | "history") => {
+    setTab(next);
+    setSelected([]);
+    setStatusFilter("");
+  };
 
   const tabCounts = FILTERS.map((f) => ({
     ...f,
@@ -231,6 +246,41 @@ export default function ContentHub({
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => switchTab("active")}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              tab === "active"
+                ? "bg-brand-300 text-night-950"
+                : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            Active Content
+            <span className={`text-xs font-semibold ${tab === "active" ? "text-night-900" : "text-slate-500"}`}>
+              {activeCount}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => switchTab("history")}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              tab === "history"
+                ? "bg-brand-300 text-night-950"
+                : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
+            }`}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            History
+            <span className={`text-xs font-semibold ${tab === "history" ? "text-night-900" : "text-slate-500"}`}>
+              {historyCount}
+            </span>
+          </button>
+        </div>
+      </div>
+
       <div className="space-y-2">
         <input
           type="text"
@@ -296,9 +346,17 @@ export default function ContentHub({
       {filtered.length === 0 ? (
         <div className="card py-8 text-center">
           <p className="text-sm font-medium text-slate-300">
-            {tasks.length === 0 ? "No content tasks yet" : "No content matches your search."}
+            {tasks.length === 0
+              ? "No content tasks yet"
+              : tab === "history"
+                ? "No completed content yet"
+                : "No content matches your search."}
           </p>
-          <p className="text-xs text-slate-500 mt-1">Content appears here once projects with content deliverables are created.</p>
+          <p className="text-xs text-slate-500 mt-1">
+            {tab === "history"
+              ? "Completed content lands here."
+              : "Content appears here once projects with content deliverables are created."}
+          </p>
         </div>
       ) : (
         <>
