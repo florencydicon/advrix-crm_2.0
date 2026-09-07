@@ -2,10 +2,11 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PlayCircle, Clock, CheckCircle2, Filter, ChevronDown, MoreVertical } from "lucide-react";
+import { PlayCircle, Clock, CheckCircle2, Filter, ChevronDown, MoreVertical, AlertTriangle } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
-import { StatusBadge, PriorityBadge, STATUS_META } from "@/components/ui";
+import { StatusBadge, PriorityBadge, STATUS_META, DeadlineBadge } from "@/components/ui";
+import { isOverdue } from "@/lib/deadlines";
 import { formatClientName } from "@/lib/utils";
 import TaskModal from "@/components/TaskModal";
 import BulkActionBar from "@/components/BulkActionBar";
@@ -208,6 +209,17 @@ export default function StaffDashboard({
           {taskTypeLabel(t.group_key)}
         </span>
       </div>
+      <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-white/[0.06]">
+        <DeadlineBadge task={t} />
+        <span className={`inline-flex items-center gap-1 text-[11px] ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-500"}`}>
+          {isOverdue(t) ? (
+            <AlertTriangle className="h-3 w-3 text-rose-400" />
+          ) : (
+            <Clock className="h-3 w-3" />
+          )}
+          Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
+        </span>
+      </div>
     </div>
   );
 
@@ -350,7 +362,9 @@ export default function StaffDashboard({
                     <tr
                       key={t.id}
                       onClick={() => setOpenTask(t)}
-                      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
+                      className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${
+                        isOverdue(t) ? "bg-rose-500/[0.07] hover:bg-rose-500/[0.12]" : ""
+                      }`}
                     >
                       {isManager && (
                         <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
@@ -374,6 +388,11 @@ export default function StaffDashboard({
                       </td>
                       <td className="px-3 py-2.5">
                         <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+                        {isOverdue(t) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 mt-0.5">
+                            <AlertTriangle className="h-3 w-3" /> Overdue
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
@@ -387,8 +406,8 @@ export default function StaffDashboard({
                         <PriorityBadge priority={t.priority} />
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="text-xs tabular-nums text-slate-400">
-                          {t.due_date ? t.due_date.slice(0, 10) : "—"}
+                        <span className={`text-xs tabular-nums ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+                          {isOverdue(t) ? `${t.due_date?.slice(0, 10)} ⚠` : (t.due_date ? t.due_date.slice(0, 10) : "—")}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">

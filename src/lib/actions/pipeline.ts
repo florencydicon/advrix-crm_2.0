@@ -5,7 +5,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import type { Task, TaskStatus, ContentStatus } from "@/lib/types";
-import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam } from "@/lib/workflow";
+import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam, setTaskDeadline, flagOverdueTasks } from "@/lib/workflow";
 import { sanitizeRich, richToPlain } from "@/lib/rich";
 import { createNotification, notifyRoles } from "@/lib/notifications";
 
@@ -76,6 +76,9 @@ const PIPELINE_TASK_SELECT = `
 export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const session = await getSession();
   if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
+
+  // Auto-flag overdue tasks (priority → urgent) on every board load.
+  await flagOverdueTasks();
 
   const perms = session.permissions || [];
   const isBroad =
@@ -522,6 +525,87 @@ export async function setPipelineTaskContentStatusAction(
 }
 
 /**
+ * Task Deadline — sets (or clears) the due date. Managers (Super Admin / Admin /
+ * Project Manager / PM, or anyone with `tasks:manage`) only; regular employees
+ * read the deadline but cannot move it. Overdue re-flagging runs immediately so
+ * a deadline pushed into the past flips the task to urgent right away.
+ */
+export async function setPipelineTaskDeadlineAction(
+  taskId: string,
+  date: string | null | undefined
+): Promise<{ ok: boolean; due_date?: string | null; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) return { ok: false, error: "Only Admins / PMs can change deadlines." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  const v = String(date ?? "").trim();
+  const clean = v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+  await setTaskDeadline(taskId, clean);
+  await flagOverdueTasks();
+  revalidate();
+  return { ok: true, due_date: clean };
+}
+
+export interface UpcomingDeadlineAlert {
+  taskId: string;
+  title: string;
+}
+
+/**
+ * Due-soon alerts (called on app load / tab refocus).
+ *  - Auto-flags overdue tasks app-wide (priority → urgent).
+ *  - Finds the current user's open tasks whose deadline is within the next 24
+ *    hours (with date-only deadlines and "due today" already overdue semantics,
+ *    that is exactly `due_date == tomorrow (UTC)`).
+ *  - Creates one "Upcoming Deadline" notification per task in the Updates feed
+ *    (deduplicated to once per task per 24h) and returns the list so the shell
+ *    can fire global toasts.
+ */
+export async function getUpcomingDeadlineAlertsAction(): Promise<{
+  ok: boolean;
+  items: UpcomingDeadlineAlert[];
+}> {
+  const session = await getSession();
+  if (!session) return { ok: false, items: [] };
+
+  await flagOverdueTasks();
+
+  const rows = await query<{ id: string; title: string }>(
+    `SELECT t.id, t.title
+     FROM tasks t
+     WHERE t.assigned_to = $1
+       AND t.status <> 'completed'
+       AND t.due_date IS NOT NULL
+       AND t.due_date = (now() AT TIME ZONE 'UTC')::date + 1
+     ORDER BY t.due_date ASC`,
+    [session.sub]
+  );
+
+  for (const r of rows) {
+    const link = taskDashboardLink(r.id);
+    const same = await query<{ id: string }>(
+      `SELECT id FROM notifications
+       WHERE user_id = $1 AND title = 'Upcoming Deadline' AND link = $2
+         AND created_at > now() - interval '24 hours'
+       LIMIT 1`,
+      [session.sub, link]
+    );
+    if (same.length === 0) {
+      await createNotification({
+        userId: session.sub,
+        type: "task",
+        title: "Upcoming Deadline",
+        body: `"${r.title || "This task"}" is due soon.`,
+        link,
+      });
+    }
+  }
+
+  return { ok: true, items: rows.map((r) => ({ taskId: r.id, title: r.title })) };
+}
+
+/**
  * Bulk: assign the same team to every selected task (replaces each task's
  * sequential team, order preserved). Managers only.
  */
@@ -633,6 +717,8 @@ export async function bulkSetPipelineContentStatusAction(
 export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
   const session = await getSession();
   if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
+
+  await flagOverdueTasks();
 
   const perms = session.permissions || [];
   const isBroad =

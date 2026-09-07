@@ -15,10 +15,12 @@ import {
   Search,
   Filter,
   X,
+  AlertTriangle,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
-import { StatusBadge, PriorityBadge, STATUS_META } from "@/components/ui";
+import { StatusBadge, PriorityBadge, STATUS_META, DeadlineBadge } from "@/components/ui";
+import { isOverdue } from "@/lib/deadlines";
 import {
   getPipelineBoardAction,
   reopenPipelineTaskAction,
@@ -421,9 +423,11 @@ export default function ProjectPipeline({
                 key={t.id}
                 onClick={() => setActiveTask(t)}
                 className={`transition-colors cursor-pointer ${
-                  t.status === "submitted"
-                    ? "bg-violet-400/[0.07] hover:bg-violet-400/[0.12]"
-                    : "hover:bg-white/[0.04]"
+                  isOverdue(t)
+                    ? "bg-rose-500/[0.07] hover:bg-rose-500/[0.13]"
+                    : t.status === "submitted"
+                      ? "bg-violet-400/[0.07] hover:bg-violet-400/[0.12]"
+                      : "hover:bg-white/[0.04]"
                 }`}
               >
                 {isManager && (
@@ -444,11 +448,17 @@ export default function ProjectPipeline({
                   <div className="flex items-center gap-2">
                     <div className="max-w-[260px] truncate text-sm font-medium text-white">{t.title}</div>
                     {t.status === "submitted" && <QcPill />}
+                    {isOverdue(t) && (
+                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" aria-label="Overdue" />
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                 <td className="px-4 py-3"><PriorityBadge priority={t.priority} /></td>
-                <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDate(t.due_date)}</td>
+                <td className={`px-4 py-3 text-xs whitespace-nowrap ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+                  {isOverdue(t) && <AlertTriangle className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5 text-rose-400" />}
+                  {fmtDate(t.due_date)}
+                </td>
                 <td className="px-4 py-3 text-right text-xs text-slate-400 whitespace-nowrap">{stageLabel(t)}</td>
               </tr>
             ))}
@@ -540,9 +550,11 @@ export default function ProjectPipeline({
         }
       }}
       className={`w-full text-left rounded-xl border p-3.5 transition-colors cursor-pointer ${
-        t.status === "submitted"
-          ? "border-violet-300/40 bg-violet-400/[0.08]"
-          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+        isOverdue(t)
+          ? "border-rose-500/40 bg-rose-500/[0.08]"
+          : t.status === "submitted"
+            ? "border-violet-300/40 bg-violet-400/[0.08]"
+            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -565,9 +577,15 @@ export default function ProjectPipeline({
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
         {t.status === "submitted" && <QcPill />}
         <StatusBadge status={t.status} />
+        <DeadlineBadge task={t} />
         <PriorityBadge priority={t.priority} />
-        <span className="inline-flex items-center gap-1 text-xs text-slate-400 ml-auto">
-          <CalendarDays className="h-3.5 w-3.5" />{fmtDate(t.due_date)}
+        <span className={`inline-flex items-center gap-1 text-xs ml-auto ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+          {isOverdue(t) ? (
+            <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+          ) : (
+            <CalendarDays className="h-3.5 w-3.5" />
+          )}
+          {fmtDate(t.due_date)}
         </span>
       </div>
       {isHistory ? (

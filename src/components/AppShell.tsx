@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore, useRef, useState } from "react";
+import { useEffect, useSyncExternalStore, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -24,10 +24,12 @@ import {
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
+import { getUpcomingDeadlineAlertsAction } from "@/lib/actions/pipeline";
 import { hasPermission, hasAnyPermission } from "@/lib/permissions";
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
 import { BrandMark, BrandLogoFull } from "@/components/brand";
+import { useToast } from "@/components/Toast";
 
 interface NavItem {
   href: string;
@@ -115,6 +117,7 @@ export default function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const collapsed = useSyncExternalStore(subscribeCollapse, getCollapsedSnapshot, getCollapsedServerSnapshot);
@@ -127,6 +130,41 @@ export default function AppShell({
   const awayAt = useRef<number | null>(null);
   const unreadRef = useRef(unread);
   unreadRef.current = unread;
+
+  /**
+   * Global "Upcoming Deadline" alerts: asks the server for the current user's
+   * open tasks due within the next 24h, creates the Updates-feed notification,
+   * and fires a toast for each — once per task per day per browser session.
+   */
+  const checkDeadlineAlerts = useCallback(async () => {
+    try {
+      const res = await getUpcomingDeadlineAlertsAction();
+      if (!res.ok || res.items.length === 0) return;
+      const today = new Date().toISOString().slice(0, 10);
+      let seen: Record<string, string> = {};
+      try {
+        seen = JSON.parse(sessionStorage.getItem("advrix.dueSoon.toasted") || "{}");
+      } catch {}
+      const updated = { ...seen };
+      let fired = false;
+      for (const item of res.items) {
+        if (seen[item.taskId] === today) continue;
+        updated[item.taskId] = today;
+        fired = true;
+        toast(`Upcoming Deadline: "${item.title}" is due soon.`, "info");
+      }
+      if (fired) {
+        try { sessionStorage.setItem("advrix.dueSoon.toasted", JSON.stringify(updated)); } catch {}
+      }
+    } catch {
+      // Silently ignore — deadline alerts are best-effort.
+    }
+  }, [toast]);
+
+  // On login / first load, surface any due-soon deadlines right away.
+  useEffect(() => {
+    checkDeadlineAlerts();
+  }, [checkDeadlineAlerts]);
 
   // PWA: register service worker + capture install prompt
   useEffect(() => {
@@ -194,6 +232,8 @@ export default function AppShell({
       }
       const wasAway = awayAt.current !== null && Date.now() - awayAt.current > 3000;
       awayAt.current = null;
+      // Tab switch back: surface any new/due-soon deadline alerts + missed updates.
+      checkDeadlineAlerts();
       if (wasAway && unreadRef.current > 0) {
         setMissedToast(unreadRef.current);
         setRinging(true);
@@ -202,7 +242,7 @@ export default function AppShell({
     }
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
+  }, [checkDeadlineAlerts]);
 
   function dismissMissedToast() {
     setMissedToast(0);

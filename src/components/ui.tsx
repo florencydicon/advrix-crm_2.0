@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { X, CircleCheck, Clock, PauseCircle, PlayCircle, Send, Undo2, Users, Upload } from "lucide-react";
+import { X, CircleCheck, Clock, PauseCircle, PlayCircle, Send, Undo2, Users, Upload, AlertTriangle } from "lucide-react";
+import { isOverdue, isDueSoon } from "@/lib/deadlines";
+import type { DeadlineShape } from "@/lib/deadlines";
 
 export const STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
   pending: { label: "Pending", cls: "bg-white/10 text-slate-300", Icon: PauseCircle },
@@ -102,11 +104,37 @@ const PRIORITY_META: Record<string, { label: string; cls: string }> = {
   low: { label: "Low", cls: "bg-white/10 text-slate-400" },
   medium: { label: "Medium", cls: "bg-sky-400/10 text-sky-300" },
   high: { label: "High", cls: "bg-rose-400/10 text-rose-300" },
+  urgent: { label: "Urgent", cls: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/40" },
 };
 
 export function PriorityBadge({ priority }: { priority: string }) {
   const meta = PRIORITY_META[priority] || PRIORITY_META.medium;
   return <span className={`badge ${meta.cls} whitespace-nowrap`}>{meta.label}</span>;
+}
+
+/** ⚠ Auto-flagged overdue: deadline passed and the task is still open. */
+export function OverdueBadge() {
+  return (
+    <span className="badge bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30 whitespace-nowrap">
+      <AlertTriangle className="h-3 w-3" /> Overdue
+    </span>
+  );
+}
+
+/** ⏳ Approaching deadline: due within the next 24 hours. */
+export function DueSoonBadge() {
+  return (
+    <span className="badge bg-amber-400/10 text-amber-300 ring-1 ring-amber-400/30 whitespace-nowrap">
+      <Clock className="h-3 w-3" /> Due soon
+    </span>
+  );
+}
+
+/** Renders the matching deadline flag for a task, or nothing when it's on time. */
+export function DeadlineBadge({ task }: { task: DeadlineShape }) {
+  if (isOverdue(task)) return <OverdueBadge />;
+  if (isDueSoon(task)) return <DueSoonBadge />;
+  return null;
 }
 
 const PROJECT_STATUS_META: Record<string, { label: string; cls: string }> = {

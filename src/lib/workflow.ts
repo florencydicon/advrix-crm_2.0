@@ -586,6 +586,26 @@ export async function setTaskDeadline(taskId: string, date: string | null) {
 }
 
 /**
+ * Auto-flags overdue tasks: any open task whose deadline day has already
+ * passed/arrived (due_date ≤ today UTC — i.e. its UTC-midnight is in the past,
+ * matching the client `new Date() > new Date(deadline)` rule) is force-pushed to
+ * priority `urgent`. Idempotent — a no-op once the task is already urgent.
+ */
+export async function flagOverdueTasks() {
+  try {
+    await query(
+      `UPDATE tasks SET priority = 'urgent'
+       WHERE status <> 'completed'
+         AND due_date IS NOT NULL
+         AND due_date <= (now() AT TIME ZONE 'UTC')::date
+         AND priority <> 'urgent'`
+    );
+  } catch (err) {
+    console.error("flagOverdueTasks failed:", err);
+  }
+}
+
+/**
  * Pipeline "Re-open" (Super Admin only) — returns a completed task to the active
  * board. The task is placed back on its previous stage member for rework, or on
  * the first member if no sequence is available, and the project is reopened.

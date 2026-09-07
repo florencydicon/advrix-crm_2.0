@@ -14,10 +14,14 @@ import {
   Clock,
   FileText,
   Trash2,
+  CalendarDays,
+  AlertTriangle,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
 import { useToast } from "@/components/Toast";
+import { DatePicker } from "@/components/DatePicker";
+import { isOverdue, isDueSoon } from "@/lib/deadlines";
 import {
   submitPipelineTaskAction,
   approvePipelineTaskAction,
@@ -25,6 +29,7 @@ import {
   setPipelineTaskRemarksAction,
   setPipelineTaskTitleAction,
   setPipelineTaskContentAction,
+  setPipelineTaskDeadlineAction,
   updatePipelineTaskTeamAction,
   deletePipelineTaskAction,
   getPipelineBoardAction,
@@ -58,6 +63,13 @@ function fmtTimeOnly(v?: string | null) {
   const d = new Date(v);
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtDate(v?: string | null) {
+  if (!v) return "No deadline set";
+  const d = new Date(`${v.slice(0, 10)}T00:00:00Z`);
+  if (isNaN(d.getTime())) return "No deadline set";
+  return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
 /** 5–6 word limit; longer text becomes a seamless CSS marquee. */
@@ -112,6 +124,7 @@ export default function TaskModal({
   const [titleDraft, setTitleDraft] = useState(initialTask.title || "");
   const [contentDraft, setContentDraft] = useState(initialTask.content || "");
   const [remarks, setRemarks] = useState(initialTask.remarks || "");
+  const [deadlineDraft, setDeadlineDraft] = useState(initialTask.due_date || "");
   const [editedBy, setEditedBy] = useState<{ name: string; role: string; at: string } | null>(
     initialTask.remarks_edited_by_name
       ? {
@@ -137,12 +150,14 @@ export default function TaskModal({
   remarksRef.current = remarks;
 
   const canEditContent = canApprove || isContentEditor(roleKey) || isManagerRole(roleKey);
+  const canEditDeadline = canApprove || isManagerRole(roleKey) || canManageTeam;
 
   const applyFresh = (fresh: Task) => {
     setTask(fresh);
     setTitleDraft(fresh.title || "");
     setContentDraft(fresh.content || "");
     setRemarks(fresh.remarks || "");
+    setDeadlineDraft(fresh.due_date || "");
     setEditedBy(
       fresh.remarks_edited_by_name
         ? {
@@ -206,6 +221,24 @@ export default function TaskModal({
     },
     [toast]
   );
+
+  /** Deadline is saved immediately on pick/clear (managers only). */
+  const persistDeadline = (v: string) => {
+    if (!canEditDeadline) return;
+    const clean = v || null;
+    setDeadlineDraft(v);
+    startTransition(async () => {
+      const res = await setPipelineTaskDeadlineAction(taskRef.current.id, clean);
+      if (!res.ok) {
+        setDeadlineDraft(taskRef.current.due_date || "");
+        toast(res.error || "Could not update the deadline.", "error");
+        return;
+      }
+      setTask((prev) => ({ ...prev, due_date: res.due_date ?? prev.due_date }));
+      toast(clean ? "Deadline updated." : "Deadline cleared.");
+      await refresh();
+    });
+  };
 
   // Auto-save ~1 second after the user stops typing (remarks always, title & content for editors).
   useEffect(() => {
@@ -384,6 +417,42 @@ export default function TaskModal({
         </div>
 
         <div className="p-4 space-y-5 overflow-y-auto pb-32 md:pb-4">
+          {/* ---- Deadline (managers edit; employees read-only) ---- */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+              <CalendarDays className="h-3.5 w-3.5 text-brand-300" /> Deadline
+              {!canEditDeadline && (
+                <span className="normal-case tracking-normal text-slate-600 text-[10px]">(contact an Admin / PM to change)</span>
+              )}
+            </p>
+            {canEditDeadline ? (
+              <DatePicker
+                value={deadlineDraft}
+                onChange={persistDeadline}
+                placeholder="Set a deadline…"
+              />
+            ) : (
+              <p className="text-sm text-slate-200 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                {fmtDate(task.due_date)}
+              </p>
+            )}
+            {isOverdue(task) ? (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2">
+                <AlertTriangle className="h-4 w-4 text-rose-300 shrink-0" />
+                <p className="text-xs text-rose-200 leading-snug">
+                  This task is overdue — it has been auto-flagged as <span className="font-semibold text-rose-300">Urgent</span>.
+                </p>
+              </div>
+            ) : isDueSoon(task) ? (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2">
+                <Clock className="h-4 w-4 text-amber-300 shrink-0" />
+                <p className="text-xs text-amber-200 leading-snug">
+                  This task is due within the next 24 hours.
+                </p>
+              </div>
+            ) : null}
+          </section>
+
           {/* ---- Task Title (editable by content editors) ---- */}
           <section>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
