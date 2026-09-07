@@ -2,11 +2,11 @@
 import { redirect } from "next/navigation";
 import {
   FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase,
-  Download, Users,
+  Download, Users, Layers,
 } from "lucide-react";
 import { getSession } from "@/lib/session";
 import {
-  getMyTasks, getProjects, getLeadStats, getTaskStatusCounts,
+  getMyTasks, getProjects, getLeadStats, getTaskStatusCounts, getSubtaskStatusCounts,
   getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam, getClients,
 } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
@@ -95,15 +95,17 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let clients: any[] = [];
   let leadStats: any = null;
   let taskCounts: Record<string, number> = {};
+  let subtaskCounts: Record<string, number> = {};
   let submittedTasks: any[] = [];
   let pendingLeaves: any[] = [];
   let bottlenecks: any[] = [];
   try {
-    [projects, clients, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
+    [projects, clients, leadStats, taskCounts, subtaskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
       getProjects().catch(() => [] as any),
       getClients().catch(() => [] as any),
       isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
       isSuperAdmin ? getTaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
+      isSuperAdmin ? getSubtaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
       getSubmittedTasks().catch(() => [] as any),
       getAllLeaves({ status: "pending" }).catch(() => [] as any),
       isSuperAdmin ? getBottlenecks().catch(() => [] as any) : Promise.resolve([] as any),
@@ -158,6 +160,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
       lost: leadStats?.lost || 0,
     };
     const totalTasks = Object.values(taskCounts).reduce((a, b) => a + b, 0);
+    const totalSubtasks = Object.values(subtaskCounts).reduce((a, b) => a + b, 0);
 
     return (
       <div className="space-y-4 md:space-y-5">
@@ -217,9 +220,9 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </Link>
         </div>
 
-        {/* ── Row 2: All Tasks + Leads (side by side on desktop, stacked on mobile) ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* All Tasks */}
+        {/* ── Row 2: All Tasks + All Subtasks + Leads ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* All Tasks — tasks */}
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="h-7 w-7 rounded-lg bg-sky-400/15 flex items-center justify-center">
@@ -228,7 +231,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
               <h2 className="text-sm font-semibold text-white">All Tasks</h2>
               <span className="ml-auto text-xs text-slate-500">{totalTasks} Total</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { key: "pending", label: "Pending", cls: "bg-white/[0.04] border-white/10 text-slate-300" },
                 { key: "in_progress", label: "In Process", cls: "bg-brand-300/10 border-brand-300/20 text-brand-300" },
@@ -238,6 +241,30 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
                 <Link key={s.key} href="/projects" className={`rounded-xl border p-3 text-center block hover:brightness-125 transition-all ${s.cls}`}>
                   <p className="text-[10px] md:text-[11px] opacity-80 leading-tight">{s.label}</p>
                   <p className="text-lg md:text-xl font-bold text-white mt-1">{taskCounts[s.key] || 0}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* All Subtasks — currently working subtasks */}
+          <div className="card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="h-7 w-7 rounded-lg bg-amber-400/15 flex items-center justify-center">
+                <Layers className="h-3.5 w-3.5 text-amber-300" />
+              </span>
+              <h2 className="text-sm font-semibold text-white">All Subtasks</h2>
+              <span className="ml-auto text-xs text-slate-500">{totalSubtasks} Total</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: "pending", label: "Pending", cls: "bg-white/[0.04] border-white/10 text-slate-300" },
+                { key: "in_progress", label: "In Process", cls: "bg-brand-300/10 border-brand-300/20 text-brand-300" },
+                { key: "completed", label: "Completed", cls: "bg-emerald-400/10 border-emerald-400/20 text-emerald-300" },
+                { key: "upload_done", label: "Upload Done", cls: "bg-sky-400/10 border-sky-400/20 text-sky-300" },
+              ].map((s) => (
+                <Link key={s.key} href="/projects" className={`rounded-xl border p-3 text-center block hover:brightness-125 transition-all ${s.cls}`}>
+                  <p className="text-[10px] md:text-[11px] opacity-80 leading-tight">{s.label}</p>
+                  <p className="text-lg md:text-xl font-bold text-white mt-1">{subtaskCounts[s.key] || 0}</p>
                 </Link>
               ))}
             </div>

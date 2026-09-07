@@ -878,6 +878,15 @@ export async function getTaskStatusCounts(): Promise<Record<string, number>> {
   return map;
 }
 
+export async function getSubtaskStatusCounts(): Promise<Record<string, number>> {
+  const rows = await query<{ status: string; count: string }>(
+    `SELECT status, COUNT(*)::text AS count FROM tasks WHERE deliverable_id IS NOT NULL GROUP BY status`
+  );
+  const map: Record<string, number> = {};
+  for (const r of rows) map[r.status] = Number(r.count);
+  return map;
+}
+
 // ---------- Attendance reports ----------
 
 export interface AttendanceReportRow {
