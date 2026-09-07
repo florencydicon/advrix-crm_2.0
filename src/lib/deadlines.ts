@@ -11,14 +11,16 @@ function deadlineMs(dueDate: string): number | null {
 }
 
 /**
- * Overdue — the task deadline is in the past and the task is not completed.
- * Matches `new Date() > new Date(task.deadline)` semantics, normalized to
- * UTC-midnight so the client and the server DB flag stay in lock-step.
+ * Overdue — the due DATE has already passed (i.e. it was due on a previous
+ * day) and the task is not completed. A task due today is not yet overdue: it
+ * becomes overdue at 00:00 UTC on the following day. This keeps the client and
+ * the server DB flag in lock-step.
  */
 export function isOverdue(task: DeadlineShape): boolean {
   if (!task.due_date || task.status === "completed") return false;
-  const d = deadlineMs(task.due_date);
-  return d !== null && d < Date.now();
+  const due = task.due_date.slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  return due < today;
 }
 
 /**

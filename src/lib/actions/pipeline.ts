@@ -577,7 +577,8 @@ export async function getUpcomingDeadlineAlertsAction(): Promise<{
      WHERE t.assigned_to = $1
        AND t.status <> 'completed'
        AND t.due_date IS NOT NULL
-       AND t.due_date = (now() AT TIME ZONE 'UTC')::date + 1
+       AND t.due_date >= (now() AT TIME ZONE 'UTC')::date
+       AND t.due_date <= (now() AT TIME ZONE 'UTC')::date + 1
      ORDER BY t.due_date ASC`,
     [session.sub]
   );

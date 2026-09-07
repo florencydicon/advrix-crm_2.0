@@ -597,8 +597,8 @@ export async function flagOverdueTasks() {
       `UPDATE tasks SET priority = 'urgent'
        WHERE status <> 'completed'
          AND due_date IS NOT NULL
-         AND due_date <= (now() AT TIME ZONE 'UTC')::date
-         AND priority <> 'urgent'`
+AND due_date < (now() AT TIME ZONE 'UTC')::date
+       AND priority <> 'urgent'`
     );
   } catch (err) {
     console.error("flagOverdueTasks failed:", err);
