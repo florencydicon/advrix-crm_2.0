@@ -2,12 +2,12 @@
 import { redirect } from "next/navigation";
 import {
   FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase,
-  Download,
+  Download, Users,
 } from "lucide-react";
 import { getSession } from "@/lib/session";
 import {
   getMyTasks, getProjects, getLeadStats, getTaskStatusCounts,
-  getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam,
+  getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam, getClients,
 } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
@@ -92,14 +92,16 @@ export default async function DashboardPage() {
 
 const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let projects: any[] = [];
+  let clients: any[] = [];
   let leadStats: any = null;
   let taskCounts: Record<string, number> = {};
   let submittedTasks: any[] = [];
   let pendingLeaves: any[] = [];
   let bottlenecks: any[] = [];
   try {
-    [projects, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
+    [projects, clients, leadStats, taskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
       getProjects().catch(() => [] as any),
+      getClients().catch(() => [] as any),
       isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
       isSuperAdmin ? getTaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
       getSubmittedTasks().catch(() => [] as any),
@@ -109,6 +111,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   } catch {
     // Fallback: individual catches already return safe defaults, this is absolute safety
     projects = projects || [];
+    clients = clients || [];
   }
   const active = projects.filter((p) => p.status === "in_progress");
 
@@ -174,8 +177,8 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </div>
         </div>
 
-        {/* ── Row 1: 4 project stat cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+        {/* ── Row 1: project + client stat cards ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <div className="card p-3 md:p-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="h-7 w-7 rounded-lg bg-violet-400/15 flex items-center justify-center">
@@ -184,6 +187,15 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
               <p className="text-xs text-slate-400">Total Projects</p>
             </div>
             <p className="text-2xl md:text-3xl font-bold tracking-tight text-white">{projects.length}</p>
+          </div>
+          <div className="card p-3 md:p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="h-7 w-7 rounded-lg bg-sky-400/15 flex items-center justify-center">
+                <Users className="h-3.5 w-3.5 text-sky-400" />
+              </span>
+              <p className="text-xs text-sky-300">Total Clients</p>
+            </div>
+            <p className="text-2xl md:text-3xl font-bold tracking-tight text-sky-300">{clients.length}</p>
           </div>
           <div className="card p-3 md:p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -285,8 +297,9 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <Stat label="Total Projects" value={projects.length} />
+        <Stat label="Total Clients" value={clients.length} accent="text-sky-300" />
         <Stat label="In Progress" value={active.length} accent="text-brand-300" />
         <Stat label="Completed" value={projects.filter((p) => p.status === "completed").length} accent="text-emerald-400" />
       </div>
