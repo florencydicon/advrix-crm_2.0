@@ -74,6 +74,7 @@ export async function createClientAction(formData: FormData) {
   const company = String(formData.get("company") || "").trim() || null;
   const email = String(formData.get("email") || "").trim() || null;
   const phone = String(formData.get("phone") || "").trim() || null;
+  const requestedPm = String(formData.get("assigned_pm_id") || "").trim() || null;
 
   const nameErr = validateFullName(name);
   if (nameErr) return { error: nameErr };
@@ -90,15 +91,62 @@ export async function createClientAction(formData: FormData) {
     if (companyErr) return { error: companyErr };
   }
 
+  let assignedPmId: string | null = null;
+  if (requestedPm) {
+    const pm = await query<{ id: string }>(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1 AND r.key = 'PROJECT_MANAGER'`,
+      [requestedPm]
+    );
+    if (!pm[0]) return { error: "Selected Project Manager not found." };
+    assignedPmId = requestedPm;
+  } else if (session.role_key === "PROJECT_MANAGER") {
+    // A PM creating a client keeps it in their own scope.
+    assignedPmId = session.sub;
+  }
+
   const rows = await query<{ id: string }>(
-    `INSERT INTO clients (name, company, email, phone, created_by)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [name, company, email, phone, session.sub]
+    `INSERT INTO clients (name, company, email, phone, created_by, assigned_pm_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [name, company, email, phone, session.sub, assignedPmId]
   );
 
   revalidatePath("/clients");
   revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  revalidatePath("/content");
+  revalidatePath("/leads");
   return { ok: true, id: rows[0].id };
+}
+
+/** Super Admin only — assigns/reassigns (or clears) the Project Manager of a client. */
+export async function assignClientPmAction(clientId: string, pmId: string | null) {
+  const session = await getSession();
+  if (!session) return { error: "Not authorized." };
+  const perms = session.permissions || [];
+  const isSuperAdmin = session.role_key === "SUPER_ADMIN" || perms.includes("admin:*");
+  if (!isSuperAdmin) return { error: "Only Super Admins can assign a Project Manager." };
+
+  const client = await query<{ id: string }>(`SELECT id FROM clients WHERE id = $1`, [clientId]);
+  if (!client[0]) return { error: "Client not found." };
+
+  let resolvedPmId: string | null = null;
+  if (pmId) {
+    const pm = await query<{ id: string }>(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1 AND r.key = 'PROJECT_MANAGER'`,
+      [pmId]
+    );
+    if (!pm[0]) return { error: "Selected Project Manager not found." };
+    resolvedPmId = pmId;
+  }
+
+  await query(`UPDATE clients SET assigned_pm_id = $2 WHERE id = $1`, [clientId, resolvedPmId]);
+
+  revalidatePath("/clients");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  revalidatePath("/content");
+  revalidatePath("/leads");
+  return { ok: true };
 }
 
 export async function createProjectAction(formData: FormData) {
@@ -115,8 +163,14 @@ export async function createProjectAction(formData: FormData) {
 
   if (!client_id) return { error: "Client is required." };
 
-  const clientRows = await query<{ id: string }>(`SELECT id FROM clients WHERE id = $1`, [client_id]);
+  const clientRows = await query<{ id: string; assigned_pm_id: string | null }>(
+    `SELECT id, assigned_pm_id FROM clients WHERE id = $1`,
+    [client_id]
+  );
   if (!clientRows[0]) return { error: "Client not found." };
+  if (session.role_key === "PROJECT_MANAGER" && clientRows[0].assigned_pm_id !== session.sub) {
+    return { error: "You can only create projects under your own assigned clients." };
+  }
 
   const nameErr = validateText(name, "Project name", 3, 120);
   if (nameErr) return { error: nameErr };

@@ -111,6 +111,8 @@ function GlobalSearchInput({
   );
 }
 
+type SelectOption = string | { value: string; label: string };
+
 function FilterSelect({
   value,
   onChange,
@@ -119,7 +121,7 @@ function FilterSelect({
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: string[];
+  options: SelectOption[];
   placeholder: string;
 }) {
   return (
@@ -130,11 +132,14 @@ function FilterSelect({
         className="w-full appearance-none rounded-lg border border-gray-700 bg-gray-800 py-2 pl-3 pr-8 text-sm text-white transition-colors focus:border-brand-300/50 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
       >
         <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
+        {options.map((o) => {
+          const opt = typeof o === "string" ? { value: o, label: o } : o;
+          return (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          );
+        })}
       </select>
       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
     </div>
@@ -195,6 +200,19 @@ export default function ProjectPipeline({
     } else {
       setActiveTask(found);
     }
+  }, [searchParams, board]);
+
+  // Deep-link routing: ?clientId=xxx pre-filters the Client dropdown (from the
+  // dashboard workload widget / Clients page).
+  const clientFilterApplied = useRef<string | null>(null);
+  useEffect(() => {
+    const cid = searchParams.get("clientId");
+    if (!cid || clientFilterApplied.current === cid) return;
+    const present = [...board.active, ...board.completed].some((t) => t.client_id === cid);
+    if (!present) return;
+    clientFilterApplied.current = cid;
+    setFltClient(cid);
+    setTab("active");
   }, [searchParams, board]);
 
   const reload = useCallback(async () => {
@@ -264,12 +282,16 @@ export default function ProjectPipeline({
   );
 
   const clientOptions = useMemo(() => {
-    const names = new Set<string>();
+    const seen = new Map<string, string>();
     for (const t of [...board.active, ...board.completed]) {
-      const n = clientName(t).trim();
-      if (n) names.add(n);
+      const id = t.client_id;
+      if (!id) continue;
+      const label = clientName(t).trim();
+      if (label && !seen.has(id)) seen.set(id, label);
     }
-    return [...names].sort((a, b) => a.localeCompare(b));
+    return [...seen.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [board.active, board.completed]);
 
   const projectOptions = useMemo(() => {
@@ -339,7 +361,7 @@ export default function ProjectPipeline({
       return String(seq[idx]?.name || "Unassigned").toLowerCase();
     };
     const matches = (t: Task) => {
-      if (fltClient && clientName(t) !== fltClient) return false;
+      if (fltClient && t.client_id !== fltClient) return false;
       if (fltProject && t.project_name !== fltProject) return false;
       if (fltStatus && t.status !== fltStatus) return false;
       if (fltPriority && String((t as any).priority) !== fltPriority) return false;

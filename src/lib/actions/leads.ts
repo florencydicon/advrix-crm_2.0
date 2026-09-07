@@ -11,9 +11,11 @@ const LEAD_STATUSES = ["new", "contacted", "follow_up", "proposal", "won", "lost
 const LEAD_SOURCES = ["website", "referral", "instagram", "cold_outreach", "walk_in", "other"];
 
 /**
- * Lead access + data isolation:
- * SALES sees only their own leads; users with broader access (leads:view /
- * leads:manage — PM and Super Admin by default) see everything.
+ * Lead capability check (read scoping happens on the page):
+ * SALES manages only their own leads; users with broader access (leads:view /
+ * leads:manage — PM and Super Admin by default) pass. PROJECT_MANAGER read
+ * scope is additionally narrowed on the Leads page to leads converted into
+ * their own assigned clients.
  */
 async function requireLeadAccess() {
   const session = await getSession();

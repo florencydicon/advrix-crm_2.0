@@ -2,12 +2,13 @@
 import { redirect } from "next/navigation";
 import {
   FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase,
-  Download, Users, Layers,
+  Download, Users, Layers, ChevronRight,
 } from "lucide-react";
 import { getSession } from "@/lib/session";
 import {
   getMyTasks, getProjects, getLeadStats, getTaskStatusCounts, getSubtaskStatusCounts,
-  getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam, getClients,
+  getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam, getClients, getClientWorkload,
+  type ClientWorkload,
 } from "@/lib/data";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
@@ -17,6 +18,45 @@ import { LEAD_STATUSES } from "@/lib/types";
 import { Greeting, TodayBadge } from "@/components/DashboardHeader";
 
 const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM", "VIDEOGRAPHER"];
+
+/** Per-client workload tiles that deep-link into a pre-filtered Project Pipeline. */
+function ClientWorkloadWidget({ workload }: { workload: ClientWorkload[] }) {
+  const active = workload.filter((w) => w.open_tasks > 0 || w.active_projects > 0);
+  return (
+    <div className="card p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="h-7 w-7 rounded-lg bg-brand-300/15 flex items-center justify-center">
+          <Briefcase className="h-3.5 w-3.5 text-brand-300" />
+        </span>
+        <h2 className="text-sm font-semibold text-white">Active Workload by Client</h2>
+        <Link href="/projects" className="ml-auto text-[11px] text-brand-300 hover:text-brand-200">View all →</Link>
+      </div>
+      {active.length === 0 ? (
+        <EmptyState title="No active client work" subtitle="Clients with open tasks or in-progress projects will appear here." />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {active.map((w) => (
+            <Link
+              key={w.client_id}
+              href={`/projects?clientId=${w.client_id}`}
+              className="rounded-xl bg-white/[0.03] border border-white/10 p-3 block hover:bg-white/[0.06] hover:border-brand-300/30 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-white truncate">{w.client_company || w.client_name}</p>
+                <ChevronRight className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+              </div>
+              <div className="flex items-center gap-2 mt-2 text-[11px]">
+                <span className="badge bg-amber-400/10 text-amber-300">{w.open_tasks} open tasks</span>
+                <span className="badge bg-sky-400/10 text-sky-300">{w.subtasks} subtasks</span>
+                {w.active_projects > 0 && <span className="badge bg-brand-300/10 text-brand-300">{w.active_projects} active</span>}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -91,6 +131,8 @@ export default async function DashboardPage() {
   }
 
 const isSuperAdmin = session.role_key === "SUPER_ADMIN";
+  const pmScope = session.role_key === "PROJECT_MANAGER" ? session.sub : null;
+  const showTaskMetrics = isSuperAdmin || pmScope !== null;
   let projects: any[] = [];
   let clients: any[] = [];
   let leadStats: any = null;
@@ -99,16 +141,18 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let submittedTasks: any[] = [];
   let pendingLeaves: any[] = [];
   let bottlenecks: any[] = [];
+  let workload: ClientWorkload[] = [];
   try {
-    [projects, clients, leadStats, taskCounts, subtaskCounts, submittedTasks, pendingLeaves, bottlenecks] = await Promise.all([
-      getProjects().catch(() => [] as any),
-      getClients().catch(() => [] as any),
+    [projects, clients, leadStats, taskCounts, subtaskCounts, submittedTasks, pendingLeaves, bottlenecks, workload] = await Promise.all([
+      getProjects(pmScope).catch(() => [] as any),
+      getClients(pmScope).catch(() => [] as any),
       isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
-      isSuperAdmin ? getTaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
-      isSuperAdmin ? getSubtaskStatusCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
-      getSubmittedTasks().catch(() => [] as any),
+      showTaskMetrics ? getTaskStatusCounts(pmScope).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
+      showTaskMetrics ? getSubtaskStatusCounts(pmScope).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
+      getSubmittedTasks(pmScope).catch(() => [] as any),
       getAllLeaves({ status: "pending" }).catch(() => [] as any),
-      isSuperAdmin ? getBottlenecks().catch(() => [] as any) : Promise.resolve([] as any),
+      showTaskMetrics ? getBottlenecks(pmScope).catch(() => [] as any) : Promise.resolve([] as any),
+      getClientWorkload(pmScope).catch(() => [] as any),
     ]);
   } catch {
     // Fallback: individual catches already return safe defaults, this is absolute safety
@@ -293,7 +337,10 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </div>
         </div>
 
-        {/* ── Row 3: Action & Approval Center ── */}
+        {/* ── Row 3: Active Workload by Client ── */}
+        <ClientWorkloadWidget workload={workload} />
+
+        {/* ── Row 4: Action & Approval Center ── */}
         <div className="card overflow-hidden">
           <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -342,6 +389,9 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           <p className="mt-1 text-2xl md:text-3xl font-bold tracking-tight text-emerald-400">{projects.filter((p) => p.status === "completed").length}</p>
         </Link>
       </div>
+
+      {/* ── Active Workload by Client ── */}
+      <ClientWorkloadWidget workload={workload} />
 
       <div className="card overflow-hidden">
         <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">

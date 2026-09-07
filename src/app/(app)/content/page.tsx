@@ -14,10 +14,11 @@ export default async function ContentPage() {
     redirect("/dashboard");
   }
 
+  const pmScope = session.role_key === "PROJECT_MANAGER" ? session.sub : null;
   const [board, clients, projects, team] = await Promise.all([
     getContentItemsAction(),
-    getClients().catch(() => []),
-    getProjects().catch(() => []),
+    getClients(pmScope).catch(() => []),
+    getProjects(pmScope).catch(() => []),
     getTeam().catch(() => []),
   ]);
 

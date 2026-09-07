@@ -32,19 +32,49 @@ function paginate<T>(items: T[], total: number, page: number, pageSize: number):
   return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
 }
 
-export async function getClients(): Promise<Client[]> {
-  return query<Client>(`SELECT * FROM clients ORDER BY created_at DESC`);
+export async function getClients(pmScopeUserId: string | null = null): Promise<Client[]> {
+  const params: unknown[] = [];
+  const where = pmScopeUserId
+    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+    : "";
+  return query<Client>(
+    `SELECT c.*, pmu.full_name AS assigned_pm_name
+     FROM clients c
+     LEFT JOIN users pmu ON pmu.id = c.assigned_pm_id
+     ${where}
+     ORDER BY c.created_at DESC`,
+    params
+  );
 }
 
-export async function getClientsPaginated(params: PaginatedParams = {}): Promise<PaginatedResult<Client>> {
+export async function getClientsPaginated(
+  params: PaginatedParams = {},
+  pmScopeUserId: string | null = null
+): Promise<PaginatedResult<Client>> {
   const { page = 1, pageSize = 20, search = "" } = params;
   const offset = (page - 1) * pageSize;
-  const where = search ? `WHERE c.name ILIKE $1 OR c.company ILIKE $1 OR c.email ILIKE $1` : "";
-  const args = search ? [`%${search}%`] : [];
+  const conditions: string[] = [];
+  const args: unknown[] = [];
+  if (search) {
+    args.push(`%${search}%`);
+    conditions.push(`(c.name ILIKE $${args.length} OR c.company ILIKE $${args.length} OR c.email ILIKE $${args.length})`);
+  }
+  if (pmScopeUserId) {
+    args.push(pmScopeUserId);
+    conditions.push(`c.assigned_pm_id = $${args.length}`);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const [countRes, items] = await Promise.all([
     query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM clients c ${where}`, args),
-    query<Client>(`SELECT c.* FROM clients c ${where} ORDER BY c.created_at DESC LIMIT $${args.length + 1} OFFSET $${args.length + 2}`, [...args, pageSize, offset]),
+    query<Client>(
+      `SELECT c.*, pmu.full_name AS assigned_pm_name
+       FROM clients c
+       LEFT JOIN users pmu ON pmu.id = c.assigned_pm_id
+       ${where}
+       ORDER BY c.created_at DESC LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
+      [...args, pageSize, offset]
+    ),
   ]);
 
   return paginate(items, Number(countRes[0]?.total || 0), page, pageSize);
@@ -55,19 +85,33 @@ export interface ClientCard extends Client {
   active_projects: number;
 }
 
-export async function getClientCards(params: PaginatedParams = {}): Promise<PaginatedResult<ClientCard>> {
+export async function getClientCards(
+  params: PaginatedParams = {},
+  pmScopeUserId: string | null = null
+): Promise<PaginatedResult<ClientCard>> {
   const { page = 1, pageSize = 24, search = "" } = params;
   const offset = (page - 1) * pageSize;
-  const where = search ? `WHERE c.name ILIKE $1 OR c.company ILIKE $1 OR c.email ILIKE $1` : "";
-  const args = search ? [`%${search}%`] : [];
+  const conditions: string[] = [];
+  const args: unknown[] = [];
+  if (search) {
+    args.push(`%${search}%`);
+    conditions.push(`(c.name ILIKE $${args.length} OR c.company ILIKE $${args.length} OR c.email ILIKE $${args.length})`);
+  }
+  if (pmScopeUserId) {
+    args.push(pmScopeUserId);
+    conditions.push(`c.assigned_pm_id = $${args.length}`);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const [countRes, items] = await Promise.all([
     query<{ total: string }>(`SELECT COUNT(*)::text AS total FROM clients c ${where}`, args),
     query<ClientCard>(
-      `SELECT c.*,
+      `SELECT c.*, pmu.full_name AS assigned_pm_name,
               (SELECT COUNT(*)::int FROM projects p WHERE p.client_id = c.id) AS total_projects,
               (SELECT COUNT(*)::int FROM projects p WHERE p.client_id = c.id AND p.status = 'in_progress') AS active_projects
-       FROM clients c ${where}
+       FROM clients c
+       LEFT JOIN users pmu ON pmu.id = c.assigned_pm_id
+       ${where}
        ORDER BY c.created_at DESC
        LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
       [...args, pageSize, offset]
@@ -77,15 +121,24 @@ export async function getClientCards(params: PaginatedParams = {}): Promise<Pagi
   return paginate(items, Number(countRes[0]?.total || 0), page, pageSize);
 }
 
-export async function getProjects(): Promise<Project[]> {
+export async function getProjects(pmScopeUserId: string | null = null): Promise<Project[]> {
+  const params: unknown[] = [];
+  const where = pmScopeUserId
+    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+    : "";
   return query<Project>(
     `SELECT p.*, c.name AS client_name
      FROM projects p JOIN clients c ON c.id = p.client_id
-     ORDER BY p.created_at DESC`
+     ${where}
+     ORDER BY p.created_at DESC`,
+    params
   );
 }
 
-export async function getProjectsPaginated(params: PaginatedParams = {}): Promise<PaginatedResult<ProjectRow>> {
+export async function getProjectsPaginated(
+  params: PaginatedParams = {},
+  pmScopeUserId: string | null = null
+): Promise<PaginatedResult<ProjectRow>> {
   const { page = 1, pageSize = 20, search = "", status = "" } = params;
   const offset = (page - 1) * pageSize;
   const conditions: string[] = [];
@@ -98,6 +151,10 @@ export async function getProjectsPaginated(params: PaginatedParams = {}): Promis
   if (status) {
     args.push(status);
     conditions.push(`p.status = $${args.length}`);
+  }
+  if (pmScopeUserId) {
+    args.push(pmScopeUserId);
+    conditions.push(`c.assigned_pm_id = $${args.length}`);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -121,13 +178,19 @@ export async function getProjectsPaginated(params: PaginatedParams = {}): Promis
   return paginate(items, Number(countRes[0]?.total || 0), page, pageSize);
 }
 
-export async function getProjectsForBoard(): Promise<ProjectRow[]> {
+export async function getProjectsForBoard(pmScopeUserId: string | null = null): Promise<ProjectRow[]> {
+  const params: unknown[] = [];
+  const where = pmScopeUserId
+    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+    : "";
   return query<ProjectRow>(
     `SELECT p.*, c.name AS client_name,
             (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id) AS total_tasks,
             (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.status = 'completed') AS completed_tasks
      FROM projects p JOIN clients c ON c.id = p.client_id
-     ORDER BY p.created_at DESC`
+     ${where}
+     ORDER BY p.created_at DESC`,
+    params
   );
 }
 
@@ -426,11 +489,17 @@ export async function getMemberHistoryTasks(userId: string): Promise<Task[]> {
 }
 
 /** Tasks awaiting admin/PM review (submitted by producers). */
-export async function getSubmittedTasks(): Promise<Task[]> {
+export async function getSubmittedTasks(pmScopeUserId: string | null = null): Promise<Task[]> {
+  const params: unknown[] = [];
+  const pmWhere = pmScopeUserId
+    ? (params.push(pmScopeUserId), `AND c.assigned_pm_id = $${params.length}`)
+    : "";
   return query<Task>(
     `${TASK_SELECT}
      WHERE t.status = 'submitted'
-     ORDER BY t.reviewed_at DESC NULLS LAST, t.created_at ASC`
+     ${pmWhere}
+     ORDER BY t.reviewed_at DESC NULLS LAST, t.created_at ASC`,
+    params
   );
 }
 
@@ -578,18 +647,25 @@ export interface Bottleneck {
   days_open: number;
 }
 
-export async function getBottlenecks(): Promise<Bottleneck[]> {
+export async function getBottlenecks(pmScopeUserId: string | null = null): Promise<Bottleneck[]> {
+  const params: unknown[] = [];
+  const pmWhere = pmScopeUserId
+    ? (params.push(pmScopeUserId), `AND c.assigned_pm_id = $${params.length}`)
+    : "";
   return query<Bottleneck>(
     `SELECT p.id AS project_id, p.name AS project_name, t.id AS task_id, t.title,
             u.full_name AS assignee_name, r.label AS role_label,
             EXTRACT(DAY FROM now() - t.created_at)::int AS days_open
      FROM tasks t
      JOIN projects p ON p.id = t.project_id
+     JOIN clients c ON c.id = p.client_id
      LEFT JOIN users u ON u.id = t.assigned_to
      LEFT JOIN roles r ON r.key = t.role_key
      WHERE t.status <> 'completed' AND p.status = 'in_progress'
+     ${pmWhere}
      ORDER BY days_open DESC
-     LIMIT 12`
+     LIMIT 12`,
+    params
   );
 }
 
@@ -604,7 +680,11 @@ export interface Analytics {
   recentProjects: { id: string; name: string; client_name: string; status: string; created_at: string }[];
 }
 
-export async function getAnalytics(): Promise<Analytics> {
+export async function getAnalytics(pmScopeUserId: string | null = null): Promise<Analytics> {
+  const params: unknown[] = [];
+  const pmWhere = pmScopeUserId
+    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $1`)
+    : "";
   const stats = await query<{
     total_projects: string;
     in_progress: string;
@@ -613,11 +693,12 @@ export async function getAnalytics(): Promise<Analytics> {
     completed_tasks: string;
   }>(
     `SELECT
-       (SELECT COUNT(*) FROM projects)::text AS total_projects,
-       (SELECT COUNT(*) FROM projects WHERE status='in_progress')::text AS in_progress,
-       (SELECT COUNT(*) FROM projects WHERE status='completed')::text AS completed_projects,
-       (SELECT COUNT(*) FROM tasks)::text AS total_tasks,
-       (SELECT COUNT(*) FROM tasks WHERE status='completed')::text AS completed_tasks`
+       (SELECT COUNT(*) FROM projects p JOIN clients c ON c.id = p.client_id ${pmWhere})::text AS total_projects,
+       (SELECT COUNT(*) FROM projects p JOIN clients c ON c.id = p.client_id ${pmWhere} AND p.status='in_progress')::text AS in_progress,
+       (SELECT COUNT(*) FROM projects p JOIN clients c ON c.id = p.client_id ${pmWhere} AND p.status='completed')::text AS completed_projects,
+       (SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id ${pmWhere})::text AS total_tasks,
+       (SELECT COUNT(*) FROM tasks t JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id ${pmWhere} AND t.status='completed')::text AS completed_tasks`,
+    params
   );
 
   const byRole = await query<{ role_label: string; total: string; completed: string }>(
@@ -625,18 +706,28 @@ export async function getAnalytics(): Promise<Analytics> {
             COUNT(t.id)::text AS total,
             COUNT(t.id) FILTER (WHERE t.status='completed')::text AS completed
      FROM tasks t
+     JOIN projects p ON p.id = t.project_id
+     JOIN clients c ON c.id = p.client_id
      JOIN roles r ON r.key = t.role_key
-     GROUP BY r.label ORDER BY r.label`
+     ${pmWhere}
+     GROUP BY r.label ORDER BY r.label`,
+    params
   );
 
   const byStatus = await query<{ status: string; count: string }>(
-    `SELECT status, COUNT(*)::text AS count FROM projects GROUP BY status`
+    `SELECT p.status, COUNT(*)::text AS count
+     FROM projects p JOIN clients c ON c.id = p.client_id
+     ${pmWhere}
+     GROUP BY p.status`,
+    params
   );
 
   const recent = await query<{ id: string; name: string; client_name: string; status: string; created_at: string }>(
     `SELECT p.id, p.name, c.name AS client_name, p.status, p.created_at
      FROM projects p JOIN clients c ON c.id = p.client_id
-     ORDER BY p.created_at DESC LIMIT 8`
+     ${pmWhere}
+     ORDER BY p.created_at DESC LIMIT 8`,
+    params
   );
 
   return {
@@ -802,9 +893,21 @@ export async function getLeavesForDateRange(startDate: string, endDate: string):
 
 // ---------- Sales Leads ----------
 
-export async function getLeads(ownerId: string | null): Promise<Lead[]> {
-  const where = ownerId ? `WHERE l.owner_id = $1` : "";
-  const args = ownerId ? [ownerId] : [];
+export async function getLeads(
+  ownerId: string | null,
+  clientScopeUserId: string | null = null
+): Promise<Lead[]> {
+  const conditions: string[] = [];
+  const args: unknown[] = [];
+  if (ownerId) {
+    args.push(ownerId);
+    conditions.push(`l.owner_id = $${args.length}`);
+  }
+  if (clientScopeUserId) {
+    args.push(clientScopeUserId);
+    conditions.push(`l.converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await query<Lead & { active_task_count: number }>(
     `SELECT l.*, u.full_name AS owner_name,
             l.next_follow_up::text AS next_follow_up,
@@ -825,9 +928,21 @@ export async function getLeads(ownerId: string | null): Promise<Lead[]> {
   return rows;
 }
 
-export async function getLeadStats(ownerId: string | null): Promise<LeadStats> {
-  const where = ownerId ? `WHERE owner_id = $1` : "";
-  const args = ownerId ? [ownerId] : [];
+export async function getLeadStats(
+  ownerId: string | null,
+  clientScopeUserId: string | null = null
+): Promise<LeadStats> {
+  const conditions: string[] = [];
+  const args: unknown[] = [];
+  if (ownerId) {
+    args.push(ownerId);
+    conditions.push(`owner_id = $${args.length}`);
+  }
+  if (clientScopeUserId) {
+    args.push(clientScopeUserId);
+    conditions.push(`converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await query<{
     total: string;
     new_count: string;
@@ -869,22 +984,82 @@ export async function getLeadStats(ownerId: string | null): Promise<LeadStats> {
   };
 }
 
-export async function getTaskStatusCounts(): Promise<Record<string, number>> {
+export async function getTaskStatusCounts(pmScopeUserId: string | null = null): Promise<Record<string, number>> {
+  const params: unknown[] = [];
+  const where = pmScopeUserId
+    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+    : "";
   const rows = await query<{ status: string; count: string }>(
-    `SELECT status, COUNT(*)::text AS count FROM tasks GROUP BY status`
+    `SELECT t.status, COUNT(*)::text AS count
+     FROM tasks t
+     JOIN projects p ON p.id = t.project_id
+     JOIN clients c ON c.id = p.client_id
+     ${where}
+     GROUP BY t.status`,
+    params
   );
   const map: Record<string, number> = {};
   for (const r of rows) map[r.status] = Number(r.count);
   return map;
 }
 
-export async function getSubtaskStatusCounts(): Promise<Record<string, number>> {
+export async function getSubtaskStatusCounts(pmScopeUserId: string | null = null): Promise<Record<string, number>> {
+  const params: unknown[] = [];
+  const pmWhere = pmScopeUserId
+    ? (params.push(pmScopeUserId), `AND c.assigned_pm_id = $${params.length}`)
+    : "";
   const rows = await query<{ status: string; count: string }>(
-    `SELECT status, COUNT(*)::text AS count FROM tasks WHERE deliverable_id IS NOT NULL GROUP BY status`
+    `SELECT t.status, COUNT(*)::text AS count
+     FROM tasks t
+     JOIN projects p ON p.id = t.project_id
+     JOIN clients c ON c.id = p.client_id
+     WHERE t.deliverable_id IS NOT NULL
+     ${pmWhere}
+     GROUP BY t.status`,
+    params
   );
   const map: Record<string, number> = {};
   for (const r of rows) map[r.status] = Number(r.count);
   return map;
+}
+
+export interface ClientWorkload {
+  client_id: string;
+  client_company: string | null;
+  client_name: string;
+  open_tasks: number;
+  subtasks: number;
+  active_projects: number;
+}
+
+/**
+ * Per-client workload used by the "Active Workload by Client" dashboard widget.
+ * Scoped to a single PM's clients when `pmScopeUserId` is given.
+ */
+export async function getClientWorkload(pmScopeUserId: string | null = null): Promise<ClientWorkload[]> {
+  const params: unknown[] = [];
+  const where = pmScopeUserId
+    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+    : "";
+  const rows = await query<ClientWorkload>(
+    `SELECT c.id AS client_id, c.company AS client_company, c.name AS client_name,
+            (SELECT COUNT(*)::int FROM tasks t JOIN projects p ON p.id = t.project_id
+             WHERE p.client_id = c.id AND t.status <> 'completed') AS open_tasks,
+            (SELECT COUNT(*)::int FROM tasks t JOIN projects p ON p.id = t.project_id
+             WHERE p.client_id = c.id AND t.status <> 'completed' AND t.deliverable_id IS NOT NULL) AS subtasks,
+            (SELECT COUNT(*)::int FROM projects p
+             WHERE p.client_id = c.id AND p.status = 'in_progress') AS active_projects
+     FROM clients c
+     ${where}
+     ORDER BY COALESCE(c.company, c.name) ASC`,
+    params
+  );
+  for (const r of rows) {
+    r.open_tasks = Number(r.open_tasks || 0);
+    r.subtasks = Number(r.subtasks || 0);
+    r.active_projects = Number(r.active_projects || 0);
+  }
+  return rows;
 }
 
 // ---------- Attendance reports ----------

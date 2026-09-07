@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
+import { resolveDataScope } from "@/lib/scope";
 import { createContentPipelineTask } from "@/lib/workflow";
 import type { ContentItem, StandaloneContentStatus } from "@/lib/types";
 
@@ -49,8 +50,9 @@ const CONTENT_SELECT = `
 `;
 
 /**
- * Standalone Content Hub list. Managers see everything; everyone else sees
- * items assigned to them plus unassigned pick-ups. No pipeline coupling.
+ * Standalone Content Hub list. Super Admins / global managers see everything;
+ * Project Managers only their assigned clients; everyone else sees items
+ * assigned to them plus unassigned pick-ups.
  */
 export async function getContentItemsAction(): Promise<{
   items: ContentItem[];
@@ -62,14 +64,21 @@ export async function getContentItemsAction(): Promise<{
   const session = await getSession();
   if (!session) return { items: [], canManage: false, canEdit: false, roleKey: null, userId: null };
 
-  const broad =
-    (session.permissions || []).includes("admin:*") || isManager(session);
-  const rows = broad
-    ? await query<ContentItem>(`${CONTENT_SELECT} ORDER BY c.created_at DESC`)
-    : await query<ContentItem>(
-        `${CONTENT_SELECT} WHERE (c.assignee_id = $1 OR c.assignee_id IS NULL) ORDER BY c.created_at DESC`,
-        [session.sub]
-      );
+  const dataScope = resolveDataScope(session);
+  let rows: ContentItem[];
+  if (dataScope.kind === "pm") {
+    rows = await query<ContentItem>(
+      `${CONTENT_SELECT} WHERE cl.assigned_pm_id = $1 ORDER BY c.created_at DESC`,
+      [session.sub]
+    );
+  } else if (dataScope.kind === "self") {
+    rows = await query<ContentItem>(
+      `${CONTENT_SELECT} WHERE (c.assignee_id = $1 OR c.assignee_id IS NULL) ORDER BY c.created_at DESC`,
+      [session.sub]
+    );
+  } else {
+    rows = await query<ContentItem>(`${CONTENT_SELECT} ORDER BY c.created_at DESC`);
+  }
 
   return {
     items: rows,

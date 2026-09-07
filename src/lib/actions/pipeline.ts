@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
+import { resolveDataScope, type DataScope } from "@/lib/scope";
 import type { Task, TaskStatus, ContentStatus } from "@/lib/types";
 import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam, setTaskDeadline, flagOverdueTasks } from "@/lib/workflow";
 import { sanitizeRich, richToPlain } from "@/lib/rich";
@@ -26,7 +27,7 @@ export interface PipelineBoardPayload {
 }
 
 const PIPELINE_TASK_SELECT = `
-  SELECT t.*, p.name AS project_name, c.name AS client_name, c.company AS client_company,
+  SELECT t.*, p.name AS project_name, c.id AS client_id, c.name AS client_name, c.company AS client_company,
          u.full_name AS assignee_name, r.label AS role_label,
          t.due_date::text AS due_date,
          t.brief_approved_at::text AS brief_approved_at,
@@ -65,14 +66,23 @@ const PIPELINE_TASK_SELECT = `
  * Loads the two-sided Project Pipeline for the current user.
  *
  * RBAC scoping:
- *  - "Broad" viewers (Super Admin via `admin:*`, or Project Managers with both
- *    projects:view + projects:manage) see the ENTIRE pipeline across all clients.
+ *  - Super Admin (`admin:*`) / global managers see the ENTIRE pipeline.
+ *  - Project Managers see ONLY their assigned clients (`clients.assigned_pm_id`),
+ *    never the whole company (strict PM data isolation).
  *  - Everyone else only ever sees the tasks they are directly assigned to
  *    (or members of the task's assignees) — strictly filtered to their own work.
  *
  * Completed tasks (status = 'completed') go to History; everything else lands on
  * the Active Board.
  */
+
+/** Builds the WHERE fragment (no trailing semicolon) for the given data scope. */
+function boardScope(session: { sub: string; permissions?: string[] }, scope: DataScope): string {
+  if (scope.kind === "pm") return "WHERE c.assigned_pm_id = $1";
+  if (scope.kind === "self")
+    return `WHERE (t.assigned_to = $1 OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))`;
+  return "";
+}
 export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const session = await getSession();
   if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
@@ -81,16 +91,13 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   await flagOverdueTasks();
 
   const perms = session.permissions || [];
-  const isBroad =
-    perms.includes("admin:*") ||
-    (hasPermission(perms, PERM_PROJECTS_VIEW) && hasPermission(perms, PERM_PROJECTS_MANAGE));
+  const dataScope = resolveDataScope(session);
+  const isBroad = dataScope.kind === "global";
   const canManage = hasPermission(perms, PERM_TASKS_MANAGE);
   const canApprove = hasPermission(perms, PERM_TASKS_MANAGE) || hasPermission(perms, PERM_TASKS_REVIEW);
   const canReopen = perms.includes("admin:*");
-  const scope = isBroad
-    ? ""
-    : `WHERE (t.assigned_to = $1 OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))`;
-  const params: (string | null)[] = isBroad ? [] : [session.sub];
+  const scope = boardScope(session, dataScope);
+  const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
 
   const rows = await query<Task>(
     `${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
@@ -709,12 +716,7 @@ export async function bulkSetPipelineContentStatusAction(
   return { ok: true, count: ids.length };
 }
 
-/**
- * Content Hub board — existing tasks whose deliverable type carries a
- * content_role (Client -> Project/Task -> Content Hub; no orphans by
- * construction). Same RBAC scoping as the pipeline: broad viewers see
- * everything, everyone else only their own assigned tasks.
- */
+/** Content Hub board — existing tasks whose deliverable type carries a content_role (Client -> Project/Task -> Content Hub; no orphans by construction). Same RBAC scoping as the pipeline: global viewers see everything, PMs only their assigned clients, everyone else only their own tasks. */
 export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
   const session = await getSession();
   if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
@@ -722,16 +724,13 @@ export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
   await flagOverdueTasks();
 
   const perms = session.permissions || [];
-  const isBroad =
-    perms.includes("admin:*") ||
-    (hasPermission(perms, PERM_PROJECTS_VIEW) && hasPermission(perms, PERM_PROJECTS_MANAGE));
+  const dataScope = resolveDataScope(session);
+  const isBroad = dataScope.kind === "global";
   const canManage = hasPermission(perms, PERM_TASKS_MANAGE);
   const canApprove = hasPermission(perms, PERM_TASKS_MANAGE) || hasPermission(perms, PERM_TASKS_REVIEW);
   const canReopen = perms.includes("admin:*");
-  const scope = isBroad
-    ? ""
-    : `WHERE (t.assigned_to = $1 OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))`;
-  const params: (string | null)[] = isBroad ? [] : [session.sub];
+  const scope = boardScope(session, dataScope);
+  const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
   const where = scope
     ? `${scope} AND dt.content_role IS NOT NULL`
     : `WHERE dt.content_role IS NOT NULL`;

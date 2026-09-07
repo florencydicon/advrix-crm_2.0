@@ -35,6 +35,8 @@ export interface Client {
   company: string | null;
   email: string | null;
   phone: string | null;
+  assigned_pm_id: string | null;
+  assigned_pm_name: string | null;
   created_at: string;
 }
 
@@ -184,6 +186,7 @@ export interface Task {
   id: string;
   project_id: string;
   project_name: string;
+  client_id: string | null;
   client_name: string;
   client_company: string | null;
   step_key: string;

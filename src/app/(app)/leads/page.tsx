@@ -13,9 +13,11 @@ export default async function LeadsPage() {
     redirect("/dashboard");
   }
 
-  // Data isolation happens here: SALES sees only their own leads.
+  // Data isolation: SALES sees only their own leads; PROJECT_MANAGER only
+  // leads of clients assigned to them (converted). Others see all leads.
   const ownerId = session.role_key === "SALES" ? session.sub : null;
-  const [leads, stats] = await Promise.all([getLeads(ownerId), getLeadStats(ownerId)]);
+  const clientScopeId = session.role_key === "PROJECT_MANAGER" ? session.sub : null;
+  const [leads, stats] = await Promise.all([getLeads(ownerId, clientScopeId), getLeadStats(ownerId, clientScopeId)]);
 
   return <LeadsView leads={leads} stats={stats} roleKey={session.role_key} />;
 }

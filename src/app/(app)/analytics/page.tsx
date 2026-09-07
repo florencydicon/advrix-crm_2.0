@@ -13,7 +13,8 @@ export default async function AnalyticsPage() {
   if (!session) redirect("/login");
   if (!hasPermission(session.permissions, "reports:view")) redirect("/dashboard");
 
-  const [analytics, bottlenecks] = await Promise.all([getAnalytics(), getBottlenecks()]);
+  const pmScope = session.role_key === "PROJECT_MANAGER" ? session.sub : null;
+  const [analytics, bottlenecks] = await Promise.all([getAnalytics(pmScope), getBottlenecks(pmScope)]);
   const completionRate = analytics.totalTasks ? Math.round((analytics.completedTasks / analytics.totalTasks) * 100) : 0;
 
   return (

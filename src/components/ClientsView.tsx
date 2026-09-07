@@ -13,9 +13,9 @@ import {
   ChevronLeft,
   Trash2,
 } from "lucide-react";
-import { createClientAction, createProjectAction, deleteClientAction } from "@/lib/actions/projects";
+import { createClientAction, createProjectAction, deleteClientAction, assignClientPmAction } from "@/lib/actions/projects";
 import type { ClientCard } from "@/lib/data";
-import type { DeliverableType } from "@/lib/types";
+import type { DeliverableType, UserRow } from "@/lib/types";
 import { formatClientName } from "@/lib/utils";
 import { Modal, EmptyState } from "@/components/ui";
 import { SearchableSelect } from "@/components/SearchableSelect";
@@ -180,6 +180,8 @@ export default function ClientsView({
   clients,
   canCreate,
   canDelete,
+  isSuperAdmin,
+  pms,
   deliverableTypes,
   page,
   pageSize,
@@ -191,6 +193,8 @@ export default function ClientsView({
   clients: ClientCard[];
   canCreate: boolean;
   canDelete: boolean;
+  isSuperAdmin?: boolean;
+  pms: UserRow[];
   deliverableTypes: DeliverableType[];
   page: number;
   pageSize: number;
@@ -305,9 +309,12 @@ export default function ClientsView({
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {clients.map((c) => (
-              <button
+              <div
                 key={c.id}
-                onClick={() => router.push(`/projects?client=${c.id}`)}
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/projects?clientId=${c.id}`)}
+                onKeyDown={(e) => e.key === "Enter" && router.push(`/projects?clientId=${c.id}`)}
                 className="card card-hover p-4 text-left overflow-hidden flex flex-col gap-2"
               >
                 <div className="flex items-start gap-3">
@@ -353,6 +360,30 @@ export default function ClientsView({
                       · {c.email || c.phone}
                     </span>
                   )}
+                  {c.assigned_pm_name && (
+                    <span className="badge bg-violet-400/10 text-violet-300" title="Assigned Project Manager">
+                      {c.assigned_pm_name}
+                    </span>
+                  )}
+                  {isSuperAdmin && (
+                    <select
+                      value={c.assigned_pm_id || ""}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={async (e) => {
+                        e.stopPropagation();
+                        const res = await assignClientPmAction(c.id, e.target.value || null);
+                        if (res.error) toast(res.error, "error");
+                        else { toast("Project Manager updated.", "success"); router.refresh(); }
+                      }}
+                      className="rounded-lg bg-night-900 border border-white/10 px-1.5 py-0.5 text-[10px] text-slate-300 focus:outline-none"
+                      title="Assign Project Manager"
+                    >
+                      <option value="">No PM</option>
+                      {pms.map((p) => (
+                        <option key={p.id} value={p.id}>{p.full_name}</option>
+                      ))}
+                    </select>
+                  )}
                   <span className="ml-auto flex items-center gap-1.5">
                     <span className={`badge ${c.active_projects > 0 ? "bg-amber-400/10 text-amber-300" : "bg-white/10 text-slate-500"}`}>
                       {c.active_projects} active
@@ -361,7 +392,7 @@ export default function ClientsView({
                     <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
                   </span>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
 
@@ -432,6 +463,17 @@ export default function ClientsView({
               <input name="phone" className="input" placeholder="Phone number" />
             </div>
           </div>
+          {isSuperAdmin && (
+            <div>
+              <label className="label">Assign to Project Manager <span className="text-slate-500 font-normal">(optional)</span></label>
+              <select name="assigned_pm_id" className="input" defaultValue="">
+                <option value="">No Project Manager</option>
+                {pms.map((p) => (
+                  <option key={p.id} value={p.id}>{p.full_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button type="submit" className="btn-primary w-full" disabled={pending}>
             {pending ? "Saving…" : "Save client"}
           </button>

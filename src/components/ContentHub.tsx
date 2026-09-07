@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FileText, CheckCircle2, Plus, Search } from "lucide-react";
 import type { Client, ContentItem, Project, UserRow, StandaloneContentStatus } from "@/lib/types";
 import { STATUS_META } from "@/components/ui";
@@ -84,6 +84,17 @@ export default function ContentHub({
   const [selected, setSelected] = useState<string[]>([]);
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Deep-link routing: ?clientId=xxx pre-filters the Client dropdown.
+  const clientFilterApplied = useRef<string | null>(null);
+  useEffect(() => {
+    const cid = searchParams.get("clientId");
+    if (!cid || clientFilterApplied.current === cid) return;
+    if (!items.some((t) => t.client_id === cid)) return;
+    clientFilterApplied.current = cid;
+    setFltClient(cid);
+  }, [searchParams, items]);
 
   const toggleSelect = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
@@ -113,7 +124,7 @@ export default function ContentHub({
       tab === "history" ? t.status === "completed" : t.status !== "completed"
     );
     return inTab.filter((t) => {
-      if (fltClient && (t.client_company || t.client_name) !== fltClient) return false;
+      if (fltClient && t.client_id !== fltClient) return false;
       if (fltAssignee && (t.assignee_name || "Unassigned") !== fltAssignee) return false;
       if (!q) return true;
       return (
@@ -127,9 +138,14 @@ export default function ContentHub({
   }, [items, search, tab, fltClient, fltAssignee]);
 
   const clientOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const t of items) s.add(t.client_company || t.client_name);
-    return [...s].sort((a, b) => a.localeCompare(b));
+    const seen = new Map<string, string>();
+    for (const t of items) {
+      const label = t.client_company || t.client_name;
+      if (label && !seen.has(t.client_id)) seen.set(t.client_id, label);
+    }
+    return [...seen.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [items]);
 
   const assigneeOptions = useMemo(() => {
@@ -297,7 +313,7 @@ export default function ContentHub({
         >
           <option value="">All Clients</option>
           {clientOptions.map((c) => (
-            <option key={c} value={c}>{c}</option>
+            <option key={c.value} value={c.value}>{c.label}</option>
           ))}
         </select>
         <select
