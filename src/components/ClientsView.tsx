@@ -482,7 +482,7 @@ export default function ClientsView({
             <DatePicker name="deadline" placeholder="Select deadline…" />
           </div>
           <button type="submit" className="btn-primary w-full" disabled={pending}>
-            {pending ? "Creating…" : "Submit for PM approval"}
+            {pending ? "Creating…" : "submit"}
           </button>
         </form>
       </Modal>
