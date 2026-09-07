@@ -151,6 +151,11 @@ export interface ContentItem {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  /** Linked Project Pipeline task (created on add if a project is chosen). */
+  task_id: string | null;
+  task_project_id: string | null;
+  task_project_name: string | null;
+  task_status: string | null;
 }
 
 export interface TaskAssignee {

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { hasAnyPermission } from "@/lib/permissions";
 import { getContentItemsAction } from "@/lib/actions/content";
-import { getClients, getTeam } from "@/lib/data";
+import { getClients, getProjects, getTeam } from "@/lib/data";
 import ContentHub from "@/components/ContentHub";
 
 export const metadata = { title: "Content Management — Advrix CRM" };
@@ -14,9 +14,10 @@ export default async function ContentPage() {
     redirect("/dashboard");
   }
 
-  const [board, clients, team] = await Promise.all([
+  const [board, clients, projects, team] = await Promise.all([
     getContentItemsAction(),
     getClients().catch(() => []),
+    getProjects().catch(() => []),
     getTeam().catch(() => []),
   ]);
 
@@ -32,6 +33,7 @@ export default async function ContentPage() {
       <ContentHub
         items={board.items}
         clients={clients}
+        projects={projects}
         team={team}
         canManage={board.canManage}
         canEdit={board.canEdit}

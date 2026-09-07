@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, CheckCircle2, Plus, Search } from "lucide-react";
-import type { Client, ContentItem, UserRow, StandaloneContentStatus } from "@/lib/types";
+import type { Client, ContentItem, Project, UserRow, StandaloneContentStatus } from "@/lib/types";
+import { STATUS_META } from "@/components/ui";
 import ContentModal from "@/components/ContentModal";
 import BulkActionBar from "@/components/BulkActionBar";
 import { useToast } from "@/components/Toast";
@@ -41,6 +42,19 @@ function StatusPill({ status }: { status: ContentItem["status"] }) {
   );
 }
 
+/** Live Project Pipeline status of the content's linked task (if one exists). */
+function PipelineChip({ taskId, status }: { taskId: string | null; status: string | null }) {
+  if (!taskId) return null;
+  const meta = STATUS_META[status || ""];
+  const Icon = meta?.Icon;
+  return (
+    <span className={`badge mt-1 ${meta?.cls || "bg-white/10 text-slate-400"} whitespace-nowrap`}>
+      {Icon ? <Icon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+      Pipeline{meta ? ` · ${meta.label}` : ""}
+    </span>
+  );
+}
+
 /**
  * Standalone Content hub — independent of the Project Pipeline.
  * Columns: Content/Copy | Client Name | Assignee | Status.
@@ -49,12 +63,14 @@ function StatusPill({ status }: { status: ContentItem["status"] }) {
 export default function ContentHub({
   items,
   clients,
+  projects,
   team,
   canManage,
   canEdit,
 }: {
   items: ContentItem[];
   clients: Client[];
+  projects: Project[];
   team: UserRow[];
   canManage: boolean;
   canEdit: boolean;
@@ -205,6 +221,7 @@ export default function ContentHub({
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5">
         <StatusPill status={t.status} />
+        <PipelineChip taskId={t.task_id} status={t.task_status} />
         <span className="text-[10px] text-slate-500">
           Added {fmtDate(t.created_at)}
           {t.completed_at ? ` · Uploaded ${fmtDate(t.completed_at)}` : ""}
@@ -421,6 +438,7 @@ export default function ContentHub({
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <StatusPill status={t.status} />
+                        <PipelineChip taskId={t.task_id} status={t.task_status} />
                       </td>
                     </tr>
                   ))}
@@ -441,6 +459,7 @@ export default function ContentHub({
           key={editing ? editing.id : "new"}
           item={editing}
           clients={clients}
+          projects={projects}
           team={team}
           canDelete={canManage}
           onClose={() => {

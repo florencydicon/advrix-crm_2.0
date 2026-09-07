@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { X, Save, CheckCircle2, Trash2, Building2, User } from "lucide-react";
-import type { Client, ContentItem, UserRow } from "@/lib/types";
+import { X, Save, CheckCircle2, Trash2, User, FolderKanban } from "lucide-react";
+import type { Client, ContentItem, Project, UserRow } from "@/lib/types";
 import { useToast } from "@/components/Toast";
 import {
   createContentItemAction,
@@ -12,13 +12,15 @@ import {
 } from "@/lib/actions/content";
 
 /**
- * Standalone lightweight Content modal — deliberately NOT TaskModal.
- * Fields only: Client, Title, Content/Copy, Remarks, Assignee.
- * No team sequences, no stages, no pipeline coupling.
+ * Content modal — fields: Client, Project (new items), Title, Content/Copy,
+ * Remarks, Assignee. New items with a project also create ONE unified pipeline
+ * task so the content can be approved on the Project Pipeline. The project is
+ * read-only on existing items (their pipeline task is already placed).
  */
 export default function ContentModal({
   item,
   clients,
+  projects,
   team,
   canDelete,
   onClose,
@@ -26,6 +28,7 @@ export default function ContentModal({
 }: {
   item: ContentItem | null;
   clients: Client[];
+  projects: Project[];
   team: UserRow[];
   canDelete: boolean;
   onClose: () => void;
@@ -34,10 +37,21 @@ export default function ContentModal({
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [clientId, setClientId] = useState(item?.client_id || "");
+  const [projectId, setProjectId] = useState(item?.task_project_id || "");
   const [title, setTitle] = useState(item?.title || "");
   const [body, setBody] = useState(item?.body || "");
   const [remarks, setRemarks] = useState(item?.remarks || "");
   const [assigneeId, setAssigneeId] = useState(item?.assignee_id || "");
+
+  // New item flow — the project list follows the selected client.
+  const projectOptions = projects.filter((p) => p.client_id === clientId);
+  const selectClient = (v: string) => {
+    setClientId(v);
+    if (v && !projects.some((p) => p.client_id === v && p.id === projectId)) {
+      setProjectId("");
+    }
+    if (!v) setProjectId("");
+  };
 
   // Escape closes the modal.
   useEffect(() => {
@@ -54,11 +68,16 @@ export default function ContentModal({
     body: body || null,
     remarks: remarks || null,
     assigneeId: assigneeId || null,
+    projectId: projectId || null,
   });
 
   const save = (closeAfter: boolean) => {
     if (!clientId) {
       toast("Pick a client first.", "error");
+      return;
+    }
+    if (item === null && !projectId) {
+      toast("Pick a project so the content lands in the pipeline.", "error");
       return;
     }
     if (!title.trim()) {
@@ -73,7 +92,7 @@ export default function ContentModal({
         toast(res.error || "Could not save content.", "error");
         return;
       }
-      toast(item ? "Content saved." : "Content added.");
+      toast(item ? "Content saved." : "Content added to the pipeline.");
       await refresh();
       if (closeAfter) onClose();
     });
@@ -95,6 +114,10 @@ export default function ContentModal({
       } else {
         if (!clientId) {
           toast("Pick a client first.", "error");
+          return;
+        }
+        if (!projectId) {
+          toast("Pick a project so the content lands in the pipeline.", "error");
           return;
         }
         if (!title.trim()) {
@@ -160,12 +183,12 @@ export default function ContentModal({
         {/* Body */}
         <div className="p-4 space-y-4 overflow-y-auto pb-32 md:pb-4">
           <section>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
-              <Building2 className="h-3.5 w-3.5 text-brand-300" /> Client Name
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Client Name
             </p>
             <select
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              onChange={(e) => selectClient(e.target.value)}
               className="input !py-2.5 text-sm w-full"
             >
               <option value="">Select a client…</option>
@@ -175,6 +198,40 @@ export default function ContentModal({
                 </option>
               ))}
             </select>
+          </section>
+
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+              <FolderKanban className="h-3.5 w-3.5 text-brand-300" /> Pipeline Project
+            </p>
+            {item === null ? (
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                disabled={!clientId}
+                className="input !py-2.5 text-sm w-full disabled:opacity-50"
+              >
+                <option value="">{clientId ? "Pick a project…" : "Pick a client first…"}</option>
+                {projectOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.status !== "in_progress" ? ` (${p.status.replace(/_/g, " ")})` : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="input !py-2.5 text-sm w-full opacity-70 flex items-center gap-2 cursor-not-allowed">
+                <FolderKanban className="h-4 w-4 text-brand-300/70 shrink-0" />
+                <span className="truncate text-slate-300">
+                  {item.task_project_name || "Not linked to a pipeline (added before this feature)."}
+                </span>
+              </div>
+            )}
+            <p className="text-[10px] text-slate-500 mt-1">
+              {item === null
+                ? "Choosing a project creates a task on the Project Pipeline, where it goes through team approval."
+                : "The pipeline task for this content is tied to this project and cannot be moved."}
+            </p>
           </section>
 
           <section>

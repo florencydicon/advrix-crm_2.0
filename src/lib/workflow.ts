@@ -98,6 +98,42 @@ export async function generateDeliverableTasks(projectId: string) {
   }
 }
 
+/**
+ * Creates the single unified pipeline task behind a Content Management item.
+ *
+ * One task per content item (title = the content's title, copy stored on the
+ * task), created `approved` with no brief gate since the copy already exists.
+ * It immediately receives the project's assigned team sequence
+ * (`autoAllotTaskTeam` → `setTaskTeam`) so it flows through the exact same
+ * start → submit → gate approval → handoff cycle as deliverable tasks.
+ */
+export async function createContentPipelineTask(input: {
+  contentId: string;
+  projectId: string;
+  title: string;
+  body?: string | null;
+  createdBy: string;
+}): Promise<string | null> {
+  try {
+    const stepKey = `content_${input.contentId}`;
+    const description = `Pipeline task created from Content Management — "${input.title}".`;
+    const rows = await query<{ id: string }>(
+      `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence,
+                          title, description, content, status, priority, assigned_to, created_by, brief_approved_at)
+       VALUES ($1, $2, 'manual', NULL, NULL, 1, $3, $4, $5, 'approved', 'medium', NULL, $6, now())
+       RETURNING id`,
+      [input.projectId, stepKey, input.title, description, input.body ?? null, input.createdBy]
+    );
+    const taskId = rows[0]?.id ?? null;
+    if (!taskId) return null;
+    await autoAllotTaskTeam(taskId, input.projectId);
+    return taskId;
+  } catch (err) {
+    console.error("createContentPipelineTask failed:", err);
+    return null;
+  }
+}
+
 // ---------- Unified sequential workflow (Steps 1–5) ----------
 
 /** Ordered project team member ids (position asc, legacy fallback by created_at). */
