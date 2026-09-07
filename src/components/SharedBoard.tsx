@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, AlertTriangle } from "lucide-react";
 import { StatusBadge, EmptyState } from "@/components/ui";
+import { isOverdue } from "@/lib/deadlines";
 import type { MasterRow } from "@/lib/actions/masterboard";
 
 export default function SharedBoard({
@@ -96,18 +97,32 @@ export default function SharedBoard({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id} className="border-t border-white/[0.04]">
+              {filtered.map((r) => {
+                const overdue = isOverdue(r);
+                return (
+                <tr
+                  key={r.id}
+                  className={`border-t border-white/[0.04] ${overdue ? "bg-rose-500/[0.06]" : ""}`}
+                >
                   <td className="px-4 py-3 text-sm text-white font-medium">{r.title}</td>
                   <td className="px-4 py-3 text-sm text-slate-400">{r.project_name}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-400 tabular-nums">
-                    {r.due_date ? r.due_date.slice(0, 10) : "—"}
+                  <td className="px-4 py-3 text-sm tabular-nums whitespace-nowrap">
+                    {overdue ? (
+                      <span className="inline-flex items-center gap-1 text-rose-300 font-semibold">
+                        <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+                        {r.due_date ? r.due_date.slice(0, 10) : "—"}
+                        <span className="text-[10px] uppercase tracking-wide">Overdue</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">{r.due_date ? r.due_date.slice(0, 10) : "—"}</span>
+                    )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={4} className="p-6">
