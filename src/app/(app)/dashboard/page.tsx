@@ -233,7 +233,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { key: "pending", label: "Pending", cls: "bg-white/[0.04] border-white/10 text-slate-300" },
+                { key: "approved", label: "Ready to Start", cls: "bg-emerald-400/10 border-emerald-400/20 text-emerald-300" },
                 { key: "in_progress", label: "In Process", cls: "bg-brand-300/10 border-brand-300/20 text-brand-300" },
                 { key: "completed", label: "Completed", cls: "bg-emerald-400/10 border-emerald-400/20 text-emerald-300" },
                 { key: "upload_done", label: "Upload Done", cls: "bg-sky-400/10 border-sky-400/20 text-sky-300" },
@@ -257,7 +257,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { key: "pending", label: "Pending", cls: "bg-white/[0.04] border-white/10 text-slate-300" },
+                { key: "approved", label: "Ready to Start", cls: "bg-emerald-400/10 border-emerald-400/20 text-emerald-300" },
                 { key: "in_progress", label: "In Process", cls: "bg-brand-300/10 border-brand-300/20 text-brand-300" },
                 { key: "completed", label: "Completed", cls: "bg-emerald-400/10 border-emerald-400/20 text-emerald-300" },
                 { key: "upload_done", label: "Upload Done", cls: "bg-sky-400/10 border-sky-400/20 text-sky-300" },
