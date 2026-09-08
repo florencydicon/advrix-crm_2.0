@@ -432,98 +432,224 @@ function FilterSelect({
 }
 
 /**
- * Renders the universal filter bar: per-field dropdowns (only the fields the
- * consumer configured) followed by the global search box and a Clear button
- * while any selection is active.
+ * Renders the universal filter bar: inline on desktop (md+) and a Filter button
+ * that opens a bottom-sheet modal on mobile (<768px). Mobile dropdowns are
+ * stacked vertically w-full for easy touch and sync to URL params immediately
+ * via api.setFilter / api.clearAll, preserving deep-linking exactly like desktop.
  */
 export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
   const shows = (k: FilterKey) => api.visible.includes(k);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const activeCount = api.visible.filter((k) => api.filters[k] !== "").length;
+
+  // Lock body scroll + Escape to close on mobile modal
+  useEffect(() => {
+    if (!isMobileFilterOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMobileFilterOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [isMobileFilterOpen]);
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap snap-x snap-mandatory pb-2 scrollbar-hide md:pb-0 md:flex-wrap md:overflow-visible md:whitespace-normal md:snap-none">
-      <span className="inline-flex shrink-0 snap-start items-center gap-1 text-xs font-medium text-slate-400">
-        <Filter className="h-3.5 w-3.5" /> Filter:
-      </span>
+    <>
+      {/* Desktop View (md+): inline horizontally aligned dropdowns — keep unchanged */}
+      <div className="hidden md:flex items-center gap-2">
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-slate-400">
+          <Filter className="h-3.5 w-3.5" /> Filter:
+        </span>
 
-      {shows("client") && (
-        <div className="shrink-0 snap-start min-w-[130px] flex-1 max-w-[180px]">
-          <FilterSelect
-            value={api.filters.client}
-            onChange={(v) => api.setFilter("client", v)}
-            options={api.options.client}
-            placeholder={api.labels.client}
-          />
+        {shows("client") && (
+          <div className="shrink-0 min-w-[130px] flex-1 max-w-[180px]">
+            <FilterSelect
+              value={api.filters.client}
+              onChange={(v) => api.setFilter("client", v)}
+              options={api.options.client}
+              placeholder={api.labels.client}
+            />
+          </div>
+        )}
+
+        {shows("project") && (
+          <div className="shrink-0 min-w-[130px] flex-1 max-w-[180px]">
+            <FilterSelect
+              value={api.filters.project}
+              onChange={(v) => api.setFilter("project", v)}
+              options={api.options.project}
+              placeholder={api.labels.project}
+            />
+          </div>
+        )}
+
+        {shows("stage") && (
+          <div className="shrink-0 min-w-[130px] flex-1 max-w-[180px]">
+            <FilterSelect
+              value={api.filters.stage}
+              onChange={(v) => api.setFilter("stage", v)}
+              options={api.options.stage}
+              placeholder={api.labels.stage}
+            />
+          </div>
+        )}
+
+        {shows("deadline") && (
+          <div className="shrink-0 min-w-[120px] w-[150px]">
+            <FilterSelect
+              value={api.filters.deadline}
+              onChange={(v) => api.setFilter("deadline", v)}
+              options={api.options.deadline}
+              placeholder={api.labels.deadline}
+            />
+          </div>
+        )}
+
+        {shows("status") && (
+          <div className="shrink-0 min-w-[120px] w-[160px]">
+            <FilterSelect
+              value={api.filters.status}
+              onChange={(v) => api.setFilter("status", v)}
+              options={api.options.status}
+              placeholder={api.labels.status}
+            />
+          </div>
+        )}
+
+        {shows("priority") && (
+          <div className="shrink-0 min-w-[120px] w-[150px]">
+            <FilterSelect
+              value={api.filters.priority}
+              onChange={(v) => api.setFilter("priority", v)}
+              options={api.options.priority}
+              placeholder={api.labels.priority}
+            />
+          </div>
+        )}
+
+        {api.hasActive && (
+          <button
+            type="button"
+            onClick={api.clearAll}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" /> Clear
+          </button>
+        )}
+
+        <div className="shrink-0 min-w-[220px] flex-1 max-w-sm ml-auto">
+          <GlobalSearchInput value={api.search} onChange={api.setSearch} />
         </div>
-      )}
+      </div>
 
-      {shows("project") && (
-        <div className="shrink-0 snap-start min-w-[130px] flex-1 max-w-[180px]">
-          <FilterSelect
-            value={api.filters.project}
-            onChange={(v) => api.setFilter("project", v)}
-            options={api.options.project}
-            placeholder={api.labels.project}
-          />
+      {/* Mobile View (<768px): Search + Filters button; dropdowns hidden until modal */}
+      <div className="flex md:hidden items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <GlobalSearchInput value={api.search} onChange={api.setSearch} />
         </div>
-      )}
-
-      {shows("stage") && (
-        <div className="shrink-0 snap-start min-w-[130px] flex-1 max-w-[180px]">
-          <FilterSelect
-            value={api.filters.stage}
-            onChange={(v) => api.setFilter("stage", v)}
-            options={api.options.stage}
-            placeholder={api.labels.stage}
-          />
-        </div>
-      )}
-
-      {shows("deadline") && (
-        <div className="shrink-0 snap-start min-w-[120px] w-[150px]">
-          <FilterSelect
-            value={api.filters.deadline}
-            onChange={(v) => api.setFilter("deadline", v)}
-            options={api.options.deadline}
-            placeholder={api.labels.deadline}
-          />
-        </div>
-      )}
-
-      {shows("status") && (
-        <div className="shrink-0 snap-start min-w-[120px] w-[160px]">
-          <FilterSelect
-            value={api.filters.status}
-            onChange={(v) => api.setFilter("status", v)}
-            options={api.options.status}
-            placeholder={api.labels.status}
-          />
-        </div>
-      )}
-
-      {shows("priority") && (
-        <div className="shrink-0 snap-start min-w-[120px] w-[150px]">
-          <FilterSelect
-            value={api.filters.priority}
-            onChange={(v) => api.setFilter("priority", v)}
-            options={api.options.priority}
-            placeholder={api.labels.priority}
-          />
-        </div>
-      )}
-
-      {api.hasActive && (
         <button
           type="button"
-          onClick={api.clearAll}
-          className="inline-flex shrink-0 snap-start items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 transition-colors"
+          onClick={() => setIsMobileFilterOpen(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 transition-colors"
+          aria-label="Open filters"
         >
-          <X className="h-3.5 w-3.5" /> Clear
+          <Filter className="h-3.5 w-3.5" />
+          Filters
+          {activeCount > 0 && (
+            <span className="ml-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-300 px-1.5 text-[11px] font-bold text-night-950">
+              {activeCount}
+            </span>
+          )}
         </button>
-      )}
-
-      <div className="shrink-0 snap-start min-w-[220px] flex-1 max-w-sm ml-auto">
-        <GlobalSearchInput value={api.search} onChange={api.setSearch} />
       </div>
-    </div>
+
+      {/* Mobile Filter Modal — Bottom Sheet */}
+      {isMobileFilterOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsMobileFilterOpen(false)} aria-hidden />
+          <div className="relative flex w-full max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10">
+            <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                <Filter className="h-4 w-4 text-brand-300" /> Filters
+                {activeCount > 0 && <span className="badge bg-brand-300/15 text-brand-300">{activeCount} active</span>}
+              </h3>
+              <button
+                onClick={() => setIsMobileFilterOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
+                aria-label="Close filters"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="flex flex-col gap-4 w-full">
+                {shows("client") && (
+                  <div className="w-full">
+                    <label className="label">{api.labels.client}</label>
+                    <FilterSelect value={api.filters.client} onChange={(v) => api.setFilter("client", v)} options={api.options.client} placeholder={api.labels.client} />
+                  </div>
+                )}
+                {shows("project") && (
+                  <div className="w-full">
+                    <label className="label">{api.labels.project}</label>
+                    <FilterSelect value={api.filters.project} onChange={(v) => api.setFilter("project", v)} options={api.options.project} placeholder={api.labels.project} />
+                  </div>
+                )}
+                {shows("stage") && (
+                  <div className="w-full">
+                    <label className="label">{api.labels.stage}</label>
+                    <FilterSelect value={api.filters.stage} onChange={(v) => api.setFilter("stage", v)} options={api.options.stage} placeholder={api.labels.stage} />
+                  </div>
+                )}
+                {shows("deadline") && (
+                  <div className="w-full">
+                    <label className="label">{api.labels.deadline}</label>
+                    <FilterSelect value={api.filters.deadline} onChange={(v) => api.setFilter("deadline", v)} options={api.options.deadline} placeholder={api.labels.deadline} />
+                  </div>
+                )}
+                {shows("status") && (
+                  <div className="w-full">
+                    <label className="label">{api.labels.status}</label>
+                    <FilterSelect value={api.filters.status} onChange={(v) => api.setFilter("status", v)} options={api.options.status} placeholder={api.labels.status} />
+                  </div>
+                )}
+                {shows("priority") && (
+                  <div className="w-full">
+                    <label className="label">{api.labels.priority}</label>
+                    <FilterSelect value={api.filters.priority} onChange={(v) => api.setFilter("priority", v)} options={api.options.priority} placeholder={api.labels.priority} />
+                  </div>
+                )}
+                {api.visible.length === 0 && <p className="text-xs text-slate-500">No filters available for this view.</p>}
+              </div>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-2 px-5 py-4 border-t border-white/[0.06] bg-white/[0.02]">
+              {api.hasActive && (
+                <button type="button" onClick={() => { api.clearAll(); }} className="btn-ghost flex-1">
+                  <X className="h-3.5 w-3.5" /> Clear All
+                </button>
+              )}
+              <button type="button" onClick={() => setIsMobileFilterOpen(false)} className="btn-primary flex-1">
+                Apply Filters
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile close FAB — matches ActivityLog/TaskModal spec */}
+          <button
+            onClick={() => setIsMobileFilterOpen(false)}
+            aria-label="Close filters"
+            className="fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-white shadow-2xl shadow-black/60 border border-gray-600 active:scale-95 transition-transform md:hidden"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+      )}
+    </>
   );
 }
