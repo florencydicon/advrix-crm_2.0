@@ -45,7 +45,7 @@ async function allocateTasksForRole(projectId: string, roleKey: string, userId: 
  * travels through each member (start → submit → gate approval → handoff) and
  * completes automatically after the final approval.
  */
-export async function generateDeliverableTasks(projectId: string) {
+export async function generateDeliverableTasks(projectId: string, customTitles?: Record<string, string[]>) {
   try {
     const deliverables = await query<DeliverableRow>(
       `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
@@ -57,12 +57,20 @@ export async function generateDeliverableTasks(projectId: string) {
       const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
       for (let i = 1; i <= d.quantity; i++) {
         const stepKey = `${d.category_key}_d_${i}`;
-        const title = `${label} ${pad(i)}`;
+        // Use custom title if provided for this deliverable+index (for sub-task title editing UX)
+        const customForKey = customTitles?.[d.category_key] || (d.is_custom && d.custom_label ? customTitles?.[`custom:${d.custom_label}`] : undefined);
+        const title = customForKey?.[i - 1]?.trim() ? customForKey[i - 1].trim().slice(0, 200) : `${label} ${pad(i)}`;
         const existing = await query<{ id: string }>(
           `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
           [projectId, stepKey]
         );
-        if (existing.length > 0) continue;
+        if (existing.length > 0) {
+          // If custom title provided for existing task, update it (allows editing at creation time)
+          if (customForKey?.[i - 1]?.trim()) {
+            await query(`UPDATE tasks SET title = $1 WHERE id = $2`, [title, existing[0].id]);
+          }
+          continue;
+        }
         const rows = await query<{ id: string }>(
           `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by, brief_approved_at)
            VALUES ($1, $2, $3, NULL, $4, 1, $5, $6, NULL, 'approved', 'medium', NULL, NULL, now())

@@ -12,9 +12,10 @@ import {
   Search,
   ChevronLeft,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import { getManagerColorVariant } from "@/lib/managerColors";
-import { createClientAction, createProjectAction, deleteClientAction, assignClientPmAction } from "@/lib/actions/projects";
+import { createClientAction, createProjectAction, deleteClientAction, assignClientPmAction, updateClientAction } from "@/lib/actions/projects";
 import type { ClientCard } from "@/lib/data";
 import type { DeliverableType, UserRow } from "@/lib/types";
 import { formatClientName } from "@/lib/utils";
@@ -55,6 +56,8 @@ function DeliverablesPicker({
   setCustomLabel,
   customQty,
   setCustomQty,
+  taskTitles,
+  setTaskTitles,
 }: {
   types: DeliverableType[];
   quantities: Record<string, number>;
@@ -65,6 +68,8 @@ function DeliverablesPicker({
   setCustomLabel: (v: string) => void;
   customQty: number;
   setCustomQty: (v: number) => void;
+  taskTitles?: Record<string, string[]>;
+  setTaskTitles?: (fn: (prev: Record<string, string[]>) => Record<string, string[]>) => void;
 }) {
   const selected: Deliv[] = [
     ...types
@@ -76,6 +81,22 @@ function DeliverablesPicker({
   ];
 
   const total = selected.reduce((s, d) => s + d.quantity, 0);
+
+  // Keep taskTitles in sync with quantities (preserve edits, init defaults like "Static Post 01")
+  const ensureTitles = (key: string, qty: number, label: string) => {
+    if (!setTaskTitles) return;
+    setTaskTitles((prev) => {
+      const cur = prev[key] || [];
+      if (cur.length === qty) return prev;
+      const next = [...cur];
+      if (next.length < qty) {
+        for (let i = next.length; i < qty; i++) next.push(`${label} ${pad(i + 1)}`);
+      } else {
+        next.length = qty;
+      }
+      return { ...prev, [key]: next };
+    });
+  };
 
   return (
     <div className="space-y-3">
@@ -94,6 +115,7 @@ function DeliverablesPicker({
                   onChange={(e) => {
                     const v = Math.max(0, Math.min(500, Number(e.target.value) || 0));
                     setQuantities((prev) => ({ ...prev, [t.key]: v }));
+                    if (setTaskTitles) ensureTitles(t.key, v, t.label);
                   }}
                   className="input !w-14 !py-0.5 text-center text-xs"
                   aria-label={`Quantity of ${t.label}`}
@@ -115,7 +137,14 @@ function DeliverablesPicker({
           <input
             type="checkbox"
             checked={custom}
-            onChange={(e) => setCustom(e.target.checked)}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setCustom(v);
+              if (setTaskTitles) {
+                if (v && customLabel.trim()) ensureTitles("custom", customQty, customLabel.trim());
+                else if (!v) setTaskTitles((prev) => { const n = { ...prev }; delete n["custom"]; return n; });
+              }
+            }}
             className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-brand-300 focus:ring-brand-300/25"
           />
           Other (custom task)
@@ -124,7 +153,11 @@ function DeliverablesPicker({
           <div className="flex items-center gap-2">
             <input
               value={customLabel}
-              onChange={(e) => setCustomLabel(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setCustomLabel(v);
+                if (setTaskTitles && v.trim()) ensureTitles("custom", customQty, v.trim());
+              }}
               className="input !py-1 text-xs flex-1"
               placeholder="e.g. Catalogue Covers, Packaging Mockups…"
             />
@@ -136,6 +169,7 @@ function DeliverablesPicker({
               onChange={(e) => {
                 const v = Math.max(1, Math.min(500, Number(e.target.value) || 1));
                 setCustomQty(v);
+                if (setTaskTitles && customLabel.trim()) ensureTitles("custom", v, customLabel.trim());
               }}
               className="input !w-14 !py-1 text-center text-xs shrink-0"
               aria-label="How many times to repeat this custom task"
@@ -153,19 +187,42 @@ function DeliverablesPicker({
       <div className="rounded-lg bg-brand-300/10 border border-brand-300/20 p-3">
         <div className="flex items-center gap-1.5 mb-1.5">
           <Tags className="h-3.5 w-3.5 text-brand-300" />
-          <p className="text-xs font-semibold text-brand-200">Generated Tasks Preview</p>
+          <p className="text-xs font-semibold text-brand-200">Generated Tasks Preview — tap to rename</p>
         </div>
         {total === 0 ? (
           <p className="text-[11px] text-slate-500">Set quantities above to preview tasks.</p>
         ) : (
-          <div className="flex flex-wrap gap-1">
-            {selected.map((d) =>
-              Array.from({ length: d.quantity }, (_, i) => (
-                <span key={`${d.key}-${i}`} className="badge bg-brand-300/10 text-brand-300 border border-brand-300/20 text-[10px]">
-                  {d.label} {pad(i + 1)}
-                </span>
-              ))
-            )}
+          <div className="space-y-2 max-h-[32vh] overflow-y-auto pr-1">
+            {selected.map((d) => (
+              <div key={d.key} className="space-y-1">
+                <p className="text-[10px] font-medium text-slate-400">{d.label} × {d.quantity}</p>
+                <div className="grid grid-cols-1 gap-1">
+                  {Array.from({ length: d.quantity }, (_, i) => {
+                    const key = d.key;
+                    const current = taskTitles?.[key]?.[i] ?? `${d.label} ${pad(i + 1)}`;
+                    return (
+                      <input
+                        key={`${d.key}-${i}`}
+                        value={current}
+                        onChange={(e) => {
+                          if (!setTaskTitles) return;
+                          const v = e.target.value;
+                          setTaskTitles((prev) => {
+                            const arr = [...(prev[key] || Array.from({ length: d.quantity }, (_, k) => `${d.label} ${pad(k + 1)}`))];
+                            // Ensure array length matches quantity
+                            while (arr.length < d.quantity) arr.push(`${d.label} ${pad(arr.length + 1)}`);
+                            arr[i] = v;
+                            return { ...prev, [key]: arr };
+                          });
+                        }}
+                        placeholder={`${d.label} ${pad(i + 1)}`}
+                        className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/30"
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         {total > 0 && (
@@ -218,10 +275,13 @@ export default function ClientsView({
   const [custom, setCustom] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [customQty, setCustomQty] = useState(1);
+  const [taskTitles, setTaskTitles] = useState<Record<string, string[]>>({});
   const [searchDraft, setSearchDraft] = useState(search);
   const [selectedManager, setSelectedManager] = useState("");
   const [detailClient, setDetailClient] = useState<ClientCard | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [editClient, setEditClient] = useState<ClientCard | null>(null);
+  const [editClientOpen, setEditClientOpen] = useState(false);
 
   const managerOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -279,6 +339,15 @@ export default function ClientsView({
           : []),
       ];
       if (currentDeliv.length > 0) fd.set("deliverables_json", JSON.stringify(currentDeliv));
+      // Sub-task title overrides (e.g., Static Post 01 -> Independence Day Post)
+      if (Object.keys(taskTitles).length > 0) {
+        const filtered: Record<string, string[]> = {};
+        for (const [k, arr] of Object.entries(taskTitles)) {
+          const clean = arr.map((s) => String(s || "").trim()).filter(Boolean);
+          if (clean.length > 0) filtered[k] = clean;
+        }
+        if (Object.keys(filtered).length > 0) fd.set("task_titles_json", JSON.stringify(filtered));
+      }
       const res = await fn(fd);
       if (res.error) setError(res.error);
       else {
@@ -289,6 +358,7 @@ export default function ClientsView({
         setCustom(false);
         setCustomLabel("");
         setCustomQty(1);
+        setTaskTitles({});
         router.refresh();
       }
     };
@@ -374,6 +444,16 @@ export default function ClientsView({
                     <p className="font-semibold text-sm text-white truncate">{formatClientName(c.company, c.name)}</p>
                     <p className="text-[11px] text-slate-500 truncate">{c.company ? `Contact: ${c.name}` : "—"}</p>
                   </div>
+                  {canCreate && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditClient(c); setEditClientOpen(true); }}
+                      className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+                      title="Edit client details"
+                      aria-label={`Edit ${c.name}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   {canCreate && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setSelectedClient(c.id); setBriefModal(true); }}
@@ -535,6 +615,48 @@ export default function ClientsView({
         </form>
       </Modal>
 
+      <Modal open={editClientOpen} onClose={() => setEditClientOpen(false)} title="Edit Client">
+        {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
+        <form
+          key={editClient?.id || "new"}
+          action={async (fd: FormData) => {
+            const res = await updateClientAction(fd);
+            if (res.error) setError(res.error);
+            else {
+              setEditClientOpen(false);
+              setEditClient(null);
+              setError(null);
+              router.refresh();
+              toast("Client updated.", "success");
+            }
+          }}
+          className="space-y-3"
+        >
+          <input type="hidden" name="client_id" value={editClient?.id || ""} />
+          <div>
+            <label className="label">Client / Contact name</label>
+            <input name="name" required className="input" defaultValue={editClient?.name || ""} placeholder="Client name" />
+          </div>
+          <div>
+            <label className="label">Company</label>
+            <input name="company" className="input" defaultValue={editClient?.company || ""} placeholder="Company name" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Email</label>
+              <input name="email" type="email" className="input" defaultValue={editClient?.email || ""} placeholder="email@company.com" />
+            </div>
+            <div>
+              <label className="label">Phone</label>
+              <input name="phone" className="input" defaultValue={editClient?.phone || ""} placeholder="Phone number" />
+            </div>
+          </div>
+          <button type="submit" className="btn-primary w-full" disabled={pending}>
+            {pending ? "Saving..." : "Save changes"}
+          </button>
+        </form>
+      </Modal>
+
       <Modal open={briefModal} onClose={() => setBriefModal(false)} title="Add Tasks">
         {error && <p className="mb-2 rounded-lg bg-rose-400/10 text-rose-300 text-xs px-3 py-2">{error}</p>}
         <form action={runWith(createProjectAction)} className="space-y-3">
@@ -572,6 +694,8 @@ export default function ClientsView({
               setCustomLabel={setCustomLabel}
               customQty={customQty}
               setCustomQty={setCustomQty}
+              taskTitles={taskTitles}
+              setTaskTitles={setTaskTitles}
             />
           </div>
           <div>

@@ -25,6 +25,8 @@ function DeliverablesPicker({
   setCustomLabel,
   customQty,
   setCustomQty,
+  taskTitles,
+  setTaskTitles,
 }: {
   types: DeliverableType[];
   quantities: Record<string, number>;
@@ -35,6 +37,8 @@ function DeliverablesPicker({
   setCustomLabel: (v: string) => void;
   customQty: number;
   setCustomQty: (v: number) => void;
+  taskTitles?: Record<string, string[]>;
+  setTaskTitles?: (fn: (prev: Record<string, string[]>) => Record<string, string[]>) => void;
 }) {
   const pad = (n: number) => String(n).padStart(2, "0");
   const selected = [
@@ -42,6 +46,20 @@ function DeliverablesPicker({
     ...(custom && customLabel.trim() && customQty > 0 ? [{ key: "custom", label: customLabel.trim(), quantity: customQty, isCustom: true }] : []),
   ];
   const total = selected.reduce((s, d) => s + d.quantity, 0);
+  const ensureTitles = (key: string, qty: number, label: string) => {
+    if (!setTaskTitles) return;
+    setTaskTitles((prev) => {
+      const cur = prev[key] || [];
+      if (cur.length === qty) return prev;
+      const next = [...cur];
+      if (next.length < qty) {
+        for (let i = next.length; i < qty; i++) next.push(`${label} ${pad(i + 1)}`);
+      } else {
+        next.length = qty;
+      }
+      return { ...prev, [key]: next };
+    });
+  };
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
@@ -51,7 +69,18 @@ function DeliverablesPicker({
             <div key={t.key} className="rounded-lg border border-white/10 p-2 bg-white/[0.03]">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-medium text-slate-200">{t.label}</p>
-                <input type="number" min={0} max={500} value={q} onChange={(e) => { const v = Math.max(0, Math.min(500, Number(e.target.value) || 0)); setQuantities((prev) => ({ ...prev, [t.key]: v })); }} className="input !w-14 !py-0.5 text-center text-xs" />
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  value={q}
+                  onChange={(e) => {
+                    const v = Math.max(0, Math.min(500, Number(e.target.value) || 0));
+                    setQuantities((prev) => ({ ...prev, [t.key]: v }));
+                    if (setTaskTitles) ensureTitles(t.key, v, t.label);
+                  }}
+                  className="input !w-14 !py-0.5 text-center text-xs"
+                />
               </div>
               {q > 0 && <p className="text-[10px] text-brand-300 mt-1">{q} task{q === 1 ? "" : "s"} will be added</p>}
             </div>
@@ -60,22 +89,87 @@ function DeliverablesPicker({
       </div>
       <div className="rounded-lg border border-dashed border-white/10 p-2 space-y-1.5">
         <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
-          <input type="checkbox" checked={custom} onChange={(e) => setCustom(e.target.checked)} className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-brand-300" />
+          <input
+            type="checkbox"
+            checked={custom}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setCustom(v);
+              if (setTaskTitles) {
+                if (v && customLabel.trim()) ensureTitles("custom", customQty, customLabel.trim());
+                else if (!v) setTaskTitles((prev) => { const n = { ...prev }; delete n["custom"]; return n; });
+              }
+            }}
+            className="h-3.5 w-3.5 rounded border-white/20 bg-white/5 text-brand-300"
+          />
           Other (custom task)
         </label>
         {custom && (
           <div className="flex items-center gap-2">
-            <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} className="input !py-1 text-xs flex-1" placeholder="e.g. Festival Reel, Story..." />
-            <input type="number" min={1} max={500} value={customQty} onChange={(e) => { const v = Math.max(1, Math.min(500, Number(e.target.value) || 1)); setCustomQty(v); }} className="input !w-14 !py-1 text-center text-xs shrink-0" />
+            <input
+              value={customLabel}
+              onChange={(e) => {
+                const v = e.target.value;
+                setCustomLabel(v);
+                if (setTaskTitles && v.trim()) ensureTitles("custom", customQty, v.trim());
+              }}
+              className="input !py-1 text-xs flex-1"
+              placeholder="e.g. Festival Reel, Story..."
+            />
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={customQty}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(500, Number(e.target.value) || 1));
+                setCustomQty(v);
+                if (setTaskTitles && customLabel.trim()) ensureTitles("custom", v, customLabel.trim());
+              }}
+              className="input !w-14 !py-1 text-center text-xs shrink-0"
+            />
           </div>
         )}
       </div>
-      {total > 0 && (
-        <div className="rounded-lg bg-brand-300/10 border border-brand-300/20 p-3">
-          <div className="flex items-center gap-1.5 mb-1.5"><Tags className="h-3.5 w-3.5 text-brand-300" /><p className="text-xs font-semibold text-brand-200">Will add {total} task(s)</p></div>
-          <div className="flex flex-wrap gap-1">{selected.map((d) => Array.from({ length: d.quantity }, (_, i) => (<span key={`${d.key}-${i}`} className="badge bg-brand-300/10 text-brand-300 border border-brand-300/20 text-[10px]">{d.label} {pad(i + 1)}</span>)))}</div>
-        </div>
-      )}
+      <div className="rounded-lg bg-brand-300/10 border border-brand-300/20 p-3">
+        <div className="flex items-center gap-1.5 mb-1.5"><Tags className="h-3.5 w-3.5 text-brand-300" /><p className="text-xs font-semibold text-brand-200">Generated Tasks Preview — tap to rename</p></div>
+        {total === 0 ? (
+          <p className="text-[11px] text-slate-500">Set quantities above to preview tasks.</p>
+        ) : (
+          <div className="space-y-2 max-h-[32vh] overflow-y-auto pr-1">
+            {selected.map((d) => (
+              <div key={d.key} className="space-y-1">
+                <p className="text-[10px] font-medium text-slate-400">{d.label} × {d.quantity}</p>
+                <div className="grid grid-cols-1 gap-1">
+                  {Array.from({ length: d.quantity }, (_, i) => {
+                    const key = d.key;
+                    const current = taskTitles?.[key]?.[i] ?? `${d.label} ${pad(i + 1)}`;
+                    return (
+                      <input
+                        key={`${d.key}-${i}`}
+                        value={current}
+                        onChange={(e) => {
+                          if (!setTaskTitles) return;
+                          const v = e.target.value;
+                          setTaskTitles((prev) => {
+                            const arr = [...(prev[key] || Array.from({ length: d.quantity }, (_, k) => `${d.label} ${pad(k + 1)}`))];
+                            while (arr.length < d.quantity) arr.push(`${d.label} ${pad(arr.length + 1)}`);
+                            arr[i] = v;
+                            return { ...prev, [key]: arr };
+                          });
+                        }}
+                        placeholder={`${d.label} ${pad(i + 1)}`}
+                        className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/30"
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {total > 0 && <p className="text-[10px] text-brand-300 mt-1.5">{total} task(s) — titles are editable above.</p>}
+      </div>
     </div>
   );
 }
@@ -105,6 +199,7 @@ export default function ClientDetailModal({
   const [custom, setCustom] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
   const [customQty, setCustomQty] = useState(1);
+  const [taskTitles, setTaskTitles] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -148,16 +243,47 @@ export default function ClientDetailModal({
     setEditBrief("");
     setEditDeadline(p.deadline ? p.deadline.slice(0,10) : "");
     setQuantities({});
+    setTaskTitles({});
     setCustom(false);
     setCustomLabel("");
     setCustomQty(1);
-    // Fetch full project data for brief/deadline
     const res: any = await getProjectEditDataAction(p.id);
     if (res.ok) {
       setEditName(res.project.name || p.name);
       setEditBrief(res.project.brief || "");
       setEditDeadline(res.project.deadline ? res.project.deadline.slice(0,10) : "");
-      // Pre-fill quantities from existing deliverables could be shown, but for "add new posts/reels" we keep empty for new additions
+      const q: Record<string, number> = {};
+      const titles: Record<string, string[]> = {};
+      let foundCustom = false;
+      const projTasks = tasks.filter((t) => t.project_name === p.name);
+      let taskIdx = 0;
+      for (const d of res.deliverables || []) {
+        const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
+        if (d.is_custom) {
+          if (!foundCustom) {
+            setCustom(true);
+            setCustomLabel(d.custom_label || d.category_label || "");
+            setCustomQty(d.quantity || 1);
+            foundCustom = true;
+            const arr: string[] = [];
+            for (let i = 0; i < d.quantity; i++) {
+              if (taskIdx < projTasks.length) arr.push(projTasks[taskIdx++].title);
+              else arr.push(`${label} ${String(i + 1).padStart(2, "0")}`);
+            }
+            titles["custom"] = arr;
+          }
+        } else {
+          q[d.category_key] = d.quantity;
+          const arr: string[] = [];
+          for (let i = 0; i < d.quantity; i++) {
+            if (taskIdx < projTasks.length) arr.push(projTasks[taskIdx++].title);
+            else arr.push(`${label} ${String(i + 1).padStart(2, "0")}`);
+          }
+          titles[d.category_key] = arr;
+        }
+      }
+      setQuantities(q);
+      if (Object.keys(titles).length > 0) setTaskTitles(titles);
     }
   };
 
@@ -168,19 +294,45 @@ export default function ClientDetailModal({
     setSaving(true);
     const resName: any = await updateProjectAction(editingProject.id, { name: cleanName, brief: editBrief || null, deadline: editDeadline || null });
     if (resName.error) { toast(resName.error, "error"); setSaving(false); return; }
-    // Add new tasks if any deliverables quantities set
-    const hasNewTasks = Object.values(quantities).some((v) => v > 0) || (custom && customLabel.trim() && customQty > 0);
-    if (hasNewTasks) {
+    // Add / update tasks — include title overrides so sub-task rename works (e.g., 3 -> 4 with custom titles)
+    const hasTasks = Object.values(quantities).some((v) => v > 0) || (custom && customLabel.trim() && customQty > 0) || Object.keys(taskTitles).length > 0;
+    if (hasTasks) {
       const deliverables = [
         ...deliverableTypes.filter((t) => (quantities[t.key] || 0) > 0).map((t) => ({ key: t.key, label: t.label, quantity: quantities[t.key] || 0, isCustom: false })),
         ...(custom && customLabel.trim() && customQty > 0 ? [{ key: "custom", label: customLabel.trim(), quantity: customQty, isCustom: true, customLabel: customLabel.trim() }] : []),
       ];
-      const resTasks: any = await addTasksToProjectAction(editingProject.id, JSON.stringify(deliverables));
+      // If user only renamed titles without changing quantity, deliverables may be empty — still need to send titles
+      // For that case, send current deliverables (so quantity stays) + titles
+      let deliverablesToSend = deliverables;
+      if (deliverables.length === 0 && Object.keys(taskTitles).length > 0) {
+        // No quantity change but titles edited — send existing deliverables snapshot so backend can update titles
+        deliverablesToSend = Object.entries(taskTitles).map(([k, arr]) => {
+          const isCustomKey = k === "custom";
+          const label = isCustomKey ? (customLabel || k) : (deliverableTypes.find((t) => t.key === k)?.label || k);
+          return { key: isCustomKey ? "custom" : k, label, quantity: arr.length, isCustom: isCustomKey, customLabel: isCustomKey ? label : undefined };
+        });
+        if (deliverablesToSend.length === 0) deliverablesToSend = deliverables;
+      }
+      const titlesMap: Record<string, string[]> = {};
+      for (const [k, arr] of Object.entries(taskTitles)) {
+        const clean = arr.map((s) => String(s || "").trim()).filter(Boolean);
+        if (clean.length) titlesMap[k] = clean;
+      }
+      const resTasks: any = await addTasksToProjectAction(
+        editingProject.id,
+        JSON.stringify(deliverablesToSend.length ? deliverablesToSend : deliverables),
+        Object.keys(titlesMap).length ? JSON.stringify(titlesMap) : undefined
+      );
       if (resTasks.error) { toast(resTasks.error, "error"); setSaving(false); return; }
     }
     toast("Project updated.", "success");
     setSaving(false);
     setEditingProject(null);
+    setQuantities({});
+    setTaskTitles({});
+    setCustom(false);
+    setCustomLabel("");
+    setCustomQty(1);
     await refreshDetail();
   };
 
@@ -267,7 +419,7 @@ export default function ClientDetailModal({
               </div>
               <div>
                 <label className="label">Add new posts / reels to this project</label>
-                <p className="text-xs text-slate-500 mb-2">Set quantities for new tasks you want to add (existing tasks remain). E.g., Static Post 3, Reel 2.</p>
+                <p className="text-xs text-slate-500 mb-2">Existing data pre-filled (e.g., Static Post 3). Change to 4 to add one more — titles below are editable.</p>
                 <DeliverablesPicker
                   types={deliverableTypes}
                   quantities={quantities}
@@ -278,6 +430,8 @@ export default function ClientDetailModal({
                   setCustomLabel={setCustomLabel}
                   customQty={customQty}
                   setCustomQty={setCustomQty}
+                  taskTitles={taskTitles}
+                  setTaskTitles={setTaskTitles}
                 />
               </div>
               <div>

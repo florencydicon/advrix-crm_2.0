@@ -131,6 +131,42 @@ export async function createClientAction(formData: FormData) {
   return { ok: true, id: rows[0].id };
 }
 
+export async function updateClientAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated." };
+  const allowedRoles = ["SUPER_ADMIN", "PROJECT_MANAGER", "SALES", "ADMIN", "PM"];
+  const isAllowed = allowedRoles.includes((session.role_key || "").toUpperCase()) || hasPermission(session.permissions, PERM_CREATE) || hasPermission(session.permissions, PERM_MANAGE) || (session.permissions || []).includes("admin:*");
+  if (!isAllowed) return { error: "Not authorized." };
+
+  const clientId = String(formData.get("client_id") || "").trim();
+  if (!clientId) return { error: "Client ID required." };
+  const name = String(formData.get("name") || "").trim();
+  const company = String(formData.get("company") || "").trim() || null;
+  const email = String(formData.get("email") || "").trim() || null;
+  const phone = String(formData.get("phone") || "").trim() || null;
+
+  const nameErr = validateFullName(name);
+  if (nameErr) return { error: nameErr };
+  if (email) { const e = validateEmail(email); if (e) return { error: e }; }
+  if (phone) { const p = validatePhone(phone); if (p) return { error: p }; }
+  if (company) { const c = validateText(company, "Company name", 2, 120); if (c) return { error: c }; }
+
+  // PMs can only edit their assigned clients
+  if (session.role_key === "PROJECT_MANAGER") {
+    const owned = await query<{ id: string }>(`SELECT id FROM clients WHERE id = $1 AND assigned_pm_id = $2`, [clientId, session.sub]);
+    if (!owned[0] && !hasPermission(session.permissions, "admin:*")) return { error: "You can only edit your assigned clients." };
+  }
+
+  const client = await query<{ id: string }>(`SELECT id FROM clients WHERE id = $1`, [clientId]);
+  if (!client[0]) return { error: "Client not found." };
+
+  await query(`UPDATE clients SET name = $1, company = $2, email = $3, phone = $4 WHERE id = $5`, [name, company, email, phone, clientId]);
+  revalidatePath("/clients");
+  revalidatePath("/projects");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 /** Super Admin only — assigns/reassigns (or clears) the Project Manager of a client. */
 export async function assignClientPmAction(clientId: string, pmId: string | null) {
   const session = await getSession();
@@ -173,6 +209,14 @@ export async function createProjectAction(formData: FormData) {
   const brief = String(formData.get("brief") || "").trim() || null;
   const deadline = String(formData.get("deadline") || "") || null;
   const deliverables = parseDeliverables(String(formData.get("deliverables_json") || ""));
+  let taskTitles: Record<string, string[]> | undefined;
+  try {
+    const raw = String(formData.get("task_titles_json") || "");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) taskTitles = parsed as Record<string, string[]>;
+    }
+  } catch {}
 
   if (!client_id) return { error: "Client is required." };
 
@@ -216,7 +260,7 @@ export async function createProjectAction(formData: FormData) {
       );
     }
 
-    await generateDeliverableTasks(project[0].id);
+    await generateDeliverableTasks(project[0].id, taskTitles);
     await syncApprovedTaskSequences(project[0].id);
     await computeSequentialDeadlines(project[0].id);
 
@@ -322,7 +366,7 @@ export async function getProjectEditDataAction(projectId: string) {
   return { ok: true as const, project: project[0], deliverables };
 }
 
-export async function addTasksToProjectAction(projectId: string, deliverablesJson: string) {
+export async function addTasksToProjectAction(projectId: string, deliverablesJson: string, taskTitlesJson?: string) {
   const session = await getSession();
   if (!session || !hasPermission(session.permissions, PERM_MANAGE)) return { error: "Not authorized." } as const;
   const project = await query<{ id: string; client_id: string }>(`SELECT id, client_id FROM projects WHERE id = $1`, [projectId]);
@@ -331,15 +375,69 @@ export async function addTasksToProjectAction(projectId: string, deliverablesJso
   if (deliverables.length === 0 || deliverables.every((d) => d.quantity <= 0)) return { error: "Add at least one deliverable." } as const;
   const errs = validateDeliverables(deliverables);
   if (errs.length) return { error: errs[0].message } as const;
-  // Insert new deliverables (append, don't delete old)
+  let taskTitles: Record<string, string[]> | undefined;
+  try {
+    if (taskTitlesJson) {
+      const parsed = JSON.parse(taskTitlesJson);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) taskTitles = parsed as Record<string, string[]>;
+    }
+  } catch {}
+  // Fetch existing to handle updates (e.g., 3 -> 4) vs inserts, and clean up decreased quantities
+  const existing = await query<{ id: string; category_key: string; quantity: number; is_custom: boolean }>(
+    `SELECT id, category_key, quantity, is_custom FROM project_deliverables WHERE project_id = $1`,
+    [projectId]
+  );
+  const existingMap = new Map(existing.map((e) => [e.is_custom ? `custom:${e.category_key}:${e.id}` : e.category_key, e]));
+  // For standard types, use category_key as map key; for custom, use label
+  const newMap = new Map<string, (typeof deliverables)[number]>();
   for (const d of deliverables.filter((x) => x.quantity > 0)) {
-    await query(
-      `INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [projectId, d.key, d.isCustom && d.customLabel ? d.customLabel : d.label, d.quantity, d.isCustom, d.customLabel]
-    );
+    const key = d.isCustom && d.customLabel ? `custom:${d.customLabel}` : d.key;
+    newMap.set(key, d);
   }
-  await generateDeliverableTasks(projectId);
+  // Update or insert
+  for (const [key, d] of newMap) {
+    const isCustomKey = key.startsWith("custom:");
+    const lookupKey = d.isCustom ? key : d.key;
+    // Find existing by category_key for standard, or by custom label for custom
+    let ex: typeof existing[number] | undefined;
+    if (d.isCustom && d.customLabel) {
+      ex = existing.find((e) => e.is_custom && e.category_key === d.key);
+      // For custom, also check label match via category_label? Simplify: find any custom with same label
+      if (!ex) {
+        const rows = await query<{ id: string; category_key: string; quantity: number }>(
+          `SELECT id, category_key, quantity FROM project_deliverables WHERE project_id = $1 AND is_custom = true AND custom_label = $2 LIMIT 1`,
+          [projectId, d.customLabel]
+        );
+        ex = rows[0] as any;
+      }
+    } else {
+      ex = existing.find((e) => e.category_key === d.key && !e.is_custom);
+    }
+    const label = d.isCustom && d.customLabel ? d.customLabel : d.label;
+    if (ex) {
+      if (ex.quantity !== d.quantity) {
+        await query(`UPDATE project_deliverables SET quantity = $1, category_label = $2, is_custom = $3, custom_label = $4 WHERE id = $5`, [d.quantity, label, d.isCustom, d.customLabel || null, ex.id]);
+        if (d.quantity < ex.quantity) {
+          // Delete excess tasks beyond new quantity (e.g., 3->2, delete _d_03)
+          for (let i = d.quantity + 1; i <= ex.quantity; i++) {
+            const pad2 = String(i).padStart(2, "0");
+            await query(`DELETE FROM tasks WHERE project_id = $1 AND step_key IN ($2, $3)`, [projectId, `${d.key}_d_${i}`, `${d.key}_d_${pad2}`]);
+            // Also handle custom
+            if (d.isCustom) {
+              await query(`DELETE FROM tasks WHERE deliverable_id = $1 AND step_key LIKE $2`, [ex.id, `%_d_${i}`]);
+            }
+          }
+        }
+      }
+    } else {
+      await query(
+        `INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [projectId, d.key, label, d.quantity, d.isCustom, d.customLabel || null]
+      );
+    }
+  }
+  await generateDeliverableTasks(projectId, taskTitles);
   await syncApprovedTaskSequences(projectId);
   await computeSequentialDeadlines(projectId);
   revalidatePath("/projects");
