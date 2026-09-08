@@ -270,79 +270,43 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
     };
   }, [rows]);
 
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [search, setSearch] = useState("");
 
-  const readParams = useCallback((): FilterState => {
+  // Filters are now derived directly from the URL — single source of truth.
+  // This eliminates the previous two-way sync (state↔URL) that caused the
+  // Venus glitch: ?clientId=venus would briefly show Vikas's task, then flip
+  // to "No active" and back every 3s poll. Now the URL is the truth.
+  const filters: FilterState = useMemo(() => {
     const next: FilterState = { ...EMPTY_FILTERS };
     for (const key of visible) {
       const raw = searchParams.get(PARAM_BY_KEY[key]);
-      if (!raw) continue;
-      // Deep-link fix: on first render options may still be empty (board not yet loaded).
-      // The old `known` check `options.client.some(o=>o.value===raw)` would reject a
-      // valid ?clientId=... and leave the filter empty, so clicking Venus from
-      // Clients → Projects showed The Vikas's tasks instead. Accept any raw from the
-      // URL; invalid values simply yield 0 matches and the user can Clear.
-      next[key] = raw;
+      if (raw) next[key] = raw;
     }
     return next;
   }, [searchParams, visible]);
 
-  // state → URL. Skips until the URL has been read once so a deep link on mount
-  // isn't wiped by the still-empty initial state. Uses isPushing guard to avoid
-  // ping-pong when URL→state and state→URL both fire on the same navigation.
-  const initialized = useRef(false);
-  const isPushing = useRef(false);
-  useEffect(() => {
-    if (!initialized.current) return;
+  const setFilter = useCallback((key: FilterKey, value: string) => {
     const sp = new URLSearchParams(searchParams.toString());
-    let dirty = false;
-    for (const key of ALL_KEYS) {
-      const param = PARAM_BY_KEY[key];
-      const value = filters[key];
-      if (value) {
-        if (sp.get(param) !== value) {
-          sp.set(param, value);
-          dirty = true;
-        }
-      } else if (sp.has(param)) {
-        sp.delete(param);
-        dirty = true;
-      }
-    }
-    if (!dirty) return;
-    isPushing.current = true;
+    const param = PARAM_BY_KEY[key];
+    if (value) sp.set(param, value);
+    else sp.delete(param);
     const qs = sp.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-    const t = window.setTimeout(() => {
-      isPushing.current = false;
-    }, 100);
-    return () => window.clearTimeout(t);
-  }, [filters, searchParams, pathname, router]);
-
-  // URL → state. Re-run when readParams changes (i.e., searchParams). Skip
-  // the tick that was just caused by our own state→URL push to prevent glitch.
-  useEffect(() => {
-    if (isPushing.current) {
-      isPushing.current = false;
-      initialized.current = true;
-      return;
-    }
-    setFilters((prev) => {
-      const next = readParams();
-      return equalFilters(prev, next) ? prev : next;
-    });
-    initialized.current = true;
-  }, [readParams]);
-
-  const setFilter = useCallback((key: FilterKey, value: string) => {
-    setFilters((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
-  }, []);
+  }, [searchParams, pathname, router]);
 
   const clearAll = useCallback(() => {
-    setFilters((prev) => (equalFilters(prev, EMPTY_FILTERS) ? prev : { ...EMPTY_FILTERS }));
+    const sp = new URLSearchParams(searchParams.toString());
+    let dirty = false;
+    for (const key of visible) {
+      const p = PARAM_BY_KEY[key];
+      if (sp.has(p)) { sp.delete(p); dirty = true; }
+    }
+    if (dirty) {
+      const qs = sp.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    }
     setSearch("");
-  }, []);
+  }, [searchParams, pathname, router, visible]);
 
   const matches = useCallback(
     (row: T): boolean => {
