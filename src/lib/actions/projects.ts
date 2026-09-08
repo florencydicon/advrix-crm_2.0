@@ -11,6 +11,7 @@ import {
   syncApprovedTaskSequences,
 } from "@/lib/workflow";
 import { createNotification, notifyRoles } from "@/lib/notifications";
+import { getClientDetail } from "@/lib/data";
 import {
   validateEmail,
   validatePhone,
@@ -18,6 +19,18 @@ import {
   validateText,
   validateDeliverables,
 } from "@/lib/validation";
+
+export async function getClientDetailAction(clientId: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" } as const;
+  if (!hasPermission(session.permissions, "projects:view")) return { error: "Not authorized" } as const;
+  try {
+    const data = await getClientDetail(clientId);
+    return { ok: true as const, ...data };
+  } catch {
+    return { error: "Failed to load client detail" } as const;
+  }
+}
 
 // -- Deep-link helpers for notifications --------------------------------------
 

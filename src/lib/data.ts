@@ -1300,3 +1300,40 @@ export async function getEmployeeLeavesDetail(
     [userId, startDate, endDate]
   );
 }
+
+// ---------- Client detail (modal) ----------
+
+export interface ClientDetailProject {
+  id: string;
+  name: string;
+  status: string;
+  deadline: string | null;
+  total_tasks: number;
+  completed_tasks: number;
+}
+
+export interface ClientDetailTask {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  project_name: string;
+  due_date: string | null;
+}
+
+export async function getClientDetail(clientId: string): Promise<{ projects: ClientDetailProject[]; tasks: ClientDetailTask[] }> {
+  const projects = await query<ClientDetailProject>(
+    `SELECT p.id, p.name, p.status, p.deadline::text AS deadline,
+            (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id) AS total_tasks,
+            (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.status = 'completed') AS completed_tasks
+     FROM projects p WHERE p.client_id = $1 ORDER BY p.created_at DESC`,
+    [clientId]
+  );
+  const tasks = await query<ClientDetailTask>(
+    `SELECT t.id, t.title, t.status, t.priority, p.name AS project_name, t.due_date::text AS due_date
+     FROM tasks t JOIN projects p ON p.id = t.project_id
+     WHERE p.client_id = $1 ORDER BY t.created_at DESC LIMIT 100`,
+    [clientId]
+  );
+  return { projects, tasks };
+}

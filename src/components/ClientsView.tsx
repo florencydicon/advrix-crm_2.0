@@ -22,6 +22,7 @@ import { Modal, EmptyState } from "@/components/ui";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { useToast } from "@/components/Toast";
+import ClientDetailModal from "@/components/ClientDetailModal";
 
 interface Deliv {
   key: string;
@@ -219,6 +220,8 @@ export default function ClientsView({
   const [customQty, setCustomQty] = useState(1);
   const [searchDraft, setSearchDraft] = useState(search);
   const [selectedManager, setSelectedManager] = useState("");
+  const [detailClient, setDetailClient] = useState<ClientCard | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const managerOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -430,13 +433,19 @@ export default function ClientsView({
                       ))}
                     </select>
                   )}
-                  <span className="ml-auto flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setDetailClient(c); setDetailOpen(true); }}
+                    className="ml-auto flex items-center gap-1.5 rounded-full hover:bg-white/5 px-1 -mr-1 py-0.5 transition-colors"
+                    title="View projects & tasks"
+                    aria-label={`View ${formatClientName(c.company, c.name)} details`}
+                  >
                     <span className={`badge ${c.active_projects > 0 ? "bg-amber-400/10 text-amber-300" : "bg-white/10 text-slate-500"}`}>
                       {c.active_projects} active
                     </span>
                     <span className="badge bg-emerald-400/10 text-emerald-300">{c.total_projects} projects</span>
                     <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
-                  </span>
+                  </button>
                 </div>
               </div>
             ))}
@@ -574,6 +583,8 @@ export default function ClientsView({
           </button>
         </form>
       </Modal>
+
+      <ClientDetailModal client={detailClient} open={detailOpen} onClose={() => setDetailOpen(false)} />
     </div>
   );
 }
