@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   Trash2,
 } from "lucide-react";
+import { getManagerColorVariant } from "@/lib/managerColors";
 import { createClientAction, createProjectAction, deleteClientAction, assignClientPmAction } from "@/lib/actions/projects";
 import type { ClientCard } from "@/lib/data";
 import type { DeliverableType, UserRow } from "@/lib/types";
@@ -217,6 +218,33 @@ export default function ClientsView({
   const [customLabel, setCustomLabel] = useState("");
   const [customQty, setCustomQty] = useState(1);
   const [searchDraft, setSearchDraft] = useState(search);
+  const [selectedManager, setSelectedManager] = useState("");
+
+  const managerOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of clients) {
+      if (c.assigned_pm_id && c.assigned_pm_name) map.set(c.assigned_pm_id, c.assigned_pm_name);
+    }
+    // Include PMs that currently have no client but exist in team, so filter stays stable
+    for (const p of pms) {
+      if (!map.has(p.id)) {
+        const hasClient = clients.some((c) => c.assigned_pm_id === p.id);
+        if (hasClient) map.set(p.id, p.full_name);
+      }
+    }
+    // If no client has PM assigned yet, fallback to all PMs for completeness
+    if (map.size === 0) {
+      for (const p of pms) map.set(p.id, p.full_name);
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [clients, pms]);
+
+  const displayedClients = useMemo(() => {
+    if (!selectedManager) return clients;
+    return clients.filter((c) => c.assigned_pm_id === selectedManager);
+  }, [clients, selectedManager]);
 
   const navigate = useCallback(
     (params: Record<string, string | null>) => {
@@ -264,51 +292,69 @@ export default function ClientsView({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Clients</h1>
-          <p className="text-sm text-slate-500">Accounts and tasks flowing through the agency.</p>
-        </div>
-        {canCreate && (
-          <div className="flex w-full sm:w-auto gap-1.5">
-            <button className="btn-secondary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={() => setBriefModal(true)}>
-              <FilePlus2 className="h-3.5 w-3.5" /> Add Tasks
-            </button>
-            <button className="btn-primary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={() => setClientModal(true)}>
-              <Plus className="h-3.5 w-3.5" /> New Client
-            </button>
+    <div className="space-y-4 overflow-x-hidden">
+      <div>
+        <h1 className="text-xl font-bold tracking-tight">Clients</h1>
+        <p className="text-sm text-slate-500">Accounts and tasks flowing through the agency.</p>
+      </div>
+
+      <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3">
+        <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
+          <div className="relative flex-1 w-full sm:max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+            <input
+              type="text"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && navigate({ search: searchDraft || null })}
+              placeholder="Search clients…"
+              className="input !pl-8 !py-1.5 text-xs"
+            />
           </div>
-        )}
-      </div>
-
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-        <div className="relative flex-1 w-full sm:max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-          <input
-            type="text"
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && navigate({ search: searchDraft || null })}
-            placeholder="Search clients…"
-            className="input !pl-8 !py-1.5 text-xs"
-          />
+          <select
+            value={selectedManager}
+            onChange={(e) => setSelectedManager(e.target.value)}
+            className="input !py-1.5 text-xs w-full sm:w-[200px] shrink-0"
+            aria-label="Filter by Project Manager"
+          >
+            <option value="">All Managers</option>
+            {managerOptions.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
         </div>
-        {total > 0 && (
-          <span className="badge bg-white/10 text-slate-300">{total} client{total === 1 ? "" : "s"}</span>
-        )}
+        <div className="flex items-center gap-2 w-full lg:w-auto">
+          {total > 0 && (
+            <span className="badge bg-white/10 text-slate-300 shrink-0">{total} client{total === 1 ? "" : "s"}</span>
+          )}
+          {canCreate && (
+            <div className="flex gap-1.5 ml-auto lg:ml-0 w-full sm:w-auto">
+              <button className="btn-secondary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={() => setBriefModal(true)}>
+                <FilePlus2 className="h-3.5 w-3.5" /> Add Tasks
+              </button>
+              <button className="btn-primary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={() => setClientModal(true)}>
+                <Plus className="h-3.5 w-3.5" /> New Client
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {clients.length === 0 ? (
-        search ? (
-          <EmptyState title="No clients found" subtitle="Try a different search term." />
+      {displayedClients.length === 0 ? (
+        search || selectedManager ? (
+          <EmptyState title="No clients match filter" subtitle="Try a different search term or manager." />
         ) : (
           <EmptyState title="No clients yet" subtitle="Add your first client to start the onboarding flow." />
         )
       ) : (
         <>
+          {selectedManager && (
+            <p className="text-xs text-slate-500">
+              Showing {displayedClients.length} of {clients.length} clients · <button onClick={() => setSelectedManager("")} className="text-brand-300 hover:text-brand-200 underline underline-offset-2">Clear filter</button>
+            </p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {clients.map((c) => (
+            {displayedClients.map((c) => (
               <div
                 key={c.id}
                 role="button"
@@ -361,7 +407,7 @@ export default function ClientsView({
                     </span>
                   )}
                   {c.assigned_pm_name && (
-                    <span className="badge bg-violet-400/10 text-violet-300" title="Assigned Project Manager">
+                    <span className={`badge ${getManagerColorVariant(c.assigned_pm_name)}`} title="Assigned Project Manager">
                       {c.assigned_pm_name}
                     </span>
                   )}

@@ -10,6 +10,8 @@ import {
   getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam, getClients, getClientWorkload,
   type ClientWorkload,
 } from "@/lib/data";
+import { getRecentActivity, type ActivityLogRow } from "@/lib/activity";
+import { DashboardActivityLogTrigger } from "@/components/DashboardActivityLog";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
 import ActionCenter from "@/components/ActionCenter";
@@ -142,6 +144,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let pendingLeaves: any[] = [];
   let bottlenecks: any[] = [];
   let workload: ClientWorkload[] = [];
+  let activity: ActivityLogRow[] = [];
   try {
     [projects, clients, leadStats, taskCounts, subtaskCounts, submittedTasks, pendingLeaves, bottlenecks, workload] = await Promise.all([
       getProjects(pmScope).catch(() => [] as any),
@@ -154,6 +157,9 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
       showTaskMetrics ? getBottlenecks(pmScope).catch(() => [] as any) : Promise.resolve([] as any),
       getClientWorkload(pmScope).catch(() => [] as any),
     ]);
+    if (isSuperAdmin) {
+      activity = await getRecentActivity(60).catch(() => [] as ActivityLogRow[]);
+    }
   } catch {
     // Fallback: individual catches already return safe defaults, this is absolute safety
     projects = projects || [];
@@ -218,6 +224,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <TodayBadge />
+            <DashboardActivityLogTrigger activity={activity} />
             <Link href="/settings" className="btn-secondary !py-2 text-xs">
               <Download className="h-3.5 w-3.5" /> Export Report
             </Link>
