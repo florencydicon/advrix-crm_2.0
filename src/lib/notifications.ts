@@ -108,3 +108,65 @@ export async function notifyRoles(roleKeys: string[], input: Omit<NotificationIn
   const userIds = await getUserIdsByRoles(roleKeys);
   await createNotificationsBatch(userIds, input);
 }
+
+/**
+ * Resolve the PROJECT_MANAGER(s) who manage the given employee.
+ * An employee is considered managed by a PM if that PM's assigned clients
+ * contain work (tasks / assignments) involving the employee. Covers three
+ * assignment surfaces so even brand-new members are discovered:
+ *   - task_assignees (multi-member)   - tasks.assigned_to (holder)
+ *   - assignments (project-level)
+ * Returns distinct PM user ids; empty array when none linked.
+ */
+export async function getManagingPmIdsForUser(userId: string): Promise<string[]> {
+  try {
+    const rows = await query<{ assigned_pm_id: string }>(
+      `SELECT DISTINCT c.assigned_pm_id
+       FROM task_assignees ta
+       JOIN tasks t ON t.id = ta.task_id
+       JOIN projects p ON p.id = t.project_id
+       JOIN clients c ON c.id = p.client_id
+       WHERE ta.user_id = $1 AND c.assigned_pm_id IS NOT NULL
+       UNION
+       SELECT DISTINCT c.assigned_pm_id
+       FROM tasks t
+       JOIN projects p ON p.id = t.project_id
+       JOIN clients c ON c.id = p.client_id
+       WHERE t.assigned_to = $1 AND c.assigned_pm_id IS NOT NULL
+       UNION
+       SELECT DISTINCT c.assigned_pm_id
+       FROM assignments a
+       JOIN projects p ON p.id = a.project_id
+       JOIN clients c ON c.id = p.client_id
+       WHERE a.user_id = $1 AND c.assigned_pm_id IS NOT NULL`,
+      [userId]
+    );
+    return rows.map((r) => r.assigned_pm_id).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Notify HR managers for an attendance/leave event:
+ *  - every active SUPER_ADMIN
+ *  - plus the specific PROJECT_MANAGER(s) linked to the employee
+ * Dedupes, excludes the actor themselves, and is best-effort (never throws).
+ */
+export async function notifyHrManagers(
+  actorUserId: string,
+  input: Omit<NotificationInput, "userId">
+) {
+  try {
+    const [superAdminIds, pmIds] = await Promise.all([
+      getUserIdsByRole("SUPER_ADMIN"),
+      getManagingPmIdsForUser(actorUserId),
+    ]);
+    const deduped = new Set<string>([...superAdminIds, ...pmIds]);
+    deduped.delete(actorUserId);
+    if (deduped.size === 0) return;
+    await createNotificationsBatch([...deduped], input);
+  } catch {
+    // attendance notifications are best-effort — do not block the main action
+  }
+}

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
 import { hasPermission } from "@/lib/permissions";
-import { createNotification, notifyRoles } from "@/lib/notifications";
+import { createNotification, notifyHrManagers } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity";
 import { ensureAttendanceSettingsTable } from "@/lib/data";
 import type { LeaveType } from "@/lib/types";
@@ -62,12 +62,14 @@ export async function applyLeaveAction(formData: FormData) {
     [session.sub, leaveType, startDate, endDate, days, reason.trim(), isPaid]
   );
 
-  await notifyRoles(["SUPER_ADMIN"], {
-    type: "leave",
-    title: "New leave request",
-    body: `${session.name} requested ${days} day(s) of ${leaveType} leave from ${startDate} to ${endDate}.`,
-    link: "/attendance",
-  });
+  try {
+    await notifyHrManagers(session.sub, {
+      type: "leave",
+      title: "New leave request",
+      body: `${session.name} requested ${days} day(s) of ${leaveType} leave from ${startDate} to ${endDate}.`,
+      link: "/attendance",
+    });
+  } catch {}
 
   await logActivity({
     action: "leave_requested",

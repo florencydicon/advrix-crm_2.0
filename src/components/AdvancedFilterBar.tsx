@@ -440,13 +440,13 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
   const shows = (k: FilterKey) => api.visible.includes(k);
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 md:flex-wrap md:overflow-visible scrollbar-hide">
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-slate-400">
+    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap snap-x snap-mandatory pb-2 scrollbar-hide md:pb-0 md:flex-wrap md:overflow-visible md:whitespace-normal md:snap-none">
+      <span className="inline-flex shrink-0 snap-start items-center gap-1 text-xs font-medium text-slate-400">
         <Filter className="h-3.5 w-3.5" /> Filter:
       </span>
 
       {shows("client") && (
-        <div className="shrink-0 min-w-[130px] flex-1 max-w-[180px]">
+        <div className="shrink-0 snap-start min-w-[130px] flex-1 max-w-[180px]">
           <FilterSelect
             value={api.filters.client}
             onChange={(v) => api.setFilter("client", v)}
@@ -457,7 +457,7 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
       )}
 
       {shows("project") && (
-        <div className="shrink-0 min-w-[130px] flex-1 max-w-[180px]">
+        <div className="shrink-0 snap-start min-w-[130px] flex-1 max-w-[180px]">
           <FilterSelect
             value={api.filters.project}
             onChange={(v) => api.setFilter("project", v)}
@@ -468,7 +468,7 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
       )}
 
       {shows("stage") && (
-        <div className="shrink-0 min-w-[130px] flex-1 max-w-[180px]">
+        <div className="shrink-0 snap-start min-w-[130px] flex-1 max-w-[180px]">
           <FilterSelect
             value={api.filters.stage}
             onChange={(v) => api.setFilter("stage", v)}
@@ -479,7 +479,7 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
       )}
 
       {shows("deadline") && (
-        <div className="shrink-0 min-w-[120px] w-[150px]">
+        <div className="shrink-0 snap-start min-w-[120px] w-[150px]">
           <FilterSelect
             value={api.filters.deadline}
             onChange={(v) => api.setFilter("deadline", v)}
@@ -490,7 +490,7 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
       )}
 
       {shows("status") && (
-        <div className="shrink-0 min-w-[120px] w-[160px]">
+        <div className="shrink-0 snap-start min-w-[120px] w-[160px]">
           <FilterSelect
             value={api.filters.status}
             onChange={(v) => api.setFilter("status", v)}
@@ -501,7 +501,7 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
       )}
 
       {shows("priority") && (
-        <div className="shrink-0 min-w-[120px] w-[150px]">
+        <div className="shrink-0 snap-start min-w-[120px] w-[150px]">
           <FilterSelect
             value={api.filters.priority}
             onChange={(v) => api.setFilter("priority", v)}
@@ -515,13 +515,13 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
         <button
           type="button"
           onClick={api.clearAll}
-          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 transition-colors"
+          className="inline-flex shrink-0 snap-start items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 transition-colors"
         >
           <X className="h-3.5 w-3.5" /> Clear
         </button>
       )}
 
-      <div className="shrink-0 min-w-[220px] flex-1 max-w-sm ml-auto">
+      <div className="shrink-0 snap-start min-w-[220px] flex-1 max-w-sm ml-auto">
         <GlobalSearchInput value={api.search} onChange={api.setSearch} />
       </div>
     </div>

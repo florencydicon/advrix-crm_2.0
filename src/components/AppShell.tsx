@@ -166,6 +166,47 @@ export default function AppShell({
     checkDeadlineAlerts();
   }, [checkDeadlineAlerts]);
 
+  // Live Updates polling: every 7s silently fetch /api/notifications.
+  // Any unseen notification triggers the bell + a global toast while the tab is active.
+  const seenIdsRef = useRef<Set<string>>(new Set(notifications.map((n) => n.id)));
+  useEffect(() => {
+    seenIdsRef.current = new Set(notifications.map((n) => n.id));
+  }, [notifications]);
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      if (document.hidden) return;
+      try {
+        const res = await fetch("/api/notifications", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { items: Notification[]; unread: number };
+        if (cancelled) return;
+        const fresh = data.items.filter((n) => !seenIdsRef.current.has(n.id));
+        if (fresh.length > 0) {
+          fresh.forEach((n) => seenIdsRef.current.add(n.id));
+          // ring bell + toast each fresh item
+          setRinging(true);
+          setTimeout(() => !cancelled && setRinging(false), 6000);
+          for (const n of fresh) {
+            const label = n.type === "attendance" || n.type === "leave" ? `${n.title}: ${n.body}` : n.title;
+            toast(label, "info");
+          }
+        }
+        // keep the panel state in sync even when no fresh toast needed
+        setNotifs(data.items);
+        setUnread(data.unread);
+      } catch {}
+    }
+    const id = window.setInterval(poll, 7000);
+    // also poll once shortly after mount so HR events appear within seconds
+    const once = window.setTimeout(poll, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.clearTimeout(once);
+    };
+  }, [toast]);
+
   // PWA: register service worker + capture install prompt
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -422,7 +463,7 @@ export default function AppShell({
   };
 
   return (
-    <div className="min-h-screen flex bg-paper">
+    <div className="min-h-screen flex bg-paper overflow-x-hidden">
       {/* Return-to-tab popup modal */}
       {missedToast > 0 && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 animate-fade-in">
@@ -484,7 +525,7 @@ export default function AppShell({
 
       {/* Main column */}
       <div
-        className={`flex-1 flex flex-col min-h-screen transition-[padding] duration-300 ease-in-out ${collapsed ? "lg:pl-[76px]" : "lg:pl-64"}`}
+        className={`flex-1 flex flex-col min-h-screen min-w-0 overflow-x-hidden transition-[padding] duration-300 ease-in-out ${collapsed ? "lg:pl-[76px]" : "lg:pl-64"}`}
       >
         {/* ── Mobile header ── */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-night-950/80 backdrop-blur-xl border-b border-white/[0.06] px-4 py-3 md:px-6">
@@ -584,7 +625,7 @@ export default function AppShell({
           </div>
         </header>
 
-        <main className="p-4 sm:p-6 pb-24 md:pb-6 flex-1">{children}</main>
+        <main className="p-4 sm:p-6 pb-24 md:pb-6 flex-1 min-w-0 overflow-x-hidden">{children}</main>
         <footer className="px-6 pb-4 pt-2 hidden lg:block">
           <p className="text-[10px] tracking-[0.14em] uppercase text-slate-600 text-right">
             © {new Date().getFullYear()} Advrix Media PVT LTD

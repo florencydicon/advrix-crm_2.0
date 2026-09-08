@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { query } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
+import { notifyHrManagers } from "@/lib/notifications";
 import {
   getAttendanceSettings,
   ensureAttendanceSettingsTable,
@@ -96,6 +97,17 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
     },
   });
 
+  // HR feed: SUPER_ADMIN + managing PM(s)
+  try {
+    const time = new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    await notifyHrManagers(session.sub, {
+      type: "attendance",
+      title: "Clock in",
+      body: `${session.name} clocked in at ${time}.`,
+      link: "/attendance",
+    });
+  } catch {}
+
   revalidatePath("/attendance");
   return { ok: true, status };
 }
@@ -173,6 +185,15 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
     },
   });
 
+  try {
+    await notifyHrManagers(session.sub, {
+      type: "attendance",
+      title: "Clock out",
+      body: `${session.name} clocked out for the day. (Net Hours: ${netHoursRounded}h)`,
+      link: "/attendance",
+    });
+  } catch {}
+
   revalidatePath("/attendance");
   return { ok: true, hoursWorked: netHoursRounded, breaksMins };
 }
@@ -201,6 +222,14 @@ export async function startBreakAction() {
     `UPDATE attendance SET break_start_time = $1 WHERE id = $2`,
     [now.toISOString(), record.id]
   );
+  try {
+    await notifyHrManagers(session.sub, {
+      type: "attendance",
+      title: "Lunch break started",
+      body: `${session.name} started their lunch break.`,
+      link: "/attendance",
+    });
+  } catch {}
   revalidatePath("/attendance");
   return { ok: true };
 }
@@ -229,6 +258,14 @@ export async function endBreakAction() {
     `UPDATE attendance SET break_end_time = $1, total_break_mins = $2 WHERE id = $3`,
     [now.toISOString(), total, record.id]
   );
+  try {
+    await notifyHrManagers(session.sub, {
+      type: "attendance",
+      title: "Lunch break ended",
+      body: `${session.name} ended their lunch break. (Total break: ${total}m)`,
+      link: "/attendance",
+    });
+  } catch {}
   revalidatePath("/attendance");
   return { ok: true, breakMins: mins, totalBreakMins: total };
 }

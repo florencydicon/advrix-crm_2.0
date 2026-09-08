@@ -68,7 +68,7 @@ export default async function DashboardPage() {
     const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
     const open = tasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
-      <div className="w-full max-w-none space-y-4 md:space-y-6">
+      <div className="w-full max-w-none space-y-4 md:space-y-6 overflow-x-hidden">
         <div className="rounded-2xl bg-gradient-to-br from-brand-300 to-brand-500 p-5 md:p-6 text-night-950 shadow-lg shadow-brand-300/20">
           <div className="flex items-center gap-2 text-night-950/70">
             <Sparkles className="h-4 w-4" />
@@ -94,7 +94,7 @@ export default async function DashboardPage() {
     const projects = await getProjects();
     const mine = projects.filter((p) => p.created_by === session.sub);
     return (
-      <div className="space-y-4 md:space-y-6">
+      <div className="space-y-4 md:space-y-6 overflow-x-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold tracking-tight">Business Development</h1>
@@ -207,7 +207,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
     const totalSubtasks = Object.values(subtaskCounts).reduce((a, b) => a + b, 0);
 
     return (
-      <div className="space-y-4 md:space-y-5">
+      <div className="space-y-4 md:space-y-5 overflow-x-hidden">
         {/* ── Header: greeting + date + Export ── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -355,7 +355,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
 
   // PROJECT_MANAGER fallback
   return (
-    <div className="space-y-4 md:space-y-5">
+    <div className="space-y-4 md:space-y-5 overflow-x-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold tracking-tight">

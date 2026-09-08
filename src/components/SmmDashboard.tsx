@@ -239,7 +239,7 @@ export default function SmmDashboard({
   );
 
   return (
-    <div className="w-full max-w-none space-y-3 pb-20 md:pb-0">
+    <div className="w-full max-w-none space-y-3 pb-20 md:pb-0 overflow-x-hidden">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         {metrics.map((m) => (
           <div key={m.label} className={`card flex items-center gap-2 md:gap-3 px-3 md:px-4 py-3 ${m.cls}`}>
