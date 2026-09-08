@@ -12,6 +12,7 @@ import {
 } from "@/lib/data";
 import { getRecentActivity, type ActivityLogRow } from "@/lib/activity";
 import { DashboardActivityLogTrigger } from "@/components/DashboardActivityLog";
+import PushNotificationPrompt from "@/components/PushNotificationPrompt";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
 import ActionCenter from "@/components/ActionCenter";
@@ -83,6 +84,7 @@ export default async function DashboardPage() {
               : "All clear — no open tasks assigned to you."}
           </p>
         </div>
+        <PushNotificationPrompt />
         {session.role_key === "SMM" ? (
           <SmmDashboard tasks={tasks} team={team} userId={session.sub} roleKey={session.role_key} permissions={session.permissions} />
         ) : (
@@ -106,6 +108,7 @@ export default async function DashboardPage() {
             + Add Tasks
           </Link>
         </div>
+        <PushNotificationPrompt />
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           <Stat label="My Projects" value={mine.length} />
@@ -230,6 +233,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
             </Link>
           </div>
         </div>
+        <PushNotificationPrompt />
 
         {/* ── Row 1: project + client stat cards ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
@@ -377,6 +381,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </Link>
         </div>
       </div>
+      <PushNotificationPrompt />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <Link href="/projects" className="card card-hover p-3 md:p-5 block hover:bg-white/[0.06] transition-colors">

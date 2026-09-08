@@ -16,6 +16,16 @@ export async function createNotification(input: NotificationInput) {
      VALUES ($1, $2, $3, $4, $5)`,
     [userId, type, title, body, link]
   );
+  // Best-effort OS push (background lock-screen) mirroring the in-app notification
+  try {
+    const { sendPushNotification } = await import("@/lib/push");
+    await sendPushNotification(userId, {
+      title,
+      body: body || title,
+      icon: "/logo-mark.png",
+      url: link || "/dashboard",
+    });
+  } catch {}
 }
 
 /**
@@ -39,6 +49,16 @@ export async function createNotificationsBatch(
     `INSERT INTO notifications (user_id, type, title, body, link) VALUES ${placeholders.join(", ")}`,
     flatValues
   );
+  // OS push for the same recipients (background)
+  try {
+    const { sendPushToUsers } = await import("@/lib/push");
+    await sendPushToUsers(userIds, {
+      title,
+      body: body || title,
+      icon: "/logo-mark.png",
+      url: link || "/dashboard",
+    });
+  } catch {}
 }
 
 export async function getNotifications(userId: string, limit = 50): Promise<Notification[]> {

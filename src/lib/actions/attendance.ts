@@ -97,7 +97,7 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
     },
   });
 
-  // HR feed: SUPER_ADMIN + managing PM(s)
+  // HR feed + OS push (via notifications batch) to SUPER_ADMIN + managing PM(s)
   try {
     const time = new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     await notifyHrManagers(session.sub, {
@@ -222,6 +222,12 @@ export async function startBreakAction() {
     `UPDATE attendance SET break_start_time = $1 WHERE id = $2`,
     [now.toISOString(), record.id]
   );
+  await logActivity({
+    action: "lunch_break_start",
+    entityType: "attendance",
+    entityId: today,
+    metadata: { break_start: now.toISOString() },
+  });
   try {
     await notifyHrManagers(session.sub, {
       type: "attendance",
@@ -258,6 +264,12 @@ export async function endBreakAction() {
     `UPDATE attendance SET break_end_time = $1, total_break_mins = $2 WHERE id = $3`,
     [now.toISOString(), total, record.id]
   );
+  await logActivity({
+    action: "lunch_break_end",
+    entityType: "attendance",
+    entityId: today,
+    metadata: { break_start: record.break_start_time, break_end: now.toISOString(), mins, total_break_mins: total },
+  });
   try {
     await notifyHrManagers(session.sub, {
       type: "attendance",

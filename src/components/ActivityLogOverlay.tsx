@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect } from "react";
-import { X, History, MapPin } from "lucide-react";
+import { X, History, MapPin, Coffee, Clock, CheckCircle2, XCircle, Calendar, LogIn, LogOut } from "lucide-react";
 import type { ActivityLogRow } from "@/lib/activity";
 
-const ACTION_META: Record<string, { label: string; cls: string }> = {
-  attendance_check_in: { label: "Check-in", cls: "bg-emerald-400/10 text-emerald-300" },
-  attendance_check_out: { label: "Check-out", cls: "bg-sky-400/10 text-sky-300" },
-  leave_requested: { label: "Leave requested", cls: "bg-amber-400/10 text-amber-300" },
-  leave_approved: { label: "Leave approved", cls: "bg-emerald-400/10 text-emerald-300" },
-  leave_rejected: { label: "Leave rejected", cls: "bg-rose-400/10 text-rose-300" },
+const ACTION_META: Record<string, { label: string; cls: string; icon: React.ComponentType<{ className?: string }> }> = {
+  attendance_check_in: { label: "Check-in", cls: "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20", icon: LogIn },
+  attendance_check_out: { label: "Check-out", cls: "bg-sky-400/10 text-sky-300 border border-sky-400/20", icon: LogOut },
+  lunch_break_start: { label: "Lunch break", cls: "bg-orange-500/15 text-orange-300 border border-orange-500/30", icon: Coffee },
+  lunch_break_end: { label: "Break ended", cls: "bg-orange-500/15 text-orange-300 border border-orange-500/30", icon: Coffee },
+  leave_requested: { label: "Leave requested", cls: "bg-violet-500/15 text-violet-300 border border-violet-500/30", icon: Calendar },
+  leave_approved: { label: "Leave approved", cls: "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20", icon: CheckCircle2 },
+  leave_rejected: { label: "Leave rejected", cls: "bg-rose-400/10 text-rose-300 border border-rose-400/20", icon: XCircle },
+  // fallback for older/other actions
+  task_created: { label: "Task", cls: "bg-white/10 text-slate-300", icon: Clock },
 };
 
 function fmtTime(iso: string | null | undefined) {
@@ -34,19 +38,39 @@ function ActivityList({ activity }: { activity: ActivityLogRow[] }) {
   return (
     <div className="divide-y divide-white/[0.05]">
       {activity.map((a) => {
-        const meta = ACTION_META[a.action] || { label: a.action.replace(/_/g, " "), cls: "bg-white/10 text-slate-300" };
+        const raw = ACTION_META[a.action] || { label: a.action.replace(/_/g, " "), cls: "bg-white/10 text-slate-300 border border-white/10", icon: History };
+        const meta = raw as { label: string; cls: string; icon: React.ComponentType<{ className?: string }> };
+        const Icon = meta.icon;
         const lat = (a.metadata as any)?.latitude as number | undefined;
         const lng = (a.metadata as any)?.longitude as number | undefined;
         const locationText = (a.metadata as any)?.location_text as string | undefined;
+        const isLunchBreak = a.action === "lunch_break_start" || a.action === "lunch_break_end";
+        const isLeave = a.action.startsWith("leave_");
         return (
           <div key={a.id} className="px-4 py-3 flex items-start gap-3">
-            <span className={`badge shrink-0 text-[10px] mt-0.5 ${meta.cls}`}>{meta.label}</span>
+            <span className={`badge shrink-0 text-[10px] mt-0.5 inline-flex items-center gap-1 ${meta.cls}`}>
+              <Icon className="h-3 w-3" />
+              {meta.label}
+            </span>
             <div className="min-w-0 flex-1">
               <p className="text-xs text-slate-200">
                 {a.actor_name}
                 <span className="text-slate-500"> · {fmtTime(a.created_at)}</span>
               </p>
-              {(a.metadata as any)?.leave_type && (
+              {isLunchBreak && (
+                <p className="text-[11px] text-orange-300/80 mt-0.5">
+                  {a.action === "lunch_break_start" ? "Started lunch break" : `Ended lunch break`}
+                  {(a.metadata as any)?.total_break_mins != null && <span className="text-slate-500"> · {(a.metadata as any).total_break_mins}m total</span>}
+                  {(a.metadata as any)?.mins != null && <span className="text-slate-500"> · {(a.metadata as any).mins}m</span>}
+                </p>
+              )}
+              {isLeave && (
+                <p className="text-[11px] text-violet-300/90 mt-0.5">
+                  {(a.metadata as any).leave_type && <span>{(a.metadata as any).leave_type} · {(a.metadata as any).start_date} → {(a.metadata as any).end_date} · {(a.metadata as any).days}d</span>}
+                  {(a.metadata as any)?.rejection_reason && <span className="text-rose-400"> · {(a.metadata as any).rejection_reason}</span>}
+                </p>
+              )}
+              {!isLunchBreak && !isLeave && (a.metadata as any)?.leave_type && (
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   {(a.metadata as any).leave_type} · {(a.metadata as any).start_date} → {(a.metadata as any).end_date} · {(a.metadata as any).days}d
                   {(a.metadata as any)?.rejection_reason && <span className="text-rose-400"> · {(a.metadata as any).rejection_reason}</span>}

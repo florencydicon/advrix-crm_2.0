@@ -38,3 +38,37 @@ self.addEventListener("fetch", (e) => {
     }))
   );
 });
+
+// --- Web Push: OS-level notifications (background, lock screen) ---
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    try { data = { body: event.data ? event.data.text() : "" }; } catch { data = {}; }
+  }
+  const title = data.title || "Advrix CRM";
+  const options = {
+    body: data.body || "",
+    icon: data.icon || "/logo-mark.png",
+    badge: data.badge || "/logo-mark.png",
+    data: { url: data.url || "/dashboard" },
+    tag: data.tag || undefined,
+    requireInteraction: false,
+    vibrate: [120, 40, 120],
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/dashboard";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const win of wins) {
+        if (win.url.includes(url) && "focus" in win) return win.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
+  );
+});
