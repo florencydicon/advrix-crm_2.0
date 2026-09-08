@@ -29,6 +29,24 @@ export function useSilentPoll<T>(
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
+  // Keep in sync when server prop changes (e.g., after router.refresh() from TaskModal)
+  // This was missing — mobile appeared stuck on stale "Awaiting Review" while desktop
+  // had already revalidated to "Completed".
+  const initialRef = useRef(initial);
+  useEffect(() => {
+    // Shallow compare via JSON for arrays; cheap for task lists (<100 items)
+    try {
+      if (JSON.stringify(initial) !== JSON.stringify(initialRef.current)) {
+        initialRef.current = initial;
+        setData(initial);
+      }
+    } catch {
+      // Fallback: always sync on prop change if JSON fails
+      initialRef.current = initial;
+      setData(initial);
+    }
+  }, [initial]);
+
   useEffect(() => {
     if (intervalMs <= 0) return;
 
@@ -43,12 +61,22 @@ export function useSilentPoll<T>(
       }
     };
 
+    const onVisible = () => {
+      if (!document.hidden) run();
+    };
+
     const id = window.setInterval(run, intervalMs);
+    // Also poll immediately and on visibility/focus return — critical for mobile
+    // where setInterval is throttled in background.
     run();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
 
     return () => {
       active = false;
       window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, [intervalMs]);
 

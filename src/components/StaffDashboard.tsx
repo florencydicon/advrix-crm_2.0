@@ -52,10 +52,11 @@ export default function StaffDashboard({
 }) {
   // Silent 3s background sync: refreshes only the task/team arrays feeding the
   // table & cards. Pages are never reloaded and modal/textarea state survives.
+  // Cache-busted for mobile where fetch cache is aggressive.
   const live = useSilentPoll(
     { tasks, team },
     async () => {
-      const res = await fetch("/api/poll/data", { cache: "no-store" });
+      const res = await fetch(`/api/poll/data?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error("poll failed");
       return (await res.json()) as { tasks: Task[]; team: UserRow[] };
     },
