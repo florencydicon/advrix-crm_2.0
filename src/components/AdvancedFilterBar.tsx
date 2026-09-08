@@ -581,9 +581,10 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
                 <Filter className="h-4 w-4 text-brand-300" /> Filters
                 {activeCount > 0 && <span className="badge bg-brand-300/15 text-brand-300">{activeCount} active</span>}
               </h3>
+              {/* Top X hidden on mobile — only bottom FAB */}
               <button
                 onClick={() => setIsMobileFilterOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 ring-1 ring-white/10 shadow-sm transition-colors"
+                className="hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 ring-1 ring-white/10 shadow-sm transition-colors"
                 aria-label="Close filters"
               >
                 <X className="h-4 w-4" />

@@ -23,11 +23,19 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   icons: {
     icon: [
+      // Fav icon — as before: dark mode white logo, light mode dark logo
+      { url: "/logo-mark.png", media: "(prefers-color-scheme: light)" },
+      { url: "/logo-mark-wt.png", media: "(prefers-color-scheme: dark)" },
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
-      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
     ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [
+      // Mobile app icon — dark mode DMAI, light mode LMAI
+      { url: "/DMAI.png", media: "(prefers-color-scheme: dark)", sizes: "601x601", type: "image/png" },
+      { url: "/LMAI.png", media: "(prefers-color-scheme: light)", sizes: "601x601", type: "image/png" },
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/apple-touch-icon-light.png", media: "(prefers-color-scheme: light)", sizes: "180x180", type: "image/png" },
+    ],
     shortcut: ["/icon-192.png"],
   },
   appleWebApp: {
