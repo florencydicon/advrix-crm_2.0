@@ -278,23 +278,15 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
     for (const key of visible) {
       const raw = searchParams.get(PARAM_BY_KEY[key]);
       if (!raw) continue;
-      const known =
-        key === "client"
-          ? options.client.some((o) => o.value === raw)
-          : key === "project"
-            ? options.project.some((o) => o.value === raw)
-            : key === "stage"
-              ? options.stage.some((o) => o.value === raw)
-              : key === "deadline"
-                ? options.deadline.some((o) => o.value === raw)
-                : key === "status"
-                  ? options.status.some((o) => o.value === raw)
-                  : options.priority.some((o) => o.value === raw);
-      if (known) next[key] = raw;
+      // Deep-link fix: on first render options may still be empty (board not yet loaded).
+      // The old `known` check `options.client.some(o=>o.value===raw)` would reject a
+      // valid ?clientId=... and leave the filter empty, so clicking Venus from
+      // Clients → Projects showed The Vikas's tasks instead. Accept any raw from the
+      // URL; invalid values simply yield 0 matches and the user can Clear.
+      next[key] = raw;
     }
     return next;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, options, visible]);
+  }, [searchParams, visible]);
 
   // state → URL. Skips until the URL has been read once so a deep link on mount
   // isn't wiped by the still-empty initial state (declared before the read effect
@@ -323,16 +315,15 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, searchParams, pathname, router]);
 
-  // URL → state. Only applies params that exist in the dataset; ignores any that
-  // we pushed ourselves (they already match state) so the pair converges.
+  // URL → state. Re-run when searchParams or the derived readParams changes
+  // so a deep-link like ?clientId=venus is applied even after options load.
   useEffect(() => {
     setFilters((prev) => {
       const next = readParams();
       return equalFilters(prev, next) ? prev : next;
     });
     initialized.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [readParams]);
 
   const setFilter = useCallback((key: FilterKey, value: string) => {
     setFilters((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
