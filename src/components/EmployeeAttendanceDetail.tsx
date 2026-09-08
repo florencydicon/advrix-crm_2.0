@@ -259,6 +259,9 @@ export default function EmployeeAttendanceDetail({ userId, userName, userRole, o
                             {r.hours_worked > 0 && (
                               <span className="text-brand-300 font-medium">{r.hours_worked}h</span>
                             )}
+                            {(r.total_break_mins || 0) > 0 && (
+                              <span className="text-amber-300/80">🕐 {r.total_break_mins}m</span>
+                            )}
                           </div>
                           {r.location_text && (
                             <div className="flex items-center gap-1.5 mt-1.5">

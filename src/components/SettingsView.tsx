@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { UserCog, Users, ShieldCheck, KeyRound, Trash2, AlertTriangle, Database, Loader2 } from "lucide-react";
+import { UserCog, Users, ShieldCheck, KeyRound, Trash2, AlertTriangle, Database, Loader2, Clock } from "lucide-react";
 import type { UserRow } from "@/lib/types";
 import type { FilterTab } from "@/components/SmartTable";
 import type { RoleWithPerms } from "@/lib/actions/roles";
 import TeamView from "@/components/TeamView";
 import RolesManager from "@/components/RolesManager";
 import DataExportPanel from "@/components/DataExportPanel";
+import AttendanceSettingsPanel from "@/components/AttendanceSettingsPanel";
 import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { flushDataAction, flushEntireDatabaseAction, type FlushEntity } from "@/lib/actions/admin";
@@ -47,7 +48,7 @@ export default function SettingsView({
   permRoles: RoleWithPerms[];
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"users" | "roles" | "general">("users");
+  const [tab, setTab] = useState<"users" | "roles" | "general" | "attendance">("users");
   const initials = sessionName
     .split(" ")
     .map((w) => w[0])
@@ -87,6 +88,16 @@ export default function SettingsView({
         >
           <UserCog className="h-4 w-4" /> General
         </button>
+        {sessionRoleKey === "SUPER_ADMIN" && (
+          <button
+            onClick={() => setTab("attendance")}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              tab === "attendance" ? "bg-brand-300 text-night-950" : "bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
+            }`}
+          >
+            <Clock className="h-4 w-4" /> Attendance
+          </button>
+        )}
       </div>
 
       {tab === "users" ? (
@@ -106,6 +117,8 @@ export default function SettingsView({
         />
       ) : tab === "roles" ? (
         <RolesManager roles={permRoles} />
+      ) : tab === "attendance" && sessionRoleKey === "SUPER_ADMIN" ? (
+        <AttendanceSettingsPanel />
       ) : (
         <div className="space-y-6">
           <div className="grid lg:grid-cols-2 gap-6">

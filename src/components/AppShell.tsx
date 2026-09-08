@@ -489,6 +489,13 @@ export default function AppShell({
         {/* ── Mobile header ── */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-night-950/80 backdrop-blur-xl border-b border-white/[0.06] px-4 py-3 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
+            <button
+              className="lg:hidden -ml-1.5 p-1.5 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
             <p className="text-[15px] font-semibold text-white tracking-tight truncate">
               {items.find((n) => pathname.startsWith(n.href))?.label || "Dashboard"}
             </p>

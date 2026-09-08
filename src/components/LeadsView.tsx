@@ -186,14 +186,14 @@ export default function LeadsView({
             {roleKey === "SALES" ? "Your personal pipeline — only you can see these." : "Every sales rep's pipeline at a glance."}
           </p>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={exportCsv}>
+        <div className="flex gap-1.5 flex-wrap w-full sm:w-auto">
+          <button className="btn-secondary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={exportCsv}>
             <Download className="h-3.5 w-3.5" /> Excel
           </button>
-          <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={exportPdf}>
+          <button className="btn-secondary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={exportPdf}>
             <Printer className="h-3.5 w-3.5" /> PDF
           </button>
-          <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => { setEditing(null); setError(null); setFormModal(true); }}>
+          <button className="btn-primary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={() => { setEditing(null); setError(null); setFormModal(true); }}>
             <Plus className="h-3.5 w-3.5" /> New Lead
           </button>
         </div>

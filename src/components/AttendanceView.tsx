@@ -16,8 +16,9 @@ import {
   Search,
   MapPin,
   AlertTriangle,
+  Coffee,
 } from "lucide-react";
-import { punchInAction, punchOutAction } from "@/lib/actions/attendance";
+import { punchInAction, punchOutAction, startBreakAction, endBreakAction } from "@/lib/actions/attendance";
 import { getCurrentPosition } from "@/lib/geolocation";
 import { openWhatsApp, openWhatsAppTo, buildCheckInMessage, buildCheckOutMessage, buildLeaveDecisionMessage } from "@/lib/whatsapp";
 import type { Attendance, AttendanceStats, LeaveWithUser } from "@/lib/types";
@@ -25,7 +26,7 @@ import type { ActivityLogRow } from "@/lib/activity";
 import LeaveApplicationModal from "@/components/LeaveApplicationModal";
 import AttendanceReports, { type LeaveReportRowLite } from "@/components/AttendanceReports";
 import ActivityLogCard from "@/components/ActivityLogCard";
-import type { AttendanceReportRow } from "@/lib/data";
+import type { AttendanceReportRow, AttendanceSettings } from "@/lib/data";
 import { useToast } from "@/components/Toast";
 
 function formatTime(iso: string | null | undefined) {
@@ -96,6 +97,7 @@ export default function AttendanceView({
   attendanceReport,
   leaveReport,
   activity,
+  settings,
 }: {
   userName: string;
   userRole: string;
@@ -112,6 +114,7 @@ export default function AttendanceView({
   attendanceReport: AttendanceReportRow[];
   leaveReport: LeaveReportRowLite[];
   activity: ActivityLogRow[];
+  settings: AttendanceSettings;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -154,6 +157,11 @@ export default function AttendanceView({
 
   const hasPunchedIn = !!todayRecord?.punch_in;
   const hasPunchedOut = !!todayRecord?.punch_out;
+
+  const lateCount = history.filter((h) => h.status === "late").length;
+  const halfDayCount = history.filter((h) => h.status === "half_day").length;
+  const absentCount = history.filter((h) => h.status === "absent").length;
+  const onLeaveCount = history.filter((h) => h.status === "on_leave").length;
 
   const [geoLoc, setGeoLoc] = useState<{ latitude: number | null; longitude: number | null; location_text: string | null }>({ latitude: null, longitude: null, location_text: null });
 
@@ -234,6 +242,26 @@ export default function AttendanceView({
         latitude: loc.latitude,
         longitude: loc.longitude,
       }));
+      router.refresh();
+    });
+  }
+
+  const onBreak = !!todayRecord?.break_start_time && !todayRecord?.break_end_time;
+
+  function handleStartBreak() {
+    start(async () => {
+      const res = await startBreakAction();
+      if (res.error) { toast(res.error, "error"); return; }
+      toast("Lunch break started.", "success");
+      router.refresh();
+    });
+  }
+
+  function handleEndBreak() {
+    start(async () => {
+      const res = await endBreakAction();
+      if (res.error) { toast(res.error, "error"); return; }
+      toast(res.ok && res.totalBreakMins ? `Break ended — ${res.totalBreakMins}m total.` : "Break ended.", "success");
       router.refresh();
     });
   }
@@ -357,6 +385,48 @@ export default function AttendanceView({
               </button>
             </div>
 
+            <div className={`card p-4 flex flex-col items-center justify-center text-center ${onBreak ? "ring-1 ring-amber-300/40" : ""}`}>
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-amber-400/10 flex items-center justify-center mb-2">
+                <Coffee className={`h-5 w-5 md:h-6 md:w-6 ${onBreak ? "text-amber-300" : "text-amber-600"}`} />
+              </div>
+              <p className="text-xs text-slate-400">Lunch Break</p>
+              {onBreak && todayRecord?.break_start_time ? (
+                <>
+                  <p className="text-lg md:text-xl font-bold text-amber-300 font-mono">
+                    {Math.max(0, Math.floor((currentTime.getTime() - new Date(todayRecord.break_start_time).getTime()) / 60000))}m
+                  </p>
+                  <p className="text-[10px] text-amber-300/80">Currently on lunch break</p>
+                </>
+              ) : (
+                <p className="text-lg md:text-xl font-bold text-white">
+                  {todayRecord?.total_break_mins ? `${todayRecord.total_break_mins}m` : "—"}
+                </p>
+              )}
+              {hasPunchedIn && !hasPunchedOut ? (
+                onBreak ? (
+                  <button
+                    className="btn-primary mt-2 w-full !py-2 text-xs bg-amber-500 hover:bg-amber-600"
+                    disabled={pending || locStatus !== "granted"}
+                    onClick={handleEndBreak}
+                  >
+                    <Coffee className="h-3.5 w-3.5 inline mr-1" /> End Lunch Break
+                  </button>
+                ) : (
+                  <button
+                    className="btn-secondary mt-2 w-full !py-2 text-xs"
+                    disabled={pending || locStatus !== "granted"}
+                    onClick={handleStartBreak}
+                  >
+                    <Coffee className="h-3.5 w-3.5 inline mr-1" /> Start Lunch Break
+                  </button>
+                )
+              ) : (
+                <button className="btn-secondary mt-2 w-full !py-2 text-xs opacity-40" disabled>
+                  {hasPunchedOut ? "Done for today" : "Punch in first"}
+                </button>
+              )}
+            </div>
+
             <div className="card p-4 flex flex-col items-center justify-center text-center">
               <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-emerald-600/10 flex items-center justify-center mb-2">
                 <LogOut className="h-5 w-5 md:h-6 md:w-6 text-emerald-600" />
@@ -368,10 +438,10 @@ export default function AttendanceView({
               )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs bg-emerald-600 hover:bg-emerald-700"
-                disabled={pending || !hasPunchedIn || hasPunchedOut || locStatus !== "granted"}
+                disabled={pending || !hasPunchedIn || hasPunchedOut || onBreak || locStatus !== "granted"}
                 onClick={handlePunchOut}
               >
-                {hasPunchedOut ? "Punched Out" : "Punch Out"}
+                {hasPunchedOut ? "Punched Out" : onBreak ? "End break first" : "Punch Out"}
               </button>
             </div>
 
@@ -379,11 +449,11 @@ export default function AttendanceView({
               <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-violet-600/10 flex items-center justify-center mb-2">
                 <TrendingUp className="h-5 w-5 md:h-6 md:w-6 text-violet-600" />
               </div>
-              <p className="text-xs text-slate-400">Hours</p>
+              <p className="text-xs text-slate-400">Net Hours</p>
               <p className="text-lg md:text-xl font-bold text-white">
                 {todayRecord?.hours_worked ? `${todayRecord.hours_worked}h` : "—"}
               </p>
-              <div className="mt-2">
+              <div className="mt-2 space-y-1">
                 <span
                   className={`badge ${
                     todayRecord?.status === "late"
@@ -395,8 +465,39 @@ export default function AttendanceView({
                 >
                   {todayRecord?.status === "late" ? "Late" : todayRecord?.status === "present" ? "On Time" : "—"}
                 </span>
+                {todayRecord && (todayRecord.total_break_mins || onBreak) && (
+                  <p className="text-[11px] text-slate-500">Break: {todayRecord.total_break_mins || 0}m</p>
+                )}
               </div>
             </div>
+          </div>
+
+          <div className="card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="h-4 w-4 text-brand-300" />
+              <h2 className="font-semibold text-sm">This Month</h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl bg-amber-400/[0.07] px-3 py-2 text-center">
+                <p className="text-lg md:text-xl font-bold text-amber-300">{lateCount}</p>
+                <p className="text-[10px] md:text-xs text-slate-400">Late Days</p>
+              </div>
+              <div className="rounded-xl bg-white/[0.04] px-3 py-2 text-center">
+                <p className="text-lg md:text-xl font-bold text-white">{halfDayCount}</p>
+                <p className="text-[10px] md:text-xs text-slate-400">Half Days</p>
+              </div>
+              <div className="rounded-xl bg-rose-400/[0.07] px-3 py-2 text-center">
+                <p className="text-lg md:text-xl font-bold text-rose-300">{absentCount}</p>
+                <p className="text-[10px] md:text-xs text-slate-400">Absent</p>
+              </div>
+              <div className="rounded-xl bg-violet-400/[0.07] px-3 py-2 text-center">
+                <p className="text-lg md:text-xl font-bold text-violet-300">{onLeaveCount}</p>
+                <p className="text-[10px] md:text-xs text-slate-400">On Leave</p>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              From your recent attendance log. Net hours exclude lunch breaks.
+            </p>
           </div>
 
           {isAdmin && (
@@ -476,6 +577,9 @@ export default function AttendanceView({
                       </span>
                       {h.hours_worked > 0 && (
                         <p className="text-[10px] md:text-xs text-slate-500 mt-0.5">{h.hours_worked}h</p>
+                      )}
+                      {(h.total_break_mins || 0) > 0 && (
+                        <p className="text-[10px] text-slate-600">🕐 {h.total_break_mins}m break</p>
                       )}
                     </div>
                   </div>

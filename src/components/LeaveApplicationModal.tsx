@@ -47,16 +47,16 @@ export default function LeaveApplicationModal({ onClose, userName, userRole }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:justify-center md:p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-night-850 rounded-2xl shadow-xl ring-1 ring-white/10 shadow-black/50">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          <h3 className="text-base font-semibold">Apply for Leave</h3>
+      <div className="relative flex w-full max-h-[92dvh] max-w-md flex-col overflow-hidden rounded-t-2xl bg-night-850 shadow-xl shadow-black/50 ring-1 ring-white/10 md:rounded-2xl">
+        <h3 className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-white/10 text-base font-semibold">
+          Apply for Leave
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10">
             <X className="h-4 w-4" />
           </button>
-        </div>
-        <div className="px-5 py-4">
+        </h3>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
           {error && (
             <p className="mb-3 rounded-lg bg-rose-400/10 text-rose-300 text-sm px-3 py-2">{error}</p>
           )}
@@ -96,6 +96,13 @@ export default function LeaveApplicationModal({ onClose, userName, userRole }: {
           </form>
         </div>
       </div>
+      <button
+        onClick={onClose}
+        aria-label="Close leave form"
+        className="md:hidden fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-white shadow-2xl shadow-black/60 border border-gray-600 active:scale-95 transition-transform"
+      >
+        <X className="h-6 w-6" />
+      </button>
     </div>
   );
 }

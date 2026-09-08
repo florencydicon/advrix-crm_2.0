@@ -6,6 +6,7 @@ import { query } from "@/lib/db";
 import { hasPermission } from "@/lib/permissions";
 import { createNotification, notifyRoles } from "@/lib/notifications";
 import { logActivity } from "@/lib/activity";
+import { ensureAttendanceSettingsTable } from "@/lib/data";
 import type { LeaveType } from "@/lib/types";
 
 export async function applyLeaveAction(formData: FormData) {
@@ -31,9 +32,34 @@ export async function applyLeaveAction(formData: FormData) {
 
   const days = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
 
+  // Leave-quota engine: paid leave types consume the monthly paid-leave quota
+  // (attendance_settings.monthly_paid_leaves). Any leave request that would
+  // exceed the quota is recorded as Leave Without Pay (is_paid = false).
+  const PAID_TYPES: LeaveType[] = ["sick", "casual", "earned", "emergency"];
+  let isPaid = true;
+  if (!PAID_TYPES.includes(leaveType)) {
+    isPaid = false;
+  } else {
+    await ensureAttendanceSettingsTable();
+    const monthly = (
+      await query<{ monthly_paid_leaves: number }>(`SELECT monthly_paid_leaves FROM attendance_settings WHERE id = 1`)
+    )[0];
+    const quota = monthly?.monthly_paid_leaves ?? 1;
+    const monthPrefix = startDate.slice(0, 7);
+    const used = (
+      await query<{ used: string }>(
+        `SELECT COALESCE(SUM(days), 0)::text AS used FROM leaves
+         WHERE user_id = $1 AND is_paid = true AND to_char(start_date, 'YYYY-MM') = $2`,
+        [session.sub, monthPrefix]
+      )
+    )[0];
+    const usedDays = Number(used?.used || 0);
+    if (usedDays + days > quota) isPaid = false;
+  }
+
   await query(
-    `INSERT INTO leaves (user_id, leave_type, start_date, end_date, days, reason) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [session.sub, leaveType, startDate, endDate, days, reason.trim()]
+    `INSERT INTO leaves (user_id, leave_type, start_date, end_date, days, reason, is_paid) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [session.sub, leaveType, startDate, endDate, days, reason.trim(), isPaid]
   );
 
   await notifyRoles(["SUPER_ADMIN"], {

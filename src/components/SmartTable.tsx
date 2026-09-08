@@ -139,39 +139,57 @@ export default function SmartTable<T>({
             {emptySubtitle && <p className="text-xs text-slate-500 mt-0.5">{emptySubtitle}</p>}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-white/10 bg-white/[0.03]">
-                  {columns.map((col) => (
-                    <th
-                      key={col.key}
-                      className={`px-4 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider ${
-                        col.sortable ? "cursor-pointer hover:text-slate-200 select-none" : ""
-                      } ${col.className || ""}`}
-                    >
-                      {col.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/[0.06]">
-                {data.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-white/[0.04] transition-colors">
+          <>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/[0.03]">
                     {columns.map((col) => (
-                      <td key={col.key} className={`px-4 py-2 ${col.className || ""}`}>
-                        {col.render(item)}
-                      </td>
+                      <th
+                        key={col.key}
+                        className={`px-4 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider ${
+                          col.sortable ? "cursor-pointer hover:text-slate-200 select-none" : ""
+                        } ${col.className || ""}`}
+                      >
+                        {col.label}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-white/[0.06]">
+                  {data.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-white/[0.04] transition-colors">
+                      {columns.map((col) => (
+                        <td key={col.key} className={`px-4 py-2 ${col.className || ""}`}>
+                          {col.render(item)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="md:hidden divide-y divide-white/[0.06]">
+              {data.map((item, idx) => (
+                <div key={idx} className="px-4 py-3">
+                  {columns.map((col) => {
+                    const v = col.render(item);
+                    if (v === null || v === undefined || v === "") return null;
+                    return (
+                      <div key={col.key} className="flex items-start justify-between gap-3 py-0.5">
+                        <span className="text-[11px] text-slate-500 min-w-[72px] max-w-[45%] truncate">{col.label}</span>
+                        <span className="text-xs text-slate-100 text-right">{v}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-2 border-t border-white/10 bg-white/[0.02]">
+          <div className="flex items-center justify-between px-4 py-2 border-t border-white/10 bg-white/[0.02] flex-wrap gap-2">
             <p className="text-[11px] text-slate-500">
               {total} items · Page {page}/{totalPages}
             </p>

@@ -100,7 +100,7 @@ export function TaskProgress({ done, total }: { done: number; total: number }) {
   );
 }
 
-const PRIORITY_META: Record<string, { label: string; cls: string }> = {
+export const PRIORITY_META: Record<string, { label: string; cls: string }> = {
   low: { label: "Low", cls: "bg-white/10 text-slate-400" },
   medium: { label: "Medium", cls: "bg-sky-400/10 text-sky-300" },
   high: { label: "High", cls: "bg-rose-400/10 text-rose-300" },
@@ -176,17 +176,25 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:justify-center md:p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-night-850 rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-white/10">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-          <h3 className="text-base font-semibold text-white">{title}</h3>
+      <div className="relative flex w-full max-h-[92dvh] flex-col overflow-hidden rounded-t-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 md:max-h-[75vh] md:w-full md:max-w-lg md:rounded-2xl">
+        <h3 className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-white/[0.06] text-base font-semibold text-white">
+          <span className="pr-2 truncate">{title}</span>
           <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors">
             <X className="h-4 w-4" />
           </button>
-        </div>
-        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">{children}</div>
+        </h3>
+        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
       </div>
+      {/* Mobile close FAB (desktop keeps the header X). */}
+      <button
+        onClick={onClose}
+        aria-label="Close dialog"
+        className="md:hidden fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-white shadow-2xl shadow-black/60 border border-gray-600 active:scale-95 transition-transform"
+      >
+        <X className="h-6 w-6" />
+      </button>
     </div>
   );
 }

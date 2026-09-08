@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { FileText, CheckCircle2, Plus, Search } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { FileText, CheckCircle2, Plus } from "lucide-react";
 import type { Client, ContentItem, Project, UserRow, StandaloneContentStatus } from "@/lib/types";
 import { STATUS_META } from "@/components/ui";
+import { useAdvancedFilters, AdvancedFilterBar } from "@/components/AdvancedFilterBar";
+import { useSilentPoll } from "@/lib/useSilentPoll";
 import ContentModal from "@/components/ContentModal";
 import BulkActionBar from "@/components/BulkActionBar";
 import { useToast } from "@/components/Toast";
@@ -75,26 +77,54 @@ export default function ContentHub({
   canManage: boolean;
   canEdit: boolean;
 }) {
-  const [search, setSearch] = useState("");
+  // Silent 3s background sync: refreshes only the `items` array feeding the
+  // table & cards. The open ContentModal's local state (typed content/remarks)
+  // is untouched, and the page is never reloaded.
+  const pollItems = useSilentPoll(
+    items,
+    async () => {
+      const res = await fetch("/api/poll/content", { cache: "no-store" });
+      if (!res.ok) throw new Error("poll failed");
+      const json = (await res.json()) as { items: ContentItem[] };
+      return json.items;
+    },
+    3000
+  );
+  items = pollItems;
+
   const [tab, setTab] = useState<"active" | "history">("active");
-  const [fltClient, setFltClient] = useState("");
-  const [fltAssignee, setFltAssignee] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ContentItem | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const { toast } = useToast();
   const router = useRouter();
-  const searchParams = useSearchParams();
 
-  // Deep-link routing: ?clientId=xxx pre-filters the Client dropdown.
-  const clientFilterApplied = useRef<string | null>(null);
-  useEffect(() => {
-    const cid = searchParams.get("clientId");
-    if (!cid || clientFilterApplied.current === cid) return;
-    if (!items.some((t) => t.client_id === cid)) return;
-    clientFilterApplied.current = cid;
-    setFltClient(cid);
-  }, [searchParams, items]);
+  // Shared filter bar: Client + Assignee + Content Status. Selects mirror to the
+  // URL (?clientId=…&stage=…&status=…), so ?clientId= deep links keep working.
+  const af = useAdvancedFilters(items, {
+    client: {
+      id: (t) => t.client_id,
+      label: (t) => (t.client_company || t.client_name).trim(),
+    },
+    stage: {
+      values: (t) => [t.assignee_name || "Unassigned"],
+    },
+    status: {
+      value: (t) => t.status,
+      label: (v) => (v === "completed" ? "Completed" : "Active"),
+      order: ["active", "completed"],
+    },
+    searchText: (t) =>
+      [
+        t.title,
+        t.body || "",
+        t.client_name,
+        t.client_company || "",
+        t.assignee_name || "",
+        t.task_project_name || "",
+      ].join(" "),
+    labels: { stage: "Assignee", status: "Content Status" },
+  });
 
   const toggleSelect = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
@@ -119,47 +149,11 @@ export default function ContentHub({
   };
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
     const inTab = items.filter((t) =>
       tab === "history" ? t.status === "completed" : t.status !== "completed"
     );
-    return inTab.filter((t) => {
-      if (fltClient && t.client_id !== fltClient) return false;
-      if (fltAssignee && (t.assignee_name || "Unassigned") !== fltAssignee) return false;
-      if (!q) return true;
-      return (
-        t.title.toLowerCase().includes(q) ||
-        (t.body || "").toLowerCase().includes(q) ||
-        t.client_name.toLowerCase().includes(q) ||
-        (t.client_company || "").toLowerCase().includes(q) ||
-        (t.assignee_name || "").toLowerCase().includes(q)
-      );
-    });
-  }, [items, search, tab, fltClient, fltAssignee]);
-
-  const clientOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const t of items) {
-      const label = t.client_company || t.client_name;
-      if (label && !seen.has(t.client_id)) seen.set(t.client_id, label);
-    }
-    return [...seen.entries()]
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [items]);
-
-  const assigneeOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const t of items) s.add(t.assignee_name || "Unassigned");
-    return [...s].sort((a, b) => a.localeCompare(b));
-  }, [items]);
-
-  const hasFilters = !!(search.trim() || fltClient || fltAssignee);
-  const clearFilters = () => {
-    setSearch("");
-    setFltClient("");
-    setFltAssignee("");
-  };
+    return inTab.filter((t) => af.matches(t));
+  }, [items, tab, af.matches]);
 
   const activeCount = items.filter((t) => t.status !== "completed").length;
   const historyCount = items.filter((t) => t.status === "completed").length;
@@ -286,57 +280,14 @@ export default function ContentHub({
           <button
             type="button"
             onClick={openAdd}
-            className="btn-primary !py-2.5 text-sm ml-auto"
+            className="btn-primary !py-2.5 text-sm ml-auto w-full sm:w-auto justify-center"
           >
             <Plus className="h-4 w-4" /> Add Content
           </button>
         )}
       </div>
 
-      {/* Search + filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:max-w-xs sm:flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search content, clients, assignees…"
-            className="input !py-1.5 text-xs w-full !pl-9"
-          />
-        </div>
-        <select
-          aria-label="Filter by client"
-          value={fltClient}
-          onChange={(e) => setFltClient(e.target.value)}
-          className="rounded-lg border border-white/10 bg-night-900 px-2.5 py-1.5 text-xs text-slate-300 focus:border-brand-300/50 focus:outline-none cursor-pointer max-w-[160px]"
-        >
-          <option value="">All Clients</option>
-          {clientOptions.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by assignee"
-          value={fltAssignee}
-          onChange={(e) => setFltAssignee(e.target.value)}
-          className="rounded-lg border border-white/10 bg-night-900 px-2.5 py-1.5 text-xs text-slate-300 focus:border-brand-300/50 focus:outline-none cursor-pointer max-w-[160px]"
-        >
-          <option value="">All Assignees</option>
-          {assigneeOptions.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-[11px] text-slate-400 hover:text-white transition-colors"
-          >
-            Clear
-          </button>
-        )}
-      </div>
+      <AdvancedFilterBar api={af} />
 
       {filtered.length === 0 ? (
         <div className="card py-8 text-center">

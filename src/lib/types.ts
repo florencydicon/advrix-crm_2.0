@@ -288,6 +288,9 @@ export interface Attendance {
   latitude: number | null;
   longitude: number | null;
   location_text: string | null;
+  break_start_time: string | null;
+  break_end_time: string | null;
+  total_break_mins: number;
   created_at: string;
 }
 

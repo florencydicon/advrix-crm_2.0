@@ -2,10 +2,12 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Users, Upload, CheckCircle2, Filter, ChevronDown, MoreVertical, AlertTriangle } from "lucide-react";
+import { Users, Upload, CheckCircle2, MoreVertical, AlertTriangle } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
-import { StatusBadge, PriorityBadge, STATUS_META, DeadlineBadge } from "@/components/ui";
+import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
+import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import { useSilentPoll } from "@/lib/useSilentPoll";
 import { isOverdue } from "@/lib/deadlines";
 import { formatClientName } from "@/lib/utils";
 import TaskModal from "@/components/TaskModal";
@@ -27,15 +29,6 @@ function taskTypeLabel(groupKey: string | null): string {
   return map[base] || "Task";
 }
 import { hasPermission } from "@/lib/permissions";
-
-const TABS = [
-  { key: "", label: "All" },
-  { key: "approved", label: "Ready to Start" },
-  { key: "client_review", label: "Client Review" },
-  { key: "uploading", label: "Uploading" },
-  { key: "submitted", label: "Awaiting Review" },
-  { key: "completed", label: "Completed" },
-];
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
@@ -64,11 +57,22 @@ export default function SmmDashboard({
   roleKey: string;
   permissions?: string[];
 }) {
+  // Silent 3s background sync: refreshes only the task/team arrays feeding the
+  // table & cards. Pages are never reloaded and modal/textarea state survives.
+  const live = useSilentPoll(
+    { tasks, team },
+    async () => {
+      const res = await fetch("/api/poll/data", { cache: "no-store" });
+      if (!res.ok) throw new Error("poll failed");
+      return (await res.json()) as { tasks: Task[]; team: UserRow[] };
+    },
+    3000
+  );
+  tasks = live.tasks;
+  team = live.team;
+
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [filterOpen, setFilterOpen] = useState(false);
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const isMobile = useIsMobile();
   const { toast } = useToast();
@@ -97,6 +101,33 @@ export default function SmmDashboard({
 
   const completed = (t: Task) => COMPLETED_KEYS.includes(t.status);
 
+  const af = useAdvancedFilters(tasks, {
+    client: {
+      id: (t) => t.client_id,
+      label: (t) => formatClientName(t.client_company, t.client_name),
+    },
+    project: { value: (t) => t.project_name },
+    stage: { values: taskStageValues, exclude: ["Unassigned"] },
+    deadline: {
+      date: (t) => t.due_date,
+      completed: (t) => t.status === "completed",
+    },
+    status: { value: (t) => t.status, order: STATUS_ORDER },
+    priority: { value: (t) => t.priority },
+    searchText: (t) =>
+      [
+        formatClientName(t.client_company, t.client_name),
+        t.project_name || "",
+        t.title || "",
+        taskStageValues(t).join(" "),
+        t.status || "",
+        STATUS_META[t.status]?.label || "",
+        t.priority || "",
+        PRIORITY_META[t.priority]?.label || "",
+        t.due_date || "",
+      ].join(" "),
+  });
+
   const metrics = [
     { label: "Ready to Start", value: tasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
     { label: "Client Review", value: tasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
@@ -104,31 +135,7 @@ export default function SmmDashboard({
     { label: "Completed", value: tasks.filter((t) => completed(t)).length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return tasks.filter((t) => {
-      if (statusFilter) {
-        if (statusFilter === "completed") {
-          if (!completed(t)) return false;
-        } else if (t.status !== statusFilter) return false;
-      }
-      if (!q) return true;
-      return (
-        t.title.toLowerCase().includes(q) ||
-        t.project_name.toLowerCase().includes(q) ||
-        formatClientName(t.client_company, t.client_name).toLowerCase().includes(q)
-      );
-    });
-  }, [tasks, search, statusFilter]);
-
-  const tabCounts = TABS.map((tab) => ({
-    ...tab,
-    count: tab.key
-      ? tab.key === "completed"
-        ? tasks.filter((t) => completed(t)).length
-        : tasks.filter((t) => t.status === tab.key).length
-      : tasks.length,
-  }));
+  const filtered = useMemo(() => tasks.filter((t) => af.matches(t)), [tasks, af.matches]);
 
   const refresh = async () => {
     router.refresh();
@@ -245,72 +252,12 @@ export default function SmmDashboard({
         ))}
       </div>
 
-      <div className="space-y-2">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search tasks, projects, clients…"
-          className="input !py-1.5 text-xs w-full sm:max-w-xs"
-        />
-        {/* Desktop: scrollable pills */}
-        <div className="hidden md:flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-          {tabCounts.map((tab) => (
-            <button
-              key={tab.key || "all"}
-              onClick={() => setStatusFilter(statusFilter === tab.key ? "" : tab.key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-                statusFilter === tab.key
-                  ? "bg-brand-300 text-night-950 shadow-sm"
-                  : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
-              }`}
-            >
-              {tab.label}
-              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${statusFilter === tab.key ? "bg-brand-300/20 text-brand-300" : "bg-white/10 text-slate-400"}`}>
-                {tab.count}
-              </span>
-            </button>
-          ))}
-        </div>
-        {/* Mobile: dropdown with filter icon */}
-        <div className="md:hidden relative">
-          <button
-            onClick={() => setFilterOpen((o) => !o)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-slate-300"
-          >
-            <Filter className="h-3.5 w-3.5 text-slate-400" />
-            <span>Filter: {TABS.find((f) => f.key === statusFilter)?.label || "All"}</span>
-            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/10 text-[10px] text-slate-400">
-              {tabCounts.find((t) => t.key === statusFilter)?.count ?? tasks.length}
-            </span>
-            <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
-          </button>
-          {filterOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
-              <div className="absolute z-20 mt-2 w-56 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden">
-                {tabCounts.map((tab) => (
-                  <button
-                    key={tab.key || "all"}
-                    onClick={() => { setStatusFilter(tab.key); setFilterOpen(false); }}
-                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors ${
-                      statusFilter === tab.key ? "bg-brand-300/10 text-brand-300" : "text-slate-300 hover:bg-white/[0.06]"
-                    }`}
-                  >
-                    <span>{tab.label}</span>
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${statusFilter === tab.key ? "bg-brand-300/20 text-brand-300" : "bg-white/10 text-slate-400"}`}>{tab.count}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <AdvancedFilterBar api={af} />
 
       {filtered.length === 0 ? (
         <div className="card py-8 text-center">
           <p className="text-sm font-medium text-slate-300">
-            {tasks.length === 0 ? "No SMM tasks yet" : "No tasks match your search."}
+            {tasks.length === 0 ? "No SMM tasks yet" : "No tasks match your filters."}
           </p>
           <p className="text-xs text-slate-500 mt-1">SMM tasks will appear here once projects are approved.</p>
         </div>

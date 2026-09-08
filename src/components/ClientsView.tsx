@@ -271,11 +271,11 @@ export default function ClientsView({
           <p className="text-sm text-slate-500">Accounts and tasks flowing through the agency.</p>
         </div>
         {canCreate && (
-          <div className="flex gap-1.5">
-            <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={() => setBriefModal(true)}>
+          <div className="flex w-full sm:w-auto gap-1.5">
+            <button className="btn-secondary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={() => setBriefModal(true)}>
               <FilePlus2 className="h-3.5 w-3.5" /> Add Tasks
             </button>
-            <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => setClientModal(true)}>
+            <button className="btn-primary !py-1.5 !px-3 text-xs flex-1 sm:flex-none justify-center" onClick={() => setClientModal(true)}>
               <Plus className="h-3.5 w-3.5" /> New Client
             </button>
           </div>

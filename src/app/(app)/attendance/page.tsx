@@ -14,6 +14,7 @@ import {
 } from "@/lib/data";
 import AttendanceView from "@/components/AttendanceView";
 import { getRecentActivity } from "@/lib/activity";
+import { getAttendanceSettings } from "@/lib/data";
 
 export const metadata = { title: "Attendance & Leave — Advrix CRM" };
 
@@ -23,7 +24,10 @@ async function ensureLocationColumns() {
       ALTER TABLE attendance
         ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
         ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
-        ADD COLUMN IF NOT EXISTS location_text TEXT
+        ADD COLUMN IF NOT EXISTS location_text TEXT,
+        ADD COLUMN IF NOT EXISTS break_start_time TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS break_end_time TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS total_break_mins INT NOT NULL DEFAULT 0
     `);
     await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remarks TEXT`);
     await query(`
@@ -74,9 +78,11 @@ export default async function AttendancePage({
     isAdmin ? getAllLeaves({ status: "pending" }) : Promise.resolve([]),
   ]);
 
+  const settings = await getAttendanceSettings();
+
   // Admin-only monthly reports.
   const [attendanceReport, leaveReport] = isAdmin
-    ? await Promise.all([getAttendanceReport(start, end), getLeaveReport(start, end)])
+    ? await Promise.all([getAttendanceReport(start, end, settings.allowed_break_mins), getLeaveReport(start, end)])
     : [[], []];
 
   // Admin-only permanent audit trail.
@@ -99,6 +105,7 @@ export default async function AttendancePage({
       attendanceReport={attendanceReport}
       leaveReport={leaveReport}
       activity={activity}
+      settings={settings}
     />
   );
 }

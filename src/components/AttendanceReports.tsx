@@ -60,10 +60,10 @@ export default function AttendanceReports({
     lines.push(`Advrix Media PVT LTD — Attendance & Leave Report,${csvEscape(label)}`);
     lines.push("");
     lines.push("ATTENDANCE SUMMARY");
-    lines.push(["Employee", "Role", "Present", "Half Days", "Late", "On Leave", "Absent", "Total Hours"].map(csvEscape).join(","));
+    lines.push(["Employee", "Role", "Present", "Half Days", "Late", "On Leave", "Absent", "Total Hours", "Break (m)", "Overbreak"].map(csvEscape).join(","));
     for (const r of attendanceReport) {
       lines.push(
-        [r.full_name, r.role_label, r.present, r.half_days, r.late, r.on_leave, r.absent, r.total_hours]
+        [r.full_name, r.role_label, r.present, r.half_days, r.late, r.on_leave, r.absent, r.total_hours, r.total_break_mins, r.overbreak_days]
           .map(csvEscape)
           .join(",")
       );
@@ -93,7 +93,7 @@ export default function AttendanceReports({
     const attRows = attendanceReport
       .map(
         (r) =>
-          `<tr><td>${escapeHtml(r.full_name)}</td><td>${escapeHtml(r.role_label)}</td><td style="text-align:center">${r.present}</td><td style="text-align:center">${r.half_days}</td><td style="text-align:center">${r.late}</td><td style="text-align:center">${r.on_leave}</td><td style="text-align:center">${r.absent}</td><td style="text-align:right">${r.total_hours.toFixed(1)}</td></tr>`
+          `<tr><td>${escapeHtml(r.full_name)}</td><td>${escapeHtml(r.role_label)}</td><td style="text-align:center">${r.present}</td><td style="text-align:center">${r.half_days}</td><td style="text-align:center">${r.late}</td><td style="text-align:center">${r.on_leave}</td><td style="text-align:center">${r.absent}</td><td style="text-align:right">${r.total_hours.toFixed(1)}</td><td style="text-align:right">${r.total_break_mins}</td><td style="text-align:center">${r.overbreak_days}</td></tr>`
       )
       .join("");
     const leaveRows = leaveReport
@@ -115,8 +115,8 @@ export default function AttendanceReports({
       <h1>Advrix Media PVT LTD — Attendance &amp; Leave Report</h1>
       <p class="meta">Period: <strong>${label}</strong> · Generated ${now.toLocaleString()}</p>
       <h2>Attendance Summary</h2>
-      <table><thead><tr><th>Employee</th><th>Role</th><th>Present</th><th>Half Days</th><th>Late</th><th>On Leave</th><th>Absent</th><th>Total Hours</th></tr></thead>
-      <tbody>${attRows || '<tr><td colspan="8">No data</td></tr>'}</tbody></table>
+      <table><thead><tr><th>Employee</th><th>Role</th><th>Present</th><th>Half Days</th><th>Late</th><th>On Leave</th><th>Absent</th><th>Total Hours</th><th>Break (m)</th><th>Overbreak</th></tr></thead>
+      <tbody>${attRows || '<tr><td colspan="10">No data</td></tr>'}</tbody></table>
       <h2>Leave Records</h2>
       <table><thead><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th><th>Reason</th></tr></thead>
       <tbody>${leaveRows || '<tr><td colspan="7">No leaves this period</td></tr>'}</tbody></table>
@@ -146,11 +146,11 @@ export default function AttendanceReports({
             <FileSpreadsheet className="h-4 w-4 text-brand-300" />
             <h2 className="font-semibold text-sm">Monthly Reports</h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch gap-2 sm:items-center">
             <select
               value={month}
               onChange={(e) => goMonth(Number(e.target.value), year)}
-              className="input !py-1.5 text-xs !w-auto"
+              className="input !py-1.5 text-xs w-full sm:!w-auto"
               aria-label="Month"
             >
               {MONTHS.map((m, i) => (
@@ -160,25 +160,25 @@ export default function AttendanceReports({
             <select
               value={year}
               onChange={(e) => goMonth(month, Number(e.target.value))}
-              className="input !py-1.5 text-xs !w-auto"
+              className="input !py-1.5 text-xs w-full sm:!w-auto"
               aria-label="Year"
             >
               {years.map((y) => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
-            <button className="btn-secondary !py-1.5 !px-3 text-xs" onClick={exportCsv}>
+            <button className="btn-secondary !py-1.5 !px-3 text-xs w-full sm:w-auto justify-center" onClick={exportCsv}>
               <Download className="h-3.5 w-3.5" /> Excel
             </button>
-            <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={printPdf}>
+            <button className="btn-primary !py-1.5 !px-3 text-xs w-full sm:w-auto justify-center" onClick={printPdf}>
               <Printer className="h-3.5 w-3.5" /> PDF
             </button>
           </div>
         </div>
       </div>
 
-      {/* Attendance summary */}
-      <div className="card overflow-x-auto">
+      {/* Attendance summary — desktop table */}
+      <div className="hidden md:block card overflow-x-auto">
         <div className="px-4 py-3 border-b border-white/10">
           <h3 className="font-semibold text-sm">Attendance Summary — {label}</h3>
         </div>
@@ -196,6 +196,8 @@ export default function AttendanceReports({
                 <th className="px-3 py-2 text-center text-[10px] font-semibold text-violet-300 uppercase tracking-wider">On Leave</th>
                 <th className="px-3 py-2 text-center text-[10px] font-semibold text-rose-300 uppercase tracking-wider">Absent</th>
                 <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hours</th>
+                <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Break (m)</th>
+                <th className="px-3 py-2 text-center text-[10px] font-semibold text-rose-300 uppercase tracking-wider">Overbreak</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.05]">
@@ -217,6 +219,14 @@ export default function AttendanceReports({
                   <td className="px-3 py-2 text-center text-violet-300">{r.on_leave}</td>
                   <td className="px-3 py-2 text-center text-rose-300">{r.absent}</td>
                   <td className="px-3 py-2 text-right text-slate-200">{r.total_hours.toFixed(1)}</td>
+                  <td className="px-3 py-2 text-right text-slate-300">{r.total_break_mins}</td>
+                  <td className="px-3 py-2 text-center">
+                    {r.overbreak_days > 0 ? (
+                      <span className="badge bg-rose-400/10 text-rose-300" title="Days where break time exceeded the allowed limit">{r.overbreak_days}</span>
+                    ) : (
+                      <span className="text-slate-600">0</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -224,8 +234,58 @@ export default function AttendanceReports({
         )}
       </div>
 
-      {/* Leave records */}
-      <div className="card overflow-x-auto">
+      {/* Attendance summary — mobile cards */}
+      <div className="md:hidden card">
+        <div className="px-4 py-3 border-b border-white/10">
+          <h3 className="font-semibold text-sm">Attendance Summary — {label}</h3>
+        </div>
+        {attendanceReport.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-slate-500">No data for this period.</p>
+        ) : (
+          <div className="divide-y divide-white/[0.06]">
+            {attendanceReport.map((r) => (
+              <div key={r.user_id} className="px-4 py-3">
+                <button
+                  onClick={() => setSelectedEmployee({ userId: r.user_id, name: r.full_name, role: r.role_label })}
+                  className="flex items-center gap-1.5 text-sm font-medium text-white"
+                >
+                  {r.full_name}
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                </button>
+                <p className="mt-0.5 text-[11px] text-slate-500">{r.role_label}</p>
+                <div className="mt-2 grid grid-cols-4 gap-2 text-center">
+                  <div className="rounded-lg bg-white/[0.03] py-1.5">
+                    <p className="text-sm font-bold text-emerald-300">{r.present}</p>
+                    <p className="text-[10px] text-slate-500">Present</p>
+                  </div>
+                  <div className="rounded-lg bg-white/[0.03] py-1.5">
+                    <p className="text-sm font-bold text-slate-300">{r.half_days}</p>
+                    <p className="text-[10px] text-slate-500">Half Days</p>
+                  </div>
+                  <div className="rounded-lg bg-white/[0.03] py-1.5">
+                    <p className="text-sm font-bold text-amber-300">{r.late}</p>
+                    <p className="text-[10px] text-slate-500">Late</p>
+                  </div>
+                  <div className="rounded-lg bg-white/[0.03] py-1.5">
+                    <p className="text-sm font-bold text-rose-300">{r.absent}</p>
+                    <p className="text-[10px] text-slate-500">Absent</p>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>On Leave: {r.on_leave}</span>
+                  <span>
+                    Hours: {r.total_hours.toFixed(1)}h · Break: {r.total_break_mins}m
+                    {r.overbreak_days > 0 && <span className="text-rose-300"> · {r.overbreak_days} overbreak</span>}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Leave records — desktop table */}
+      <div className="hidden md:block card overflow-x-auto">
         <div className="px-4 py-3 border-b border-white/10">
           <h3 className="font-semibold text-sm">Leave Records — {label}</h3>
         </div>
@@ -266,6 +326,39 @@ export default function AttendanceReports({
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Leave records — mobile cards */}
+      <div className="md:hidden card">
+        <div className="px-4 py-3 border-b border-white/10">
+          <h3 className="font-semibold text-sm">Leave Records — {label}</h3>
+        </div>
+        {leaveReport.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-slate-500">No leaves recorded in this period.</p>
+        ) : (
+          <div className="divide-y divide-white/[0.06]">
+            {leaveReport.map((l) => (
+              <div key={l.id} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-white truncate">{l.full_name}</p>
+                  <span className={`badge shrink-0 ${
+                    l.status === "approved" ? "bg-emerald-400/10 text-emerald-300"
+                    : l.status === "rejected" ? "bg-rose-400/10 text-rose-300"
+                    : "bg-amber-400/10 text-amber-300"
+                  }`}>
+                    {l.status}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-slate-500 capitalize">{l.leave_type}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400">
+                  <span>{isoDate(l.start_date)} → {isoDate(l.end_date)}</span>
+                  <span className="font-semibold text-slate-200">{l.days} day{l.days === 1 ? "" : "s"}</span>
+                </div>
+                {l.reason && <p className="mt-1.5 text-xs text-slate-500">{l.reason}</p>}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

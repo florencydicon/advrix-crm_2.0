@@ -2,8 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import { query } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
+import {
+  getAttendanceSettings,
+  ensureAttendanceSettingsTable,
+  ATTENDANCE_SETTING_KEYS,
+  DEFAULT_ATTENDANCE_SETTINGS,
+  type AttendanceSettings,
+} from "@/lib/data";
 
 async function ensureLocationColumns() {
   try {
@@ -11,7 +19,10 @@ async function ensureLocationColumns() {
       ALTER TABLE attendance
         ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
         ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
-        ADD COLUMN IF NOT EXISTS location_text TEXT
+        ADD COLUMN IF NOT EXISTS location_text TEXT,
+        ADD COLUMN IF NOT EXISTS break_start_time TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS break_end_time TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS total_break_mins INT NOT NULL DEFAULT 0
     `);
     await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remarks TEXT`);
     await query(`
@@ -53,9 +64,11 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
     return { error: "Already punched in today" };
   }
 
+  const settings = await getAttendanceSettings();
+
   const punchInTime = new Date();
-  const lateThreshold = new Date();
-  lateThreshold.setHours(10, 0, 0, 0);
+  const lateThreshold = new Date(settings.shift_start_time + "Z");
+  lateThreshold.setMinutes(lateThreshold.getMinutes() + settings.late_grace_period_mins);
   const status = punchInTime > lateThreshold ? "late" : "present";
 
   if (existing[0]) {
@@ -94,8 +107,8 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
   const now = new Date();
 
   // Look for today's punch-in first, then yesterday's (handles midnight crossover).
-  let existing = await query<{ id: string; punch_in: string | null; punch_out: string | null; date: string }>(
-    `SELECT id, punch_in, punch_out, date::text AS date FROM attendance WHERE user_id = $1 AND date = $2`,
+  let existing = await query<{ id: string; punch_in: string | null; punch_out: string | null; date: string; total_break_mins?: number }>(
+    `SELECT id, punch_in, punch_out, date::text AS date, COALESCE(total_break_mins, 0) AS total_break_mins FROM attendance WHERE user_id = $1 AND date = $2`,
     [session.sub, now.toISOString().slice(0, 10)]
   );
 
@@ -103,8 +116,8 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
     // Check yesterday's record for punch-in around midnight
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
-    existing = await query<{ id: string; punch_in: string | null; punch_out: string | null; date: string }>(
-      `SELECT id, punch_in, punch_out, date::text AS date FROM attendance WHERE user_id = $1 AND date = $2`,
+    existing = await query<{ id: string; punch_in: string | null; punch_out: string | null; date: string; total_break_mins?: number }>(
+      `SELECT id, punch_in, punch_out, date::text AS date, COALESCE(total_break_mins, 0) AS total_break_mins FROM attendance WHERE user_id = $1 AND date = $2`,
       [session.sub, yesterday.toISOString().slice(0, 10)]
     );
   }
@@ -118,13 +131,30 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
     return { error: "Already punched out today" };
   }
 
+  const settings = await getAttendanceSettings();
+
   const punchIn = new Date(record.punch_in);
   const punchOut = now;
-  const hours = (punchOut.getTime() - punchIn.getTime()) / 3600000;
+  const breaksMins = record.total_break_mins ?? 0;
+  // Net hours worked = elapsed time minus lunch/break time.
+  const netHours = (punchOut.getTime() - punchIn.getTime()) / 3600000 - breaksMins / 60;
+  const netHoursRounded = Math.max(0, Math.round(netHours * 100) / 100);
+
+  // Classify against settings thresholds (net hours).
+  let status = "present";
+  if (netHoursRounded < settings.minimum_hours_for_half_day) {
+    status = breaksMins > 0 || netHoursRounded > 0 ? "absent" : "present";
+  } else if (netHoursRounded < settings.minimum_hours_for_full_day) {
+    status = "half_day";
+  }
+  // Keep / adopt "late" label when the punch-in was flagged late and they
+  // stayed the full day.
+  const punchInLate = new Date(record.punch_in) > new Date(new Date(settings.shift_start_time + "Z").setMinutes(new Date(settings.shift_start_time + "Z").getMinutes() + settings.late_grace_period_mins));
+  if (status === "present" && punchInLate) status = "late";
 
   await query(
-    `UPDATE attendance SET punch_out = $1, hours_worked = $2, latitude = $3, longitude = $4, location_text = $5 WHERE id = $6`,
-    [punchOut.toISOString(), Math.round(hours * 100) / 100, loc.latitude, loc.longitude, loc.location_text, record.id]
+    `UPDATE attendance SET punch_out = $1, hours_worked = $2, status = $3, latitude = $4, longitude = $5, location_text = $6 WHERE id = $7`,
+    [punchOut.toISOString(), netHoursRounded, status, loc.latitude, loc.longitude, loc.location_text, record.id]
   );
 
   await logActivity({
@@ -134,7 +164,9 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
     metadata: {
       punch_in: record.punch_in,
       punch_out: punchOut.toISOString(),
-      hours_worked: Math.round(hours * 100) / 100,
+      hours_worked: netHoursRounded,
+      breaks_mins: breaksMins,
+      status,
       latitude: loc.latitude,
       longitude: loc.longitude,
       location_text: loc.location_text,
@@ -142,5 +174,115 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
   });
 
   revalidatePath("/attendance");
-  return { ok: true, hoursWorked: Math.round(hours * 100) / 100 };
+  return { ok: true, hoursWorked: netHoursRounded, breaksMins };
+}
+
+export async function startBreakAction() {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const record = (
+    await query<{ id: string; punch_in: string | null; punch_out: string | null; break_start_time: string | null; break_end_time: string | null; total_break_mins: number }>(
+      `SELECT id, punch_in, punch_out, break_start_time, break_end_time, COALESCE(total_break_mins, 0) AS total_break_mins
+       FROM attendance WHERE user_id = $1 AND date = $2`,
+      [session.sub, today]
+    )
+  )[0];
+
+  if (!record?.punch_in) return { error: "You haven't punched in today" };
+  if (record.punch_out) return { error: "You've already punched out" };
+  if (record.break_start_time && !record.break_end_time) {
+    return { error: "A break is already in progress. Punch out of your break first." };
+  }
+
+  await query(
+    `UPDATE attendance SET break_start_time = $1 WHERE id = $2`,
+    [now.toISOString(), record.id]
+  );
+  revalidatePath("/attendance");
+  return { ok: true };
+}
+
+export async function endBreakAction() {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const record = (
+    await query<{ id: string; punch_in: string | null; punch_out: string | null; break_start_time: string | null; break_end_time: string | null; total_break_mins: number }>(
+      `SELECT id, punch_in, punch_out, break_start_time, break_end_time, COALESCE(total_break_mins, 0) AS total_break_mins
+       FROM attendance WHERE user_id = $1 AND date = $2`,
+      [session.sub, today]
+    )
+  )[0];
+
+  if (!record?.break_start_time || record.break_end_time) {
+    return { error: "No break in progress" };
+  }
+
+  const mins = Math.round((now.getTime() - new Date(record.break_start_time).getTime()) / 60000);
+  const total = record.total_break_mins + mins;
+  await query(
+    `UPDATE attendance SET break_end_time = $1, total_break_mins = $2 WHERE id = $3`,
+    [now.toISOString(), total, record.id]
+  );
+  revalidatePath("/attendance");
+  return { ok: true, breakMins: mins, totalBreakMins: total };
+}
+
+export type { AttendanceSettings } from "@/lib/data";
+
+export async function getAttendanceSettingsAction() {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+  const settings = await getAttendanceSettings();
+  return { ok: true, settings };
+}
+
+export async function updateAttendanceSettingsAction(input: Partial<AttendanceSettings>) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+  const isSuperAdmin = hasPermission(session.permissions, "settings:manage");
+  if (!isSuperAdmin) return { error: "Only a Super Admin can change attendance settings" };
+
+  await ensureAttendanceSettingsTable();
+
+  const allowed: Partial<AttendanceSettings> = {};
+  for (const key of ATTENDANCE_SETTING_KEYS) {
+    const v = (input as Record<string, unknown>)[key];
+    if (v === undefined || v === null || v === "") continue;
+    (allowed as Record<string, unknown>)[key] =
+      key === "shift_start_time" || key === "shift_end_time" ? String(v).slice(0, 5) : Math.max(0, Number(v));
+  }
+
+  const sane: AttendanceSettings = { ...DEFAULT_ATTENDANCE_SETTINGS, ...allowed };
+  await query(
+    `UPDATE attendance_settings SET
+       shift_start_time = $1,
+       shift_end_time = $2,
+       late_grace_period_mins = $3,
+       minimum_hours_for_half_day = $4,
+       minimum_hours_for_full_day = $5,
+       monthly_paid_leaves = $6,
+       allowed_break_mins = $7,
+       updated_by = $8,
+       updated_at = now()
+     WHERE id = 1`,
+    [
+      sane.shift_start_time,
+      sane.shift_end_time,
+      sane.late_grace_period_mins,
+      sane.minimum_hours_for_half_day,
+      sane.minimum_hours_for_full_day,
+      sane.monthly_paid_leaves,
+      sane.allowed_break_mins,
+      session.sub,
+    ]
+  );
+
+  revalidatePath("/attendance");
+  return { ok: true, settings: sane };
 }
