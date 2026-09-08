@@ -166,16 +166,41 @@ export default function AppShell({
     checkDeadlineAlerts();
   }, [checkDeadlineAlerts]);
 
-  // Live Updates polling: strictly deduped to prevent spam.
-  // - Respect isRead/read flag: never toast already-read notifications
-  // - Session dedup via toastedIds Set: each unread ID toasts at most once per tab session
-  // - Mark-all-read syncs DB + local state immediately so count drops to 0
-  const toastedIds = useRef<Set<string>>(new Set(notifications.map((n) => n.id)));
+  // Live Updates polling: strictly deduped to prevent spam on refresh & polling.
+  // 1) Respect isRead/read flag — never toast already-read rows
+  // 2) Session + persistent dedup via localStorage — each unread ID toasts at most once ever until marked read
+  // 3) Mark-all-read syncs DB + local state + persisted set immediately
+  const TOASTED_KEY = "advrix.toastedIds";
+  const toastedIds = useRef<Set<string>>(new Set<string>());
+  // Hydrate persisted set + seed with already-read IDs so refresh never re-toasts
   useEffect(() => {
-    // Keep the "already toasted" set stable but seed new server-provided IDs so a
-    // refresh does not re-toast items already rendered in the panel.
-    notifications.forEach((n) => toastedIds.current.add(n.id));
+    try {
+      const raw = localStorage.getItem(TOASTED_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as string[];
+        if (Array.isArray(arr)) arr.forEach((id) => toastedIds.current.add(id));
+      }
+    } catch {}
+    // Seed every ID that is already read, plus initial prop IDs (panel already rendered)
+    notifications.forEach((n: any) => {
+      const isRead = typeof n.read === "boolean" ? n.read : typeof n.isRead === "boolean" ? n.isRead : false;
+      if (isRead) toastedIds.current.add(n.id);
+    });
+    try {
+      localStorage.setItem(TOASTED_KEY, JSON.stringify([...toastedIds.current]));
+    } catch {}
   }, [notifications]);
+  function isUnread(n: any): boolean {
+    if (typeof n.read === "boolean") return !n.read;
+    if (typeof (n as any).isRead === "boolean") return !(n as any).isRead;
+    // No flag -> treat as read to avoid spam
+    return false;
+  }
+  function persistToasted() {
+    try {
+      localStorage.setItem(TOASTED_KEY, JSON.stringify([...toastedIds.current]));
+    } catch {}
+  }
   useEffect(() => {
     let cancelled = false;
     async function poll() {
@@ -185,16 +210,17 @@ export default function AppShell({
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as { items: Notification[]; unread: number };
         if (cancelled) return;
-        // Strict filter: unread only + not already toasted in this session
-        const fresh = data.items.filter((n) => !n.read && !toastedIds.current.has(n.id));
+        // Strict filter: unread only + not already toasted in this session/persisted
+        const fresh = data.items.filter((n: any) => isUnread(n) && !toastedIds.current.has(n.id));
         if (fresh.length > 0) {
           fresh.forEach((n) => toastedIds.current.add(n.id));
+          persistToasted();
           // ring bell + toast each fresh unread item once
           setRinging(true);
           setTimeout(() => !cancelled && setRinging(false), 6000);
           for (const n of fresh) {
-            // Spec expects toast(notification.message); we map to body/title
-            const label = n.type === "attendance" || n.type === "leave" ? `${n.title}: ${n.body}` : n.title;
+            const label = (n as any).type === "attendance" || (n as any).type === "leave" ? `${n.title}: ${n.body}` : n.title;
+            // Spec example: if (!notification.isRead && !toastedIds.current.has(notification.id)) { toast(notification.message); toastedIds.current.add(notification.id); }
             toast(label, "info");
           }
         }
@@ -321,33 +347,38 @@ export default function AppShell({
 
   async function handleRead(notif: Notification) {
     setNotifOpen(false);
-    if (!notif.read) {
-      // Immediate local state drop so polling does not re-toast
+    const unreadCheck = typeof (notif as any).read === "boolean" ? !(notif as any).read : !(notif as any).isRead;
+    if (unreadCheck) {
+      // Immediate local + persisted state drop so polling does not re-toast on next tick or refresh
       toastedIds.current.add(notif.id);
+      try { localStorage.setItem(TOASTED_KEY, JSON.stringify([...toastedIds.current])); } catch {}
       setNotifs((list) => list.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
       setUnread((u) => Math.max(0, u - 1));
       await markNotificationReadAction(notif.id);
     }
-    // Only navigate to known internal routes — prevents phishing via compromised notifications.
     if (notif.link && notif.link.startsWith("/") && !notif.link.startsWith("//")) {
       router.push(notif.link);
     }
   }
 
   async function handleMarkAll() {
-    const res = await markAllNotificationsReadAction();
-    // Server action confirmed DB records now read:true — immediately sync local state
-    // so unread count drops to 0 and subsequent polls (which respect isRead/read) stop toasting.
-    // Optimistically mark all known IDs as already toasted to guard against stale poll payloads.
-    notifs.forEach((n) => {
-      if (!n.read) toastedIds.current.add(n.id);
+    // Optimistically persist all current unread IDs as toasted before server round-trip
+    // so even if refresh happens immediately, they will not re-toast.
+    notifs.forEach((n: any) => {
+      const unread = typeof n.read === "boolean" ? !n.read : typeof n.isRead === "boolean" ? !n.isRead : false;
+      if (unread) toastedIds.current.add(n.id);
     });
+    try { localStorage.setItem(TOASTED_KEY, JSON.stringify([...toastedIds.current])); } catch {}
+    const res = await markAllNotificationsReadAction();
+    // Server confirms DB now read:true — immediately sync local state so count 0
     setNotifs((list) => list.map((n) => ({ ...n, read: true })));
     setUnread(0);
     setNotifOpen(false);
     if (res && (res as any).error) {
-      // If server failed, let next poll re-sync; still keep UI consistent for now
+      // If server failed, let next poll re-sync
     }
+    // Ensure client re-fetches fresh unread count after server update
+    try { router.refresh(); } catch {}
   }
 
   const sidebar = (mobile: boolean) => {

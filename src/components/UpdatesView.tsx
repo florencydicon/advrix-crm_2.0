@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Bell, CheckCheck, Inbox, Clock, FileText, Briefcase, CalendarOff, Settings } from "lucide-react";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -38,9 +38,26 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
   const filter = searchParams.get("filter") || "all";
   const typeFilter = searchParams.get("type") || "all";
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const TOASTED_KEY = "advrix.toastedIds";
+  // Hydrate persisted read set so Mark all remains sticky across refresh for all roles
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TOASTED_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as string[];
+        if (Array.isArray(arr) && arr.length) {
+          setReadIds((prev) => {
+            const next = new Set(prev);
+            arr.forEach((id) => next.add(id));
+            return next;
+          });
+        }
+      }
+    } catch {}
+  }, []);
 
-  const isRead = (n: Notification) => n.read || readIds.has(n.id);
-  const unreadCount = notifications.filter((n) => !isRead(n)).length;
+  const isRead = (n: any) => (n.read === true || (n as any).isRead === true) || readIds.has(n.id);
+  const unreadCount = notifications.filter((n: any) => !isRead(n)).length;
 
   const filtered = notifications.filter((n) => {
     if (filter === "unread" && isRead(n)) return false;
@@ -64,14 +81,23 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
 
   async function handleOpen(n: Notification) {
     if (!isRead(n)) {
-      setReadIds((prev) => new Set(prev).add(n.id));
+      setReadIds((prev) => {
+        const next = new Set(prev);
+        next.add(n.id);
+        try { localStorage.setItem(TOASTED_KEY, JSON.stringify([...next])); } catch {}
+        return next;
+      });
       await markNotificationReadAction(n.id);
     }
     if (n.link && n.link.startsWith("/") && !n.link.startsWith("//")) router.push(n.link);
   }
 
   async function handleMarkAll() {
-    setReadIds(new Set(notifications.filter((n) => !n.read).map((n) => n.id)));
+    // Persist immediately so even starring employees / super admins see no re-toast after reload
+    const unreadIds = notifications.filter((n) => !isRead(n)).map((n) => n.id);
+    const nextSet = new Set([...readIds, ...unreadIds]);
+    try { localStorage.setItem(TOASTED_KEY, JSON.stringify([...nextSet])); } catch {}
+    setReadIds(nextSet);
     await markAllNotificationsReadAction();
     router.refresh();
   }
@@ -98,9 +124,14 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
           <h1 className="text-xl font-bold tracking-tight">Updates</h1>
           <p className="text-sm text-slate-400">Activity, tasks, projects, and approvals.</p>
         </div>
-        {unreadCount > 0 && (
-          <button onClick={handleMarkAll} className="btn-secondary !py-2 text-xs">
-            <CheckCheck className="h-4 w-4" /> Mark all as read
+        {notifications.length > 0 && (
+          <button
+            onClick={handleMarkAll}
+            disabled={unreadCount === 0}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors ${unreadCount === 0 ? "bg-white/5 text-slate-500 border border-white/10 cursor-not-allowed" : "bg-brand-300 text-night-950 hover:bg-brand-200 shadow-sm"}`}
+            title={unreadCount === 0 ? "All caught up" : `Mark ${unreadCount} unread as read`}
+          >
+            <CheckCheck className="h-4 w-4" /> {unreadCount === 0 ? "All caught up" : `Mark all as read (${unreadCount})`}
           </button>
         )}
       </div>
