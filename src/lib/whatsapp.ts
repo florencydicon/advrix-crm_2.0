@@ -11,17 +11,34 @@ export function normalizeWaNumber(raw: string | null | undefined): string | null
   return digits;
 }
 
+/**
+ * Open a wa.me deep link in a way that survives mobile popup blockers.
+ * These calls happen inside async flows (after geolocation/server awaits), so
+ * `window.open` is frequently blocked on iOS/Android — fall back to a direct
+ * navigation, which always works.
+ */
+function openWaUrl(url: string) {
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (win) {
+    // Some mobile browsers return a handle but still block the tab; check it
+    // actually stayed open and fall back to a direct navigation if not.
+    setTimeout(() => {
+      if (win.closed) window.location.href = url;
+    }, 800);
+    return;
+  }
+  window.location.href = url;
+}
+
 export function openWhatsApp(text: string) {
-  const url = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
-  window.open(url, "_blank");
+  openWaUrl(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`);
 }
 
 /** Open a wa.me deep link to a specific number (used for admin → employee). */
 export function openWhatsAppTo(rawNumber: string | null | undefined, text: string) {
   const digits = normalizeWaNumber(rawNumber);
   if (!digits) return false;
-  const url = `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-  window.open(url, "_blank");
+  openWaUrl(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`);
   return true;
 }
 
