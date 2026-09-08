@@ -509,30 +509,20 @@ export default function TaskModal({
               placeholder="Notes, feedback or handoff context… auto-saves as you type."
               className="input !py-2.5 text-sm resize-none"
             />
-            <div className="mt-1.5 flex items-center justify-between gap-2">
-              <p className="text-xs text-slate-400 min-w-0 truncate">
-                {editedBy ? (
-                  <>
-                    Last updated by:{" "}
-                    <span className="text-slate-200 font-medium">
-                      {editedBy.name.split(" ")[0] || editedBy.name}
-                    </span>{" "}
-                    ({editedBy.role}) at{" "}
-                    <span className="text-slate-300">{fmtTimeOnly(editedBy.at)}</span>
-                  </>
-                ) : (
-                  <>Auto-saves as you type</>
-                )}
-              </p>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={saveAll}
-                className="btn-ghost !px-2.5 !py-1.5 text-xs shrink-0"
-              >
-                <Save className="h-3.5 w-3.5" /> Save All
-              </button>
-            </div>
+            <p className="text-xs text-slate-400 truncate mt-1.5">
+              {editedBy ? (
+                <>
+                  Last updated by:{" "}
+                  <span className="text-slate-200 font-medium">
+                    {editedBy.name.split(" ")[0] || editedBy.name}
+                  </span>{" "}
+                  ({editedBy.role}) at{" "}
+                  <span className="text-slate-300">{fmtTimeOnly(editedBy.at)}</span>
+                </>
+              ) : (
+                <>Auto-saves as you type</>
+              )}
+            </p>
           </section>
 
           {/* ---- Team Assignment + Current Stage ---- */}
