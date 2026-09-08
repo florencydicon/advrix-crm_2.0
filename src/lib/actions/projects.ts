@@ -256,6 +256,51 @@ export async function deleteClientAction(clientId: string) {
   return { ok: true, name: client.name };
 }
 
+/** Update a project (name / deadline). Manager only. */
+export async function updateProjectAction(projectId: string, data: { name?: string; deadline?: string | null }) {
+  const session = await getSession();
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
+    return { error: "Not authorized." };
+  }
+  const project = await query<{ id: string }>(`SELECT id FROM projects WHERE id = $1`, [projectId]);
+  if (!project[0]) return { error: "Project not found." };
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (data.name !== undefined) {
+    const clean = String(data.name).trim().replace(/\n+/g, " ").slice(0, 120);
+    if (!clean || clean.length < 3) return { error: "Project name too short." };
+    sets.push(`name = $${vals.length + 1}`);
+    vals.push(clean);
+  }
+  if (data.deadline !== undefined) {
+    const v = data.deadline ? String(data.deadline).trim() : null;
+    const clean = v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+    sets.push(`deadline = $${vals.length + 1}`);
+    vals.push(clean);
+  }
+  if (sets.length === 0) return { error: "Nothing to update." };
+  vals.push(projectId);
+  await query(`UPDATE projects SET ${sets.join(", ")} WHERE id = $${vals.length}`, vals);
+  revalidatePath("/projects");
+  revalidatePath("/clients");
+  return { ok: true };
+}
+
+/** Delete a project and its tasks. Manager with delete permission only. */
+export async function deleteProjectAction(projectId: string) {
+  const session = await getSession();
+  if (!session || !hasPermission(session.permissions, PERM_DELETE)) {
+    return { error: "Only Super Admin can delete projects." };
+  }
+  const project = await query<{ name: string }>(`SELECT name FROM projects WHERE id = $1`, [projectId]);
+  if (!project[0]) return { error: "Project not found." };
+  await query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+  revalidatePath("/projects");
+  revalidatePath("/clients");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 /**
  * Emergency leave handling. Marks a team member on leave for this project with
  * a reason and day counter; their open task deadlines extend by that many

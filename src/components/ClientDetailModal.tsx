@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { X, Search, FolderKanban, Layers, ExternalLink, CalendarDays } from "lucide-react";
+import { X, Search, FolderKanban, Layers, ExternalLink, CalendarDays, Pencil, Trash2, Check } from "lucide-react";
 import type { ClientCard, ClientDetailProject, ClientDetailTask } from "@/lib/data";
-import { getClientDetailAction } from "@/lib/actions/projects";
+import { getClientDetailAction, updateProjectAction, deleteProjectAction } from "@/lib/actions/projects";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]?.toUpperCase()||"").join("");
@@ -21,10 +22,14 @@ export default function ClientDetailModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [projects, setProjects] = useState<ClientDetailProject[]>([]);
   const [tasks, setTasks] = useState<ClientDetailTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open || !client) return;
@@ -48,6 +53,39 @@ export default function ClientDetailModal({
     document.body.style.overflow = "hidden";
     return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [open, onClose]);
+
+  const refreshDetail = async () => {
+    if (!client) return;
+    const res: any = await getClientDetailAction(client.id);
+    if (res.ok) {
+      setProjects(res.projects || []);
+      setTasks(res.tasks || []);
+      router.refresh();
+    }
+  };
+
+  const handleEditProject = async (id: string) => {
+    const clean = editName.trim();
+    if (!clean || clean.length < 3) { toast("Project name too short.", "error"); return; }
+    setSaving(true);
+    const res: any = await updateProjectAction(id, { name: clean });
+    setSaving(false);
+    if (res.error) { toast(res.error, "error"); return; }
+    toast("Project updated.", "success");
+    setEditingId(null);
+    setEditName("");
+    await refreshDetail();
+  };
+
+  const handleDeleteProject = async (p: ClientDetailProject) => {
+    if (!window.confirm(`Delete project "${p.name}" and all its ${p.total_tasks} task(s)? This cannot be undone.`)) return;
+    setSaving(true);
+    const res: any = await deleteProjectAction(p.id);
+    setSaving(false);
+    if (res.error) { toast(res.error, "error"); return; }
+    toast("Project deleted.", "success");
+    await refreshDetail();
+  };
 
   const q = search.trim().toLowerCase();
   const filteredProjects = useMemo(() => {
@@ -129,22 +167,60 @@ export default function ClientDetailModal({
                 ) : (
                   <div className="space-y-1.5">
                     {filteredProjects.map((p) => (
-                      <button
+                      <div
                         key={p.id}
-                        onClick={() => goPipeline(`?clientId=${client.id}&project=${encodeURIComponent(p.name)}`)}
-                        className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3 hover:bg-white/[0.06] transition-colors"
+                        className="rounded-xl border border-white/10 bg-white/[0.03] p-3 hover:bg-white/[0.06] transition-colors"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium text-white truncate pr-2">{p.name}</p>
-                          <span className={`badge shrink-0 text-[10px] ${p.status === "completed" ? "bg-emerald-400/10 text-emerald-300" : p.status === "in_progress" ? "bg-brand-300/10 text-brand-300" : "bg-white/10 text-slate-400"}`}>{p.status}</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
-                          <span className="flex items-center gap-1"><Layers className="h-3 w-3" /> {p.total_tasks} tasks</span>
-                          <span>· {p.completed_tasks} done</span>
-                          {p.deadline && <span className="ml-auto flex items-center gap-1"><CalendarDays className="h-3 w-3" /> {p.deadline.slice(0,10)}</span>}
-                          <ExternalLink className="h-3 w-3 text-slate-600 ml-auto" />
-                        </div>
-                      </button>
+                        {editingId === p.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") handleEditProject(p.id); if (e.key === "Escape") { setEditingId(null); setEditName(""); } }}
+                              className="input !py-1 text-sm flex-1"
+                              autoFocus
+                              placeholder="Project name"
+                            />
+                            <button onClick={() => handleEditProject(p.id)} disabled={saving} className="btn-primary !py-1 !px-2 text-xs shrink-0">
+                              <Check className="h-3.5 w-3.5" /> Save
+                            </button>
+                            <button onClick={() => { setEditingId(null); setEditName(""); }} className="btn-ghost !py-1 !px-2 text-xs shrink-0">Cancel</button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => goPipeline(`?clientId=${client.id}&project=${encodeURIComponent(p.name)}`)}
+                              className="w-full text-left"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-medium text-white truncate pr-2">{p.name}</p>
+                                <span className={`badge shrink-0 text-[10px] ${p.status === "completed" ? "bg-emerald-400/10 text-emerald-300" : p.status === "in_progress" ? "bg-brand-300/10 text-brand-300" : "bg-white/10 text-slate-400"}`}>{p.status}</span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
+                                <span className="flex items-center gap-1"><Layers className="h-3 w-3" /> {p.total_tasks} tasks</span>
+                                <span>· {p.completed_tasks} done</span>
+                                {p.deadline && <span className="ml-auto flex items-center gap-1"><CalendarDays className="h-3 w-3" /> {p.deadline.slice(0,10)}</span>}
+                                <ExternalLink className="h-3 w-3 text-slate-600 ml-auto" />
+                              </div>
+                            </button>
+                            <div className="flex items-center gap-1.5 mt-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingId(p.id); setEditName(p.name); }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10 transition-colors"
+                              >
+                                <Pencil className="h-3 w-3" /> Edit
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteProject(p); }}
+                                disabled={saving}
+                                className="inline-flex items-center gap-1 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 transition-colors"
+                              >
+                                <Trash2 className="h-3 w-3" /> Delete
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
