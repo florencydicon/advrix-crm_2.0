@@ -567,19 +567,23 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
         </button>
       </div>
 
-      {/* Mobile Filter Modal — Bottom Sheet */}
+      {/* Mobile Filter Modal — Bottom Drawer (slides up from bottom) */}
       {isMobileFilterOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsMobileFilterOpen(false)} aria-hidden />
-          <div className="relative flex w-full max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10">
-            <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+          <div className="relative flex w-full max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 animate-[slideUp_0.28s_cubic-bezier(0.32,0.72,0,1)]">
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="h-1 w-10 rounded-full bg-white/20" />
+            </div>
+            <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
                 <Filter className="h-4 w-4 text-brand-300" /> Filters
                 {activeCount > 0 && <span className="badge bg-brand-300/15 text-brand-300">{activeCount} active</span>}
               </h3>
               <button
                 onClick={() => setIsMobileFilterOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 ring-1 ring-white/10 shadow-sm transition-colors"
                 aria-label="Close filters"
               >
                 <X className="h-4 w-4" />
@@ -640,16 +644,17 @@ export function AdvancedFilterBar<T>({ api }: { api: AdvancedFilterApi<T> }) {
             </div>
           </div>
 
-          {/* Mobile close FAB — matches ActivityLog/TaskModal spec */}
+          {/* Mobile close FAB — lifted above bottom nav, high contrast */}
           <button
             onClick={() => setIsMobileFilterOpen(false)}
             aria-label="Close filters"
-            className="fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-white shadow-2xl shadow-black/60 border border-gray-600 active:scale-95 transition-transform md:hidden"
+            className="fixed bottom-24 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-white shadow-2xl shadow-black/60 border border-gray-600 active:scale-95 transition-transform md:hidden"
           >
             <X className="h-6 w-6" />
           </button>
         </div>
       )}
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
     </>
   );
 }
