@@ -366,7 +366,7 @@ export default function AttendanceView({
 
       {activeTab === "attendance" && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="card p-4 flex flex-col items-center justify-center text-center">
               <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-brand-300/10 flex items-center justify-center mb-2">
                 <LogIn className="h-5 w-5 md:h-6 md:w-6 text-brand-300" />
