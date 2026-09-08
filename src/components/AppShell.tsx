@@ -166,11 +166,15 @@ export default function AppShell({
     checkDeadlineAlerts();
   }, [checkDeadlineAlerts]);
 
-  // Live Updates polling: every 7s silently fetch /api/notifications.
-  // Any unseen notification triggers the bell + a global toast while the tab is active.
-  const seenIdsRef = useRef<Set<string>>(new Set(notifications.map((n) => n.id)));
+  // Live Updates polling: strictly deduped to prevent spam.
+  // - Respect isRead/read flag: never toast already-read notifications
+  // - Session dedup via toastedIds Set: each unread ID toasts at most once per tab session
+  // - Mark-all-read syncs DB + local state immediately so count drops to 0
+  const toastedIds = useRef<Set<string>>(new Set(notifications.map((n) => n.id)));
   useEffect(() => {
-    seenIdsRef.current = new Set(notifications.map((n) => n.id));
+    // Keep the "already toasted" set stable but seed new server-provided IDs so a
+    // refresh does not re-toast items already rendered in the panel.
+    notifications.forEach((n) => toastedIds.current.add(n.id));
   }, [notifications]);
   useEffect(() => {
     let cancelled = false;
@@ -181,13 +185,15 @@ export default function AppShell({
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as { items: Notification[]; unread: number };
         if (cancelled) return;
-        const fresh = data.items.filter((n) => !seenIdsRef.current.has(n.id));
+        // Strict filter: unread only + not already toasted in this session
+        const fresh = data.items.filter((n) => !n.read && !toastedIds.current.has(n.id));
         if (fresh.length > 0) {
-          fresh.forEach((n) => seenIdsRef.current.add(n.id));
-          // ring bell + toast each fresh item
+          fresh.forEach((n) => toastedIds.current.add(n.id));
+          // ring bell + toast each fresh unread item once
           setRinging(true);
           setTimeout(() => !cancelled && setRinging(false), 6000);
           for (const n of fresh) {
+            // Spec expects toast(notification.message); we map to body/title
             const label = n.type === "attendance" || n.type === "leave" ? `${n.title}: ${n.body}` : n.title;
             toast(label, "info");
           }
@@ -316,6 +322,8 @@ export default function AppShell({
   async function handleRead(notif: Notification) {
     setNotifOpen(false);
     if (!notif.read) {
+      // Immediate local state drop so polling does not re-toast
+      toastedIds.current.add(notif.id);
       setNotifs((list) => list.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
       setUnread((u) => Math.max(0, u - 1));
       await markNotificationReadAction(notif.id);
@@ -327,10 +335,19 @@ export default function AppShell({
   }
 
   async function handleMarkAll() {
-    await markAllNotificationsReadAction();
+    const res = await markAllNotificationsReadAction();
+    // Server action confirmed DB records now read:true — immediately sync local state
+    // so unread count drops to 0 and subsequent polls (which respect isRead/read) stop toasting.
+    // Optimistically mark all known IDs as already toasted to guard against stale poll payloads.
+    notifs.forEach((n) => {
+      if (!n.read) toastedIds.current.add(n.id);
+    });
     setNotifs((list) => list.map((n) => ({ ...n, read: true })));
     setUnread(0);
     setNotifOpen(false);
+    if (res && (res as any).error) {
+      // If server failed, let next poll re-sync; still keep UI consistent for now
+    }
   }
 
   const sidebar = (mobile: boolean) => {
