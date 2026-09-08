@@ -50,8 +50,9 @@ export default function StaffDashboard({
   userId: string;
   permissions?: string[];
 }) {
-  // Silent 3s background sync: refreshes only the task/team arrays feeding the
-  // table & cards. Pages are never reloaded and modal/textarea state survives.
+  // Silent 12s background sync: refreshes only the task/team arrays feeding the
+  // table & cards (refocus/visibility re-polls instantly). Pages are never
+  // reloaded and modal/textarea state survives.
   // Cache-busted for mobile where fetch cache is aggressive.
   const live = useSilentPoll(
     { tasks, team },
@@ -60,7 +61,7 @@ export default function StaffDashboard({
       if (!res.ok) throw new Error("poll failed");
       return (await res.json()) as { tasks: Task[]; team: UserRow[] };
     },
-    3000
+    12000
   );
   tasks = live.tasks;
   team = live.team;

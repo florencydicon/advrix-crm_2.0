@@ -57,7 +57,7 @@ export default function SmmDashboard({
   roleKey: string;
   permissions?: string[];
 }) {
-  // Silent 3s background sync: cache-busted for mobile where fetch cache is aggressive.
+  // Silent 12s background sync: cache-busted for mobile where fetch cache is aggressive.
   const live = useSilentPoll(
     { tasks, team },
     async () => {
@@ -65,7 +65,7 @@ export default function SmmDashboard({
       if (!res.ok) throw new Error("poll failed");
       return (await res.json()) as { tasks: Task[]; team: UserRow[] };
     },
-    3000
+    12000
   );
   tasks = live.tasks;
   team = live.team;

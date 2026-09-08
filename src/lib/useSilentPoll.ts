@@ -12,6 +12,9 @@ import { useEffect, useRef, useState } from "react";
  * value only feeds the data arrays that derive the tables/cards.
  *
  * - Skips fetches while the tab is hidden (document.hidden).
+ * - Re-polls immediately on visibility/focus return (mobile tabs are heavily
+ *   throttled in the background, so the 12s cadence + instant refetch on
+ *   refocus keeps everything fresh while slashing DB load ~4x).
  * - Failures are silent: a transient API error never interrupts the UI.
  *
  * @param initial   Value to render before (and identical after) the first fetch.
@@ -23,7 +26,7 @@ import { useEffect, useRef, useState } from "react";
 export function useSilentPoll<T>(
   initial: T,
   fetcher: () => Promise<T>,
-  intervalMs = 3000
+  intervalMs = 12000
 ): T {
   const [data, setData] = useState<T>(initial);
   const fetcherRef = useRef(fetcher);

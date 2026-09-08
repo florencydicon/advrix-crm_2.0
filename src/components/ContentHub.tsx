@@ -77,9 +77,10 @@ export default function ContentHub({
   canManage: boolean;
   canEdit: boolean;
 }) {
-  // Silent 3s background sync: refreshes only the `items` array feeding the
-  // table & cards. The open ContentModal's local state (typed content/remarks)
-  // is untouched, and the page is never reloaded.
+  // Silent 12s background sync: refreshes only the `items` array feeding the
+  // table & cards (refocus/visibility re-polls instantly). The open
+  // ContentModal's local state (typed content/remarks) is untouched, and the
+  // page is never reloaded.
   const pollItems = useSilentPoll(
     items,
     async () => {
@@ -88,7 +89,7 @@ export default function ContentHub({
       const json = (await res.json()) as { items: ContentItem[] };
       return json.items;
     },
-    3000
+    12000
   );
   items = pollItems;
 

@@ -163,16 +163,26 @@ export default function ProjectPipeline({
     setSelected((prev) => prev.filter((id) => next.active.some((t) => t.id === id)));
   }, []);
 
-  // Silent 3s background sync of the board arrays. Fetches via the same Server
-  // Action the manual reload uses; only the derived table/card data changes, so
-  // the open TaskModal (draft remarks/content) is never remounted or cleared.
+  // Silent 12s background sync of the board arrays (+ instant refetch on tab
+  // refocus/visibility). Fetches via the same Server Action the manual reload
+  // uses; only the derived table/card data changes, so the open TaskModal
+  // (draft remarks/content) is never remounted or cleared.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const id = window.setInterval(() => {
       if (document.hidden) return;
       reload().catch(() => {});
-    }, 3000);
-    return () => window.clearInterval(id);
+    }, 12000);
+    const onVisible = () => {
+      if (!document.hidden) reload().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [reload]);
 
   // Managers (role key or tasks:manage) get bulk assign/delete/status.

@@ -15,6 +15,23 @@ const PERM_PROJECTS_MANAGE = "projects:manage";
 const PERM_TASKS_MANAGE = "tasks:manage";
 const PERM_TASKS_REVIEW = "tasks:review";
 
+/**
+ * Overdue auto-flag fused into the board's SELECT via a data-modifying CTE, so
+ * the whole board load is ONE statement / one DB round-trip (no separate
+ * UPDATE first). Idempotent: only touches open tasks with an already-passed
+ * deadline that are not yet urgent.
+ */
+const PIPELINE_OVERDUE_CTE = `
+WITH _overdue_flag AS (
+  UPDATE tasks SET priority = 'urgent'
+   WHERE status <> 'completed'
+     AND due_date IS NOT NULL
+     AND due_date < (now() AT TIME ZONE 'UTC')::date
+     AND priority <> 'urgent'
+  RETURNING id
+)
+`;
+
 export interface PipelineBoardPayload {
   active: Task[];
   completed: Task[];
@@ -87,9 +104,6 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const session = await getSession();
   if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
 
-  // Auto-flag overdue tasks (priority → urgent) on every board load.
-  await flagOverdueTasks();
-
   const perms = session.permissions || [];
   const dataScope = resolveDataScope(session);
   const isBroad = dataScope.kind === "global";
@@ -99,8 +113,9 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const scope = boardScope(session, dataScope);
   const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
 
+  // Overdue flagging + board data in a SINGLE statement (CTE) — one round-trip.
   const rows = await query<Task>(
-    `${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
+    `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
     params
   );
 
@@ -721,8 +736,6 @@ export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
   const session = await getSession();
   if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
 
-  await flagOverdueTasks();
-
   const perms = session.permissions || [];
   const dataScope = resolveDataScope(session);
   const isBroad = dataScope.kind === "global";
@@ -736,7 +749,7 @@ export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
     : `WHERE dt.content_role IS NOT NULL`;
 
   const rows = await query<Task>(
-    `${PIPELINE_TASK_SELECT} JOIN project_deliverables pd ON pd.id = t.deliverable_id JOIN deliverable_types dt ON dt.key = pd.category_key ${where} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
+    `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} JOIN project_deliverables pd ON pd.id = t.deliverable_id JOIN deliverable_types dt ON dt.key = pd.category_key ${where} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
     params
   );
 
