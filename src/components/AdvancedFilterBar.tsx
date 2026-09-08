@@ -289,9 +289,10 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
   }, [searchParams, visible]);
 
   // state → URL. Skips until the URL has been read once so a deep link on mount
-  // isn't wiped by the still-empty initial state (declared before the read effect
-  // so the first commit never writes while filters are uninitialized).
+  // isn't wiped by the still-empty initial state. Uses isPushing guard to avoid
+  // ping-pong when URL→state and state→URL both fire on the same navigation.
   const initialized = useRef(false);
+  const isPushing = useRef(false);
   useEffect(() => {
     if (!initialized.current) return;
     const sp = new URLSearchParams(searchParams.toString());
@@ -310,14 +311,23 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
       }
     }
     if (!dirty) return;
+    isPushing.current = true;
     const qs = sp.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const t = window.setTimeout(() => {
+      isPushing.current = false;
+    }, 100);
+    return () => window.clearTimeout(t);
   }, [filters, searchParams, pathname, router]);
 
-  // URL → state. Re-run when searchParams or the derived readParams changes
-  // so a deep-link like ?clientId=venus is applied even after options load.
+  // URL → state. Re-run when readParams changes (i.e., searchParams). Skip
+  // the tick that was just caused by our own state→URL push to prevent glitch.
   useEffect(() => {
+    if (isPushing.current) {
+      isPushing.current = false;
+      initialized.current = true;
+      return;
+    }
     setFilters((prev) => {
       const next = readParams();
       return equalFilters(prev, next) ? prev : next;
