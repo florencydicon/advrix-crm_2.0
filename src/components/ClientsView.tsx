@@ -584,7 +584,7 @@ export default function ClientsView({
         </form>
       </Modal>
 
-      <ClientDetailModal client={detailClient} open={detailOpen} onClose={() => setDetailOpen(false)} />
+      <ClientDetailModal client={detailClient} open={detailOpen} onClose={() => setDetailOpen(false)} deliverableTypes={deliverableTypes} />
     </div>
   );
 }

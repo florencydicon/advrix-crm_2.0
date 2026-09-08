@@ -256,8 +256,8 @@ export async function deleteClientAction(clientId: string) {
   return { ok: true, name: client.name };
 }
 
-/** Update a project (name / deadline). Manager only. */
-export async function updateProjectAction(projectId: string, data: { name?: string; deadline?: string | null }) {
+/** Update a project (name / brief / deadline). Manager only. */
+export async function updateProjectAction(projectId: string, data: { name?: string; brief?: string | null; deadline?: string | null }) {
   const session = await getSession();
   if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
@@ -270,6 +270,11 @@ export async function updateProjectAction(projectId: string, data: { name?: stri
     const clean = String(data.name).trim().replace(/\n+/g, " ").slice(0, 120);
     if (!clean || clean.length < 3) return { error: "Project name too short." };
     sets.push(`name = $${vals.length + 1}`);
+    vals.push(clean);
+  }
+  if (data.brief !== undefined) {
+    const clean = data.brief != null ? String(data.brief).trim().slice(0, 2000) : null;
+    sets.push(`brief = $${vals.length + 1}`);
     vals.push(clean);
   }
   if (data.deadline !== undefined) {
@@ -299,6 +304,47 @@ export async function deleteProjectAction(projectId: string) {
   revalidatePath("/clients");
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+export async function getProjectEditDataAction(projectId: string) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" } as const;
+  if (!hasPermission(session.permissions, PERM_MANAGE)) return { error: "Not authorized." } as const;
+  const project = await query<{ id: string; name: string; brief: string | null; deadline: string | null }>(
+    `SELECT id, name, brief, deadline::text AS deadline FROM projects WHERE id = $1`,
+    [projectId]
+  );
+  if (!project[0]) return { error: "Project not found." } as const;
+  const deliverables = await query<{ category_key: string; category_label: string; quantity: number; is_custom: boolean; custom_label: string | null }>(
+    `SELECT category_key, category_label, quantity, is_custom, custom_label FROM project_deliverables WHERE project_id = $1`,
+    [projectId]
+  );
+  return { ok: true as const, project: project[0], deliverables };
+}
+
+export async function addTasksToProjectAction(projectId: string, deliverablesJson: string) {
+  const session = await getSession();
+  if (!session || !hasPermission(session.permissions, PERM_MANAGE)) return { error: "Not authorized." } as const;
+  const project = await query<{ id: string; client_id: string }>(`SELECT id, client_id FROM projects WHERE id = $1`, [projectId]);
+  if (!project[0]) return { error: "Project not found." } as const;
+  const deliverables = parseDeliverables(deliverablesJson);
+  if (deliverables.length === 0 || deliverables.every((d) => d.quantity <= 0)) return { error: "Add at least one deliverable." } as const;
+  const errs = validateDeliverables(deliverables);
+  if (errs.length) return { error: errs[0].message } as const;
+  // Insert new deliverables (append, don't delete old)
+  for (const d of deliverables.filter((x) => x.quantity > 0)) {
+    await query(
+      `INSERT INTO project_deliverables (project_id, category_key, category_label, quantity, is_custom, custom_label)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [projectId, d.key, d.isCustom && d.customLabel ? d.customLabel : d.label, d.quantity, d.isCustom, d.customLabel]
+    );
+  }
+  await generateDeliverableTasks(projectId);
+  await syncApprovedTaskSequences(projectId);
+  await computeSequentialDeadlines(projectId);
+  revalidatePath("/projects");
+  revalidatePath("/clients");
+  return { ok: true as const };
 }
 
 /**
