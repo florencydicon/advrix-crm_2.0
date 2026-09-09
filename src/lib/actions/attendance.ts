@@ -355,6 +355,9 @@ export type { AttendanceSettings } from "@/lib/data";
 export async function getAttendanceSettingsAction() {
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
+  // Ensure fresh read — bypass any Next.js cache that could serve stale defaults
+  const { unstable_noStore } = await import("next/cache");
+  unstable_noStore();
   const settings = await getAttendanceSettings();
   return { ok: true, settings };
 }
@@ -401,5 +404,7 @@ export async function updateAttendanceSettingsAction(input: Partial<AttendanceSe
   );
 
   revalidatePath("/attendance");
+  revalidatePath("/settings");
+  revalidatePath("/");
   return { ok: true, settings: sane };
 }
