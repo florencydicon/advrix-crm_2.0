@@ -262,7 +262,7 @@ export async function createProjectAction(formData: FormData) {
 
     await generateDeliverableTasks(project[0].id, taskTitles);
     await syncApprovedTaskSequences(project[0].id);
-    await computeSequentialDeadlines(project[0].id);
+    await computeSequentialDeadlines(project[0].id, { propagateToAll: true });
 
     revalidatePath("/projects");
     revalidatePath("/clients");
@@ -306,10 +306,14 @@ export async function updateProjectAction(projectId: string, data: { name?: stri
   if (!session || !hasPermission(session.permissions, PERM_MANAGE)) {
     return { error: "Not authorized." };
   }
-  const project = await query<{ id: string }>(`SELECT id FROM projects WHERE id = $1`, [projectId]);
+  const project = await query<{ id: string; deadline: string | null }>(
+    `SELECT id, deadline::text AS deadline FROM projects WHERE id = $1`,
+    [projectId]
+  );
   if (!project[0]) return { error: "Project not found." };
   const sets: string[] = [];
   const vals: unknown[] = [];
+  let deadlineChanged = false;
   if (data.name !== undefined) {
     const clean = String(data.name).trim().replace(/\n+/g, " ").slice(0, 120);
     if (!clean || clean.length < 3) return { error: "Project name too short." };
@@ -326,10 +330,15 @@ export async function updateProjectAction(projectId: string, data: { name?: stri
     const clean = v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
     sets.push(`deadline = $${vals.length + 1}`);
     vals.push(clean);
+    deadlineChanged = clean !== project[0].deadline;
   }
   if (sets.length === 0) return { error: "Nothing to update." };
   vals.push(projectId);
   await query(`UPDATE projects SET ${sets.join(", ")} WHERE id = $${vals.length}`, vals);
+  // When the project deadline changes, push the new date onto every open sub-task.
+  if (deadlineChanged) {
+    await computeSequentialDeadlines(projectId, { propagateToAll: true });
+  }
   revalidatePath("/projects");
   revalidatePath("/clients");
   return { ok: true };

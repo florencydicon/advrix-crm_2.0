@@ -135,7 +135,17 @@ export default function StaffDashboard({
     { label: "Done", value: tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
-  const filtered = useMemo(() => activeTasks.filter((t) => af.matches(t)), [activeTasks, af.matches]);
+  // Nearest deadline first (nulls last) so the most urgent tasks surface on top.
+  const filtered = useMemo(() => {
+    return activeTasks
+      .filter((t) => af.matches(t))
+      .sort((a, b) => {
+        if (!a.due_date && !b.due_date) return 0;
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return a.due_date.localeCompare(b.due_date);
+      });
+  }, [activeTasks, af.matches]);
 
   const refresh = async () => {
     router.refresh();

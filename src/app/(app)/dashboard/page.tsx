@@ -1,13 +1,13 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  FolderKanban, CheckCircle2, Sparkles, Target, ClipboardList, Briefcase,
-  Download, Users, Layers, ChevronRight,
+  FolderKanban, Sparkles, Target, ClipboardList, Briefcase,
+  Download, Users, Layers, ChevronRight, ListTodo,
 } from "lucide-react";
 import { getSession } from "@/lib/session";
 import {
   getMyTasks, getProjects, getLeadStats, getTaskStatusCounts, getSubtaskStatusCounts,
-  getSubmittedTasks, getAllLeaves, getBottlenecks, getTeam, getClients, getClientWorkload,
+  getSubmittedTasks, getTeam, getClients, getClientWorkload,
   type ClientWorkload,
 } from "@/lib/data";
 import { getRecentActivity, type ActivityLogRow } from "@/lib/activity";
@@ -15,7 +15,7 @@ import { DashboardActivityLogTrigger } from "@/components/DashboardActivityLog";
 import PushNotificationPrompt from "@/components/PushNotificationPrompt";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
-import ActionCenter from "@/components/ActionCenter";
+import SubmittedTaskReview from "@/components/SubmittedTaskReview";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 import { LEAD_STATUSES } from "@/lib/types";
 import { Greeting, TodayBadge } from "@/components/DashboardHeader";
@@ -144,20 +144,16 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let taskCounts: Record<string, number> = {};
   let subtaskCounts: Record<string, number> = {};
   let submittedTasks: any[] = [];
-  let pendingLeaves: any[] = [];
-  let bottlenecks: any[] = [];
   let workload: ClientWorkload[] = [];
   let activity: ActivityLogRow[] = [];
   try {
-    [projects, clients, leadStats, taskCounts, subtaskCounts, submittedTasks, pendingLeaves, bottlenecks, workload] = await Promise.all([
+    [projects, clients, leadStats, taskCounts, subtaskCounts, submittedTasks, workload] = await Promise.all([
       getProjects(pmScope).catch(() => [] as any),
       getClients(pmScope).catch(() => [] as any),
       isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
       showTaskMetrics ? getTaskStatusCounts(pmScope).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
       showTaskMetrics ? getSubtaskStatusCounts(pmScope).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
       getSubmittedTasks(pmScope).catch(() => [] as any),
-      getAllLeaves({ status: "pending" }).catch(() => [] as any),
-      showTaskMetrics ? getBottlenecks(pmScope).catch(() => [] as any) : Promise.resolve([] as any),
       getClientWorkload(pmScope).catch(() => [] as any),
     ]);
     if (isSuperAdmin) {
@@ -170,37 +166,12 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   }
   const active = projects.filter((p) => p.status === "in_progress");
 
-  type ActionItem = {
-    id: string;
-    type: "project" | "task" | "leave" | "bottleneck";
-    title: string;
-    subtitle: string;
-    href: string;
-  };
-  const actionItems: ActionItem[] = [
-    ...submittedTasks.map((t): ActionItem => ({
-      id: `task-${t.id}`,
-      type: "task",
-      title: t.title,
-      subtitle: `${t.project_name} — ${t.role_label || t.role_key}`,
-      href: `/projects?taskId=${t.id}`,
-    })),
-    ...pendingLeaves.map((l): ActionItem => ({
-      id: `leave-${l.id}`,
-      type: "leave",
-      title: `${l.full_name} — ${l.leave_type.charAt(0).toUpperCase() + l.leave_type.slice(1)} Leave`,
-      subtitle: `${l.days}d  ${l.start_date} to ${l.end_date}`,
-      href: "/attendance",
-    })),
-    ...bottlenecks.map((b: any): ActionItem => ({
-      id: `bn-${b.task_id}`,
-      type: "bottleneck",
-      title: b.title,
-      subtitle: `${b.assignee_name || "Unassigned"} — ${b.days_open}d open`,
-      href: `/projects?taskId=${b.task_id}`,
-    })),
-  ];
-  const totalActionCount = actionItems.length;
+  const reviewTasks = submittedTasks.map((t: any): { id: string; title: string; subtitle: string; href: string } => ({
+    id: `task-${t.id}`,
+    title: t.title,
+    subtitle: `${t.project_name} — ${t.role_label || t.role_key}`,
+    href: `/projects?taskId=${t.id}`,
+  }));
 
   // Super Admin — Command Center dashboard
   if (isSuperAdmin) {
@@ -351,14 +322,14 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         {/* ── Row 3: Active Workload by Client ── */}
         <ClientWorkloadWidget workload={workload} />
 
-        {/* ── Row 4: Action & Approval Center ── */}
+        {/* ── Row 4: Review submitted tasks ── */}
         <div className="card overflow-hidden">
           <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            <h2 className="font-semibold text-sm">Action & Approval Center</h2>
-            <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{totalActionCount}</span>
+            <ListTodo className="h-4 w-4 text-sky-400" />
+            <h2 className="font-semibold text-sm">Review Submitted Tasks</h2>
+            <span className="badge bg-sky-400/10 text-sky-300 ml-auto">{reviewTasks.length}</span>
           </div>
-          <ActionCenter items={actionItems} />
+          <SubmittedTaskReview tasks={reviewTasks} />
         </div>
       </div>
     );
@@ -407,11 +378,11 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
 
       <div className="card overflow-hidden">
         <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">
-          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          <h2 className="font-semibold text-sm">Action & Approval Center</h2>
-          <span className="badge bg-amber-400/10 text-amber-300 ml-auto">{totalActionCount}</span>
+          <ListTodo className="h-4 w-4 text-sky-400" />
+          <h2 className="font-semibold text-sm">Review Submitted Tasks</h2>
+          <span className="badge bg-sky-400/10 text-sky-300 ml-auto">{reviewTasks.length}</span>
         </div>
-        <ActionCenter items={actionItems} />
+        <SubmittedTaskReview tasks={reviewTasks} />
       </div>
     </div>
   );

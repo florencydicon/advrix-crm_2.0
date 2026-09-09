@@ -482,17 +482,6 @@ export function addWorkingDays(start: Date, days: number): Date {
   return d;
 }
 
-/** Counts the number of working days (Sundays excluded) between two dates. */
-function countWorkingDays(from: Date, to: Date): number {
-  let count = 0;
-  const d = new Date(from.getTime());
-  while (d < to) {
-    d.setDate(d.getDate() + 1);
-    if (d.getDay() !== 0) count += 1;
-  }
-  return Math.max(0, count);
-}
-
 function toISODate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -501,62 +490,63 @@ function toISODate(d: Date): string {
 }
 
 /**
- * Assigns sequential working-day due dates to every task of a project that
- * doesn't have one yet. Sundays are excluded. Each stage gets 2 working days;
- * if the project has an overall deadline the tasks are spread evenly across
- * the available working days instead.
+ * Default deadline engine. When a project has an overall deadline, every open
+ * sub-task defaults to that exact date (whatever the PM/Sales set at task-add
+ * time) — each sub-task can still be overridden individually afterwards via its
+ * own deadline editor. When no deadline is set (or it is cleared), sub-tasks
+ * without a date fall back to the sequential 2-working-day default (Sundays
+ * excluded).
+ *
+ * Pass `{ propagateToAll: true }` to re-sync every open sub-task to the project
+ * deadline at once — used when a project is created so the chosen deadline
+ * lands on all generated sub-tasks immediately.
  */
-export async function computeSequentialDeadlines(projectId: string) {
+export async function computeSequentialDeadlines(projectId: string, opts?: { propagateToAll?: boolean }) {
   try {
-    const tasks = await query<{ id: string; due_date: string | null }>(
-      `SELECT id, due_date::text AS due_date FROM tasks WHERE project_id = $1 ORDER BY created_at ASC, id ASC`,
-      [projectId]
-    );
-    if (tasks.length === 0) return;
-
     const project = (
       await query<{ deadline: string | null }>(
         `SELECT deadline::text AS deadline FROM projects WHERE id = $1`,
         [projectId]
       )
     )[0];
+    const deadline = project?.deadline || null;
 
-    const start = new Date();
-    start.setHours(12, 0, 0, 0);
+    if (deadline) {
+      const target = deadline.slice(0, 10);
+      if (opts?.propagateToAll) {
+        await query(
+          `UPDATE tasks SET due_date = $2
+           WHERE project_id = $1 AND status NOT IN ('completed', 'upload_done')`,
+          [projectId, target]
+        );
+      } else {
+        await query(
+          `UPDATE tasks SET due_date = $2
+           WHERE project_id = $1 AND due_date IS NULL AND status NOT IN ('completed', 'upload_done')`,
+          [projectId, target]
+        );
+      }
+      return;
+    }
 
+    // No overall project deadline — sequential 2-working-day default (Sundays
+    // excluded) for tasks that still have no date.
+    const tasks = await query<{ id: string; due_date: string | null }>(
+      `SELECT id, due_date::text AS due_date FROM tasks WHERE project_id = $1 ORDER BY created_at ASC, id ASC`,
+      [projectId]
+    );
     const missing = tasks.filter((t) => !t.due_date);
     if (missing.length === 0) return;
 
-    let dates: Date[] = [];
-    const totalTasks = tasks.length;
-    const deadlineStr = project?.deadline || null;
-
-    if (deadlineStr) {
-      const end = new Date(`${deadlineStr}T12:00:00`);
-      const workDays = countWorkingDays(start, end);
-      const step = totalTasks > 1 ? Math.max(1, Math.floor(workDays / (totalTasks - 1))) : workDays;
-      let cursor = new Date(start.getTime());
-      for (let i = 0; i < totalTasks; i++) {
-        cursor = addWorkingDays(cursor, i === 0 ? 1 : Math.max(1, step));
-        dates.push(new Date(cursor.getTime()));
-      }
-      for (let i = 1; i < dates.length; i++) {
-        if (dates[i] < dates[i - 1]) dates[i] = addWorkingDays(dates[i - 1], 1);
-        while (dates[i].getDay() === 0) dates[i].setDate(dates[i].getDate() + 1);
-      }
-    } else {
-      let cursor = new Date(start.getTime());
-      for (let i = 0; i < totalTasks; i++) {
-        cursor = addWorkingDays(cursor, 2);
-        dates.push(new Date(cursor.getTime()));
-      }
-    }
-
-    for (let i = 0; i < totalTasks; i++) {
-      const t = tasks[i];
-      if (!t.due_date) {
-        await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [t.id, toISODate(dates[i])]);
-      }
+    const start = new Date();
+    start.setHours(12, 0, 0, 0);
+    let cursor = new Date(start.getTime());
+    const dates: Date[] = missing.map(() => {
+      cursor = addWorkingDays(cursor, 2);
+      return new Date(cursor.getTime());
+    });
+    for (let i = 0; i < missing.length; i++) {
+      await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [missing[i].id, toISODate(dates[i])]);
     }
   } catch (err) {
     console.error("computeSequentialDeadlines failed for project", projectId, ":", err);
