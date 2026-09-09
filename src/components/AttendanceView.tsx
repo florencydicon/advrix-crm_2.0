@@ -158,6 +158,13 @@ export default function AttendanceView({
   const hasPunchedIn = !!todayRecord?.punch_in;
   const hasPunchedOut = !!todayRecord?.punch_out;
 
+  const isTodayOnLeave = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return myLeaves.some(
+      (l) => l.status === "approved" && isoDate(l.start_date) <= todayStr && isoDate(l.end_date) >= todayStr
+    );
+  }, [myLeaves]);
+
   const lateCount = history.filter((h) => h.status === "late").length;
   const halfDayCount = history.filter((h) => h.status === "half_day").length;
   const absentCount = history.filter((h) => h.status === "absent").length;
@@ -310,7 +317,7 @@ export default function AttendanceView({
         </div>
       </div>
 
-      {activeTab === "attendance" && locStatus !== "granted" && (
+      {activeTab === "attendance" && locStatus !== "granted" && !isTodayOnLeave && (
         <div className={`rounded-xl px-4 py-3 flex items-center gap-3 ${
           locStatus === "denied"
             ? "bg-rose-400/10 ring-1 ring-rose-400/20"
@@ -352,6 +359,17 @@ export default function AttendanceView({
         </div>
       )}
 
+      {isTodayOnLeave && (
+        <div className="rounded-xl px-4 py-3 flex items-center gap-3 bg-violet-500/10 ring-1 ring-violet-400/20">
+          <Calendar className="h-5 w-5 text-violet-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-white">On Approved Leave</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">You are on approved leave today — punch in/out is disabled for this day.</p>
+          </div>
+          <span className="badge bg-violet-400/10 text-violet-300 shrink-0">Leave</span>
+        </div>
+      )}
+
       {activeTab === "reports" && isAdmin && (
         <>
           <AttendanceReports
@@ -378,10 +396,10 @@ export default function AttendanceView({
               )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs"
-                disabled={pending || hasPunchedIn || locStatus !== "granted"}
+                disabled={pending || hasPunchedIn || locStatus !== "granted" || isTodayOnLeave}
                 onClick={handlePunchIn}
               >
-                {hasPunchedIn ? "Punched In" : "Punch In"}
+                {isTodayOnLeave ? "On Leave" : hasPunchedIn ? "Punched In" : "Punch In"}
               </button>
             </div>
 
@@ -402,7 +420,11 @@ export default function AttendanceView({
                   {todayRecord?.total_break_mins ? `${todayRecord.total_break_mins}m` : "—"}
                 </p>
               )}
-              {hasPunchedIn && !hasPunchedOut ? (
+              {isTodayOnLeave ? (
+                <button className="btn-secondary mt-2 w-full !py-2 text-xs opacity-40" disabled>
+                  On Leave — Break disabled
+                </button>
+              ) : hasPunchedIn && !hasPunchedOut ? (
                 onBreak ? (
                   <button
                     className="btn-primary mt-2 w-full !py-2 text-xs bg-amber-500 hover:bg-amber-600"
@@ -438,10 +460,10 @@ export default function AttendanceView({
               )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs bg-emerald-600 hover:bg-emerald-700"
-                disabled={pending || !hasPunchedIn || hasPunchedOut || onBreak || locStatus !== "granted"}
+                disabled={pending || !hasPunchedIn || hasPunchedOut || onBreak || locStatus !== "granted" || isTodayOnLeave}
                 onClick={handlePunchOut}
               >
-                {hasPunchedOut ? "Punched Out" : onBreak ? "End break first" : "Punch Out"}
+                {isTodayOnLeave ? "On Leave" : hasPunchedOut ? "Punched Out" : onBreak ? "End break first" : "Punch Out"}
               </button>
             </div>
 

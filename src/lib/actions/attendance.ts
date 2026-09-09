@@ -65,10 +65,21 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
     return { error: "Already punched in today" };
   }
 
+  // If any approved leave covers today, block punch-in
+  const hasLeave = await query<{ id: string }>(
+    `SELECT id FROM leaves WHERE user_id = $1 AND status = 'approved' AND start_date <= $2 AND end_date >= $2 LIMIT 1`,
+    [session.sub, today]
+  );
+  if (hasLeave[0]) {
+    return { error: "You are on approved leave today. Attendance is disabled for this day." };
+  }
+
   const settings = await getAttendanceSettings();
 
   const punchInTime = new Date();
-  const lateThreshold = new Date(settings.shift_start_time + "Z");
+  const [sh, sm] = settings.shift_start_time.split(":").map(Number);
+  const lateThreshold = new Date(punchInTime);
+  lateThreshold.setHours(sh || 0, sm || 0, 0, 0);
   lateThreshold.setMinutes(lateThreshold.getMinutes() + settings.late_grace_period_mins);
   const status = punchInTime > lateThreshold ? "late" : "present";
 
@@ -160,8 +171,12 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
     status = "half_day";
   }
   // Keep / adopt "late" label when the punch-in was flagged late and they
-  // stayed the full day.
-  const punchInLate = new Date(record.punch_in) > new Date(new Date(settings.shift_start_time + "Z").setMinutes(new Date(settings.shift_start_time + "Z").getMinutes() + settings.late_grace_period_mins));
+  // stayed the full day — compare punch_in against that day's shift start + grace.
+  const [sh2, sm2] = settings.shift_start_time.split(":").map(Number);
+  const punchLateThreshold = new Date(punchIn);
+  punchLateThreshold.setHours(sh2 || 0, sm2 || 0, 0, 0);
+  punchLateThreshold.setMinutes(punchLateThreshold.getMinutes() + settings.late_grace_period_mins);
+  const punchInLate = punchIn > punchLateThreshold;
   if (status === "present" && punchInLate) status = "late";
 
   await query(
@@ -280,6 +295,59 @@ export async function endBreakAction() {
   } catch {}
   revalidatePath("/attendance");
   return { ok: true, breakMins: mins, totalBreakMins: total };
+}
+
+export async function updateAttendanceRecordAction(input: {
+  user_id: string;
+  date: string;
+  status?: string;
+  hours_worked?: number;
+  note?: string | null;
+}) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+  if (!hasPermission(session.permissions, "attendance:view")) return { error: "Not authorized" };
+  const { user_id, date, status, hours_worked, note } = input;
+  if (!user_id || !date) return { error: "User and date required" };
+  const cleanDate = String(date).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) return { error: "Invalid date" };
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (status !== undefined) { sets.push(`status = $${vals.length + 1}`); vals.push(status); }
+  if (hours_worked !== undefined) { sets.push(`hours_worked = $${vals.length + 1}`); vals.push(hours_worked); }
+  if (note !== undefined) { sets.push(`note = $${vals.length + 1}`); vals.push(note); }
+  if (sets.length === 0) return { error: "Nothing to update" };
+  vals.push(user_id, cleanDate);
+  // upsert if not exists
+  const existing = await query<{ id: string }>(`SELECT id FROM attendance WHERE user_id = $${vals.length - 1} AND date = $${vals.length}`, [user_id, cleanDate]);
+  if (existing[0]) {
+    await query(`UPDATE attendance SET ${sets.join(", ")} WHERE user_id = $${vals.length - 1} AND date = $${vals.length}`, vals);
+  } else {
+    const initStatus = status || "present";
+    const initHours = hours_worked ?? 0;
+    await query(`INSERT INTO attendance (user_id, date, status, hours_worked) VALUES ($1, $2, $3, $4)`, [user_id, cleanDate, initStatus, initHours]);
+    if (note) await query(`UPDATE attendance SET note = $1 WHERE user_id = $2 AND date = $3`, [note, user_id, cleanDate]);
+  }
+  revalidatePath("/attendance");
+  return { ok: true };
+}
+
+export async function uploadAttendanceProofAction(input: { user_id: string; date: string; proof_image_url: string }) {
+  const session = await getSession();
+  if (!session) return { error: "Not authenticated" };
+  if (!hasPermission(session.permissions, "attendance:view")) return { error: "Not authorized" };
+  const { user_id, date, proof_image_url } = input;
+  if (!user_id || !date || !proof_image_url) return { error: "Missing fields" };
+  const cleanDate = String(date).slice(0, 10);
+  await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS proof_image_url TEXT`);
+  const existing = await query<{ id: string }>(`SELECT id FROM attendance WHERE user_id = $1 AND date = $2`, [user_id, cleanDate]);
+  if (existing[0]) {
+    await query(`UPDATE attendance SET proof_image_url = $1 WHERE id = $2`, [proof_image_url, existing[0].id]);
+  } else {
+    await query(`INSERT INTO attendance (user_id, date, status, hours_worked, proof_image_url) VALUES ($1, $2, 'present', 0, $3)`, [user_id, cleanDate, proof_image_url]);
+  }
+  revalidatePath("/attendance");
+  return { ok: true };
 }
 
 export type { AttendanceSettings } from "@/lib/data";

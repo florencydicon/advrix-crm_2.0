@@ -1114,7 +1114,8 @@ export async function ensureAttendanceSettingsTable() {
       ALTER TABLE attendance
         ADD COLUMN IF NOT EXISTS break_start_time TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS break_end_time TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS total_break_mins INT NOT NULL DEFAULT 0
+        ADD COLUMN IF NOT EXISTS total_break_mins INT NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS proof_image_url TEXT
     `);
     await query(`ALTER TABLE leaves ADD COLUMN IF NOT EXISTS is_paid BOOLEAN NOT NULL DEFAULT true`);
     await query(`INSERT INTO attendance_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
@@ -1123,21 +1124,28 @@ export async function ensureAttendanceSettingsTable() {
 
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {
   await ensureAttendanceSettingsTable();
-  const rows = await query<{ kv: { key: string; value: string } }>(
-    `SELECT jsonb_each_text(row_to_json(a)::jsonb) AS kv FROM attendance_settings a WHERE id = 1`
-  );
-  const settings = { ...DEFAULT_ATTENDANCE_SETTINGS };
-  for (const r of rows) {
-    const kv = r.kv;
-    if (!kv) continue;
-    if (!(ATTENDANCE_SETTING_KEYS as string[]).includes(kv.key)) continue;
-    if (kv.key === "shift_start_time" || kv.key === "shift_end_time") {
-      (settings as Record<string, unknown>)[kv.key] = String(kv.value);
-    } else {
-      (settings as Record<string, unknown>)[kv.key] = Number(kv.value);
-    }
+  try {
+    const rows = await query<AttendanceSettings & { id?: number; updated_by?: string | null; updated_at?: string }>(
+      `SELECT shift_start_time, shift_end_time, late_grace_period_mins,
+              minimum_hours_for_half_day::text AS minimum_hours_for_half_day,
+              minimum_hours_for_full_day::text AS minimum_hours_for_full_day,
+              monthly_paid_leaves, allowed_break_mins
+       FROM attendance_settings WHERE id = 1`
+    );
+    const r = rows[0];
+    if (!r) return { ...DEFAULT_ATTENDANCE_SETTINGS };
+    return {
+      shift_start_time: String(r.shift_start_time || DEFAULT_ATTENDANCE_SETTINGS.shift_start_time).slice(0, 5),
+      shift_end_time: String(r.shift_end_time || DEFAULT_ATTENDANCE_SETTINGS.shift_end_time).slice(0, 5),
+      late_grace_period_mins: Number(r.late_grace_period_mins ?? DEFAULT_ATTENDANCE_SETTINGS.late_grace_period_mins),
+      minimum_hours_for_half_day: Number(r.minimum_hours_for_half_day ?? DEFAULT_ATTENDANCE_SETTINGS.minimum_hours_for_half_day),
+      minimum_hours_for_full_day: Number(r.minimum_hours_for_full_day ?? DEFAULT_ATTENDANCE_SETTINGS.minimum_hours_for_full_day),
+      monthly_paid_leaves: Number((r as unknown as { monthly_paid_leaves: number }).monthly_paid_leaves ?? DEFAULT_ATTENDANCE_SETTINGS.monthly_paid_leaves),
+      allowed_break_mins: Number((r as unknown as { allowed_break_mins: number }).allowed_break_mins ?? DEFAULT_ATTENDANCE_SETTINGS.allowed_break_mins),
+    };
+  } catch {
+    return { ...DEFAULT_ATTENDANCE_SETTINGS };
   }
-  return settings;
 }
 
 // ---------- Attendance reports ----------
@@ -1179,6 +1187,7 @@ export async function getAttendanceReport(start: string, end: string, allowedBre
 
 export interface LeaveReportRow {
   id: string;
+  user_id: string;
   full_name: string;
   role_label: string;
   leave_type: string;
@@ -1193,7 +1202,7 @@ export interface LeaveReportRow {
 
 export async function getLeaveReport(start: string, end: string): Promise<LeaveReportRow[]> {
   return query<LeaveReportRow>(
-    `SELECT l.id, u.full_name, r.label AS role_label, l.leave_type,
+    `SELECT l.id, l.user_id, u.full_name, r.label AS role_label, l.leave_type,
             l.start_date::text AS start_date, l.end_date::text AS end_date,
             l.days, l.reason, l.status,
             au.full_name AS approved_by_name, l.created_at
@@ -1203,6 +1212,39 @@ export async function getLeaveReport(start: string, end: string): Promise<LeaveR
      LEFT JOIN users au ON au.id = l.approved_by
      WHERE l.start_date <= $2 AND l.end_date >= $1
      ORDER BY l.start_date DESC`,
+    [start, end]
+  );
+}
+
+// ---------- Attendance calendar / grid ----------
+
+export interface AttendanceGridRow {
+  user_id: string;
+  full_name: string;
+  role_label: string;
+  date: string;
+  punch_in: string | null;
+  punch_out: string | null;
+  status: string;
+  hours_worked: number;
+  total_break_mins: number;
+  proof_image_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_text: string | null;
+}
+
+export async function getAttendanceGrid(start: string, end: string): Promise<AttendanceGridRow[]> {
+  return query<AttendanceGridRow>(
+    `SELECT a.user_id, u.full_name, r.label AS role_label,
+            a.date::text AS date, a.punch_in, a.punch_out, a.status, a.hours_worked,
+            COALESCE(a.total_break_mins, 0)::int AS total_break_mins,
+            a.proof_image_url, a.latitude, a.longitude, a.location_text
+     FROM attendance a
+     JOIN users u ON u.id = a.user_id
+     JOIN roles r ON r.id = u.role_id
+     WHERE a.date BETWEEN $1 AND $2
+     ORDER BY a.date ASC, u.full_name ASC`,
     [start, end]
   );
 }
@@ -1222,6 +1264,7 @@ export interface EmployeeAttendanceDetail {
   total_break_mins: number;
   break_start_time: string | null;
   break_end_time: string | null;
+  proof_image_url: string | null;
 }
 
 export interface EmployeeAttendanceSummary {
@@ -1246,7 +1289,7 @@ export async function getEmployeeAttendanceDetail(
     `SELECT id, date::text AS date, punch_in, punch_out, status, hours_worked,
             latitude, longitude, location_text,
             COALESCE(total_break_mins, 0)::int AS total_break_mins,
-            break_start_time, break_end_time
+            break_start_time, break_end_time, proof_image_url
      FROM attendance
      WHERE user_id = $1 AND date BETWEEN $2 AND $3
      ORDER BY date DESC, punch_in DESC`,

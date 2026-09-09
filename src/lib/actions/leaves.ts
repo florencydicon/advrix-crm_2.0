@@ -110,6 +110,21 @@ export async function approveLeaveAction(leaveId: string) {
     [session.sub, leaveId]
   );
 
+  // Create/update attendance rows for every day in the leave range → disables punch for those dates
+  try {
+    const start = new Date(leave[0].start_date);
+    const end = new Date(leave[0].end_date);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().slice(0, 10);
+      await query(
+        `INSERT INTO attendance (user_id, date, status, hours_worked)
+         VALUES ($1, $2, 'on_leave', 0)
+         ON CONFLICT (user_id, date) DO UPDATE SET status = 'on_leave'`,
+        [leave[0].user_id, dateStr]
+      );
+    }
+  } catch {}
+
   await createNotification({
     userId: leave[0].user_id,
     type: "leave",

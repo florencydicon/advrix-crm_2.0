@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Download, Printer, FileSpreadsheet, Eye } from "lucide-react";
+import { Download, Printer, FileSpreadsheet, Eye, Table, LayoutGrid } from "lucide-react";
 import type { AttendanceReportRow } from "@/lib/data";
 import EmployeeAttendanceDetail from "@/components/EmployeeAttendanceDetail";
+import AttendanceCalendarView from "@/components/AttendanceCalendarView";
 
 export interface LeaveReportRowLite {
   id: string;
@@ -47,6 +48,7 @@ export default function AttendanceReports({
 }) {
   const router = useRouter();
   const [selectedEmployee, setSelectedEmployee] = useState<{ userId: string; name: string; role: string } | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
   const label = `${MONTHS[month - 1]} ${year}`;
   const now = new Date();
   const years = Array.from({ length: now.getFullYear() - 2023 + 2 }, (_, i) => 2024 + i);
@@ -167,6 +169,20 @@ export default function AttendanceReports({
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
+            <div className="flex rounded-xl p-1 bg-white/5 ring-1 ring-white/10">
+              <button
+                onClick={() => setViewMode("table")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${viewMode === "table" ? "bg-brand-300 text-night-950" : "text-slate-400 hover:text-white"}`}
+              >
+                <Table className="h-3.5 w-3.5" /> Table
+              </button>
+              <button
+                onClick={() => setViewMode("calendar")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${viewMode === "calendar" ? "bg-brand-300 text-night-950" : "text-slate-400 hover:text-white"}`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" /> Calendar
+              </button>
+            </div>
             <button className="btn-secondary !py-1.5 !px-3 text-xs w-full sm:w-auto justify-center" onClick={exportCsv}>
               <Download className="h-3.5 w-3.5" /> Excel
             </button>
@@ -177,7 +193,11 @@ export default function AttendanceReports({
         </div>
       </div>
 
-      {/* Attendance summary — desktop table */}
+      {viewMode === "calendar" && <AttendanceCalendarView month={month} year={year} />}
+
+      {viewMode === "table" && (
+        <>
+          {/* Attendance summary — desktop table */}
       <div className="hidden md:block card overflow-x-auto">
         <div className="px-4 py-3 border-b border-white/10">
           <h3 className="font-semibold text-sm">Attendance Summary — {label}</h3>
@@ -361,6 +381,8 @@ export default function AttendanceReports({
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

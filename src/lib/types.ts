@@ -291,6 +291,7 @@ export interface Attendance {
   break_start_time: string | null;
   break_end_time: string | null;
   total_break_mins: number;
+  proof_image_url: string | null;
   created_at: string;
 }
 
