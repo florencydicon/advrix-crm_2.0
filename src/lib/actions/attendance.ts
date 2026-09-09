@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore } from "next/cache";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { query } from "@/lib/db";
@@ -353,11 +353,9 @@ export async function uploadAttendanceProofAction(input: { user_id: string; date
 export type { AttendanceSettings } from "@/lib/data";
 
 export async function getAttendanceSettingsAction() {
+  unstable_noStore();
   const session = await getSession();
   if (!session) return { error: "Not authenticated" };
-  // Ensure fresh read — bypass any Next.js cache that could serve stale defaults
-  const { unstable_noStore } = await import("next/cache");
-  unstable_noStore();
   const settings = await getAttendanceSettings();
   return { ok: true, settings };
 }

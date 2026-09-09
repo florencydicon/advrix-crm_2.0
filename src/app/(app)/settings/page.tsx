@@ -8,7 +8,6 @@ import SettingsView from "@/components/SettingsView";
 
 export const metadata = { title: "Settings — Advrix Media" };
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 export default async function SettingsPage({
   searchParams,
