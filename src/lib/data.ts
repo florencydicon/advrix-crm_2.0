@@ -336,7 +336,7 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
 }
 
 const TASK_SELECT = `
-  SELECT t.*, p.name AS project_name, c.name AS client_name, c.company AS client_company,
+  SELECT t.*, p.name AS project_name, c.id AS client_id, c.name AS client_name, c.company AS client_company,
          u.full_name AS assignee_name, r.label AS role_label,
          t.due_date::text AS due_date,
          t.brief_approved_at::text AS brief_approved_at,

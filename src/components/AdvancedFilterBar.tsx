@@ -97,7 +97,7 @@ const PARAM_BY_KEY: Record<FilterKey, string> = {
 const DEFAULT_LABELS: Record<FilterKey, string> = {
   client: "Client",
   project: "Project",
-  stage: "Stage / Person",
+  stage: "Stage",
   deadline: "Deadline",
   status: "Status",
   priority: "Priority",
@@ -348,7 +348,7 @@ function GlobalSearchInput({ value, onChange }: { value: string; onChange: (v: s
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search client, project, task, person, status, priority, deadline…"
+        placeholder="Search client, project, task, stage, status, priority, deadline…"
         aria-label="Search across the current list"
         className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pl-9 pr-8 text-sm text-white placeholder:text-slate-500 transition-colors focus:border-brand-300/50 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
       />
