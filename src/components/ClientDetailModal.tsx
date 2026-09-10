@@ -195,6 +195,7 @@ export default function ClientDetailModal({
   const [editName, setEditName] = useState("");
   const [editBrief, setEditBrief] = useState("");
   const [editDeadline, setEditDeadline] = useState("");
+  const [editPriority, setEditPriority] = useState("medium");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [custom, setCustom] = useState(false);
   const [customLabel, setCustomLabel] = useState("");
@@ -242,6 +243,7 @@ export default function ClientDetailModal({
     setEditName(p.name);
     setEditBrief("");
     setEditDeadline(p.deadline ? p.deadline.slice(0,10) : "");
+    setEditPriority("medium");
     setQuantities({});
     setTaskTitles({});
     setCustom(false);
@@ -321,7 +323,8 @@ export default function ClientDetailModal({
       const resTasks: any = await addTasksToProjectAction(
         editingProject.id,
         JSON.stringify(deliverablesToSend.length ? deliverablesToSend : deliverables),
-        Object.keys(titlesMap).length ? JSON.stringify(titlesMap) : undefined
+        Object.keys(titlesMap).length ? JSON.stringify(titlesMap) : undefined,
+        editPriority
       );
       if (resTasks.error) { toast(resTasks.error, "error"); setSaving(false); return; }
     }
@@ -437,6 +440,31 @@ export default function ClientDetailModal({
               <div>
                 <label className="label">Deadline</label>
                 <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="input" />
+              </div>
+              <div>
+                <label className="label">Priority <span className="text-slate-500 font-normal">(applies to this project's tasks)</span></label>
+                <div className="flex gap-2">
+                  {(["low", "medium", "high", "urgent"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setEditPriority(p)}
+                      className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold border transition-colors ${
+                        editPriority === p
+                          ? p === "urgent"
+                            ? "border-rose-500/60 bg-rose-500/15 text-rose-300"
+                            : p === "high"
+                              ? "border-rose-400/50 bg-rose-400/10 text-rose-300"
+                              : p === "medium"
+                                ? "border-sky-400/50 bg-sky-400/10 text-sky-300"
+                                : "border-white/20 bg-white/[0.06] text-slate-200"
+                          : "border-white/10 bg-white/[0.02] text-slate-500 hover:bg-white/[0.05] hover:text-slate-300"
+                      }`}
+                    >
+                      {p === "low" ? "Low" : p === "medium" ? "Medium" : p === "high" ? "High" : "Urgent"}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="shrink-0 flex items-center gap-2 px-5 py-3 border-t border-white/[0.06] bg-white/[0.02]">

@@ -209,6 +209,7 @@ export async function createProjectAction(formData: FormData) {
   const brief = String(formData.get("brief") || "").trim() || null;
   const deadline = String(formData.get("deadline") || "") || null;
   const deliverables = parseDeliverables(String(formData.get("deliverables_json") || ""));
+  const priority = String(formData.get("priority") || "medium").trim().toLowerCase();
   let taskTitles: Record<string, string[]> | undefined;
   try {
     const raw = String(formData.get("task_titles_json") || "");
@@ -238,6 +239,9 @@ export async function createProjectAction(formData: FormData) {
   const delivErrors = validateDeliverables(deliverables);
   if (delivErrors.length > 0) return { error: delivErrors[0].message };
 
+  const PRIORITIES = ["low", "medium", "high", "urgent"];
+  const cleanPriority = PRIORITIES.includes(priority) ? priority : "medium";
+
   const deliverableSummary =
     deliverables
       .filter((d) => d.quantity > 0)
@@ -260,7 +264,7 @@ export async function createProjectAction(formData: FormData) {
       );
     }
 
-    await generateDeliverableTasks(project[0].id, taskTitles);
+    await generateDeliverableTasks(project[0].id, taskTitles, cleanPriority);
     await syncApprovedTaskSequences(project[0].id);
     await computeSequentialDeadlines(project[0].id, { propagateToAll: true });
 
@@ -375,7 +379,7 @@ export async function getProjectEditDataAction(projectId: string) {
   return { ok: true as const, project: project[0], deliverables };
 }
 
-export async function addTasksToProjectAction(projectId: string, deliverablesJson: string, taskTitlesJson?: string) {
+export async function addTasksToProjectAction(projectId: string, deliverablesJson: string, taskTitlesJson?: string, priority?: string) {
   const session = await getSession();
   if (!session || !hasPermission(session.permissions, PERM_MANAGE)) return { error: "Not authorized." } as const;
   const project = await query<{ id: string; client_id: string }>(`SELECT id, client_id FROM projects WHERE id = $1`, [projectId]);
@@ -446,7 +450,7 @@ export async function addTasksToProjectAction(projectId: string, deliverablesJso
       );
     }
   }
-  await generateDeliverableTasks(projectId, taskTitles);
+  await generateDeliverableTasks(projectId, taskTitles, priority && ["low", "medium", "high", "urgent"].includes(priority) ? priority : undefined);
   await syncApprovedTaskSequences(projectId);
   await computeSequentialDeadlines(projectId);
   revalidatePath("/projects");

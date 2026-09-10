@@ -276,6 +276,7 @@ export default function ClientsView({
   const [customLabel, setCustomLabel] = useState("");
   const [customQty, setCustomQty] = useState(1);
   const [taskTitles, setTaskTitles] = useState<Record<string, string[]>>({});
+  const [priorityDraft, setPriorityDraft] = useState("medium");
   const [searchDraft, setSearchDraft] = useState(search);
   const [selectedManager, setSelectedManager] = useState("");
   const [detailClient, setDetailClient] = useState<ClientCard | null>(null);
@@ -339,6 +340,7 @@ export default function ClientsView({
           : []),
       ];
       if (currentDeliv.length > 0) fd.set("deliverables_json", JSON.stringify(currentDeliv));
+      if (priorityDraft) fd.set("priority", priorityDraft);
       // Sub-task title overrides (e.g., Static Post 01 -> Independence Day Post)
       if (Object.keys(taskTitles).length > 0) {
         const filtered: Record<string, string[]> = {};
@@ -701,6 +703,31 @@ export default function ClientsView({
           <div>
             <label className="label">Deadline</label>
             <DatePicker name="deadline" placeholder="Select deadline…" />
+          </div>
+          <div>
+            <label className="label">Priority</label>
+            <div className="flex gap-2">
+              {(["low", "medium", "high", "urgent"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPriorityDraft(p)}
+                  className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold border transition-colors ${
+                    priorityDraft === p
+                      ? p === "urgent"
+                        ? "border-rose-500/60 bg-rose-500/15 text-rose-300"
+                        : p === "high"
+                          ? "border-rose-400/50 bg-rose-400/10 text-rose-300"
+                          : p === "medium"
+                            ? "border-sky-400/50 bg-sky-400/10 text-sky-300"
+                            : "border-white/20 bg-white/[0.06] text-slate-200"
+                      : "border-white/10 bg-white/[0.02] text-slate-500 hover:bg-white/[0.05] hover:text-slate-300"
+                  }`}
+                >
+                  {p === "low" ? "Low" : p === "medium" ? "Medium" : p === "high" ? "High" : "Urgent"}
+                </button>
+              ))}
+            </div>
           </div>
           <button type="submit" className="btn-primary w-full" disabled={pending}>
             {pending ? "Creating…" : "submit"}

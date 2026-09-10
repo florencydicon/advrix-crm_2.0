@@ -45,7 +45,11 @@ async function allocateTasksForRole(projectId: string, roleKey: string, userId: 
  * travels through each member (start → submit → gate approval → handoff) and
  * completes automatically after the final approval.
  */
-export async function generateDeliverableTasks(projectId: string, customTitles?: Record<string, string[]>) {
+export async function generateDeliverableTasks(
+  projectId: string,
+  customTitles?: Record<string, string[]>,
+  priority: string = "medium"
+) {
   try {
     const deliverables = await query<DeliverableRow>(
       `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
@@ -69,11 +73,15 @@ export async function generateDeliverableTasks(projectId: string, customTitles?:
           if (customForKey?.[i - 1]?.trim()) {
             await query(`UPDATE tasks SET title = $1 WHERE id = $2`, [title, existing[0].id]);
           }
+          // Sync priority when it changed at creation time
+          if (priority && priority !== "medium") {
+            await query(`UPDATE tasks SET priority = $1 WHERE id = $2`, [priority, existing[0].id]);
+          }
           continue;
         }
         const rows = await query<{ id: string }>(
           `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by, brief_approved_at)
-           VALUES ($1, $2, $3, NULL, $4, 1, $5, $6, NULL, 'approved', 'medium', NULL, NULL, now())
+           VALUES ($1, $2, $3, NULL, $4, 1, $5, $6, NULL, 'approved', $7, NULL, NULL, now())
            RETURNING id`,
           [
             projectId,
@@ -82,6 +90,7 @@ export async function generateDeliverableTasks(projectId: string, customTitles?:
             d.id,
             title,
             `Unified deliverable "${title}". This task flows sequentially through the assigned team — each member starts, submits, and is approved before the next hand-off.`,
+            priority,
           ]
         );
         // Saving the task instantly pushes it to the first employee (no brief gate).
