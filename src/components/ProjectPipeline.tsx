@@ -105,7 +105,7 @@ export default function ProjectPipeline({
       label: (t) => clientName(t).trim(),
     },
     project: { value: (t) => t.project_name },
-    stage: { values: taskStageValues, exclude: ["Unassigned"] },
+    stage: { values: taskStageValues },
     deadline: {
       date: (t) => t.due_date,
       completed: (t) => t.status === "completed",

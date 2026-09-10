@@ -106,7 +106,7 @@ export default function SmmDashboard({
       label: (t) => formatClientName(t.client_company, t.client_name),
     },
     project: { value: (t) => t.project_name },
-    stage: { values: taskStageValues, exclude: ["Unassigned"] },
+    stage: { values: taskStageValues },
     deadline: {
       date: (t) => t.due_date,
       completed: (t) => t.status === "completed",
