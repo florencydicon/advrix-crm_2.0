@@ -30,6 +30,7 @@ import {
   setPipelineTaskTitleAction,
   setPipelineTaskContentAction,
   setPipelineTaskDeadlineAction,
+  setPipelineTaskPriorityAction,
   updatePipelineTaskTeamAction,
   deletePipelineTaskAction,
   getPipelineBoardAction,
@@ -125,6 +126,7 @@ export default function TaskModal({
   const [contentDraft, setContentDraft] = useState(initialTask.content || "");
   const [remarks, setRemarks] = useState(initialTask.remarks || "");
   const [deadlineDraft, setDeadlineDraft] = useState(initialTask.due_date || "");
+  const [priorityDraft, setPriorityDraft] = useState(initialTask.priority || "medium");
   const [editedBy, setEditedBy] = useState<{ name: string; role: string; at: string } | null>(
     initialTask.remarks_edited_by_name
       ? {
@@ -158,6 +160,7 @@ export default function TaskModal({
     setContentDraft(fresh.content || "");
     setRemarks(fresh.remarks || "");
     setDeadlineDraft(fresh.due_date || "");
+    setPriorityDraft(fresh.priority || "medium");
     setEditedBy(
       fresh.remarks_edited_by_name
         ? {
@@ -236,6 +239,23 @@ export default function TaskModal({
       }
       setTask((prev) => ({ ...prev, due_date: res.due_date ?? prev.due_date }));
       toast(clean ? "Deadline updated." : "Deadline cleared.");
+      await refresh();
+    });
+  };
+
+  /** Priority is saved immediately on change (managers only). */
+  const persistPriority = (v: string) => {
+    if (!canEditDeadline) return;
+    setPriorityDraft(v);
+    startTransition(async () => {
+      const res = await setPipelineTaskPriorityAction(taskRef.current.id, v);
+      if (!res.ok) {
+        setPriorityDraft(taskRef.current.priority || "medium");
+        toast(res.error || "Could not update priority.", "error");
+        return;
+      }
+      setTask((prev) => ({ ...prev, priority: v }));
+      toast("Priority updated.");
       await refresh();
     });
   };
@@ -453,7 +473,7 @@ export default function TaskModal({
             ) : null}
           </section>
 
-          {/* ---- Task Title (editable by content editors) ---- */}
+          {/* ---- Task Title + Priority (editable by content editors / managers) ---- */}
           <section>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
               <FileText className="h-3.5 w-3.5 text-brand-300" /> Task Title
@@ -470,6 +490,42 @@ export default function TaskModal({
               <p className="text-sm text-slate-200 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 break-words">
                 {titleDraft || "Untitled task"}
               </p>
+            )}
+            {/* Priority dropdown */}
+            {canEditDeadline ? (
+              <div className="mt-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                  Priority
+                </p>
+                <div className="flex gap-2">
+                  {(["low", "medium", "high", "urgent"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => persistPriority(p)}
+                      className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold border transition-colors ${
+                        priorityDraft === p
+                          ? p === "urgent"
+                            ? "border-rose-500/60 bg-rose-500/15 text-rose-300"
+                            : p === "high"
+                              ? "border-rose-400/50 bg-rose-400/10 text-rose-300"
+                              : p === "medium"
+                                ? "border-sky-400/50 bg-sky-400/10 text-sky-300"
+                                : "border-white/20 bg-white/[0.06] text-slate-200"
+                          : "border-white/10 bg-white/[0.02] text-slate-500 hover:bg-white/[0.05] hover:text-slate-300"
+                      }`}
+                    >
+                      {p === "low" ? "Low" : p === "medium" ? "Medium" : p === "high" ? "High" : "Urgent"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Priority</p>
+                <PriorityBadge priority={priorityDraft} />
+              </div>
             )}
           </section>
 

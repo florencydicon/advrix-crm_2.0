@@ -441,6 +441,33 @@ export async function setPipelineTaskTitleAction(
   return { ok: true, title: clean };
 }
 
+/** Valid priority values for the priority dropdown. */
+const PRIORITY_KEYS = ["low", "medium", "high", "urgent"];
+
+/**
+ * Task Priority — updates the priority of a sub-task. Managers (Super Admin /
+ * Admin / Project Manager / PM, or anyone with `tasks:manage`) only.
+ */
+export async function setPipelineTaskPriorityAction(
+  taskId: string,
+  priority: string
+): Promise<{ ok: boolean; priority?: string; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) {
+    return { ok: false, error: "Only managers can change task priority." };
+  }
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  const clean = String(priority ?? "").trim().toLowerCase();
+  if (!PRIORITY_KEYS.includes(clean)) {
+    return { ok: false, error: "Invalid priority value." };
+  }
+  await query(`UPDATE tasks SET priority = $2 WHERE id = $1`, [taskId, clean]);
+  revalidate();
+  return { ok: true, priority: clean };
+}
+
 /**
  * Content / Copy — the draft work body. Persists the working text for the
  * current stage. Only content editors and managers may edit it.
