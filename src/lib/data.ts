@@ -498,7 +498,12 @@ export async function getSubmittedTasks(pmScopeUserId: string | null = null): Pr
     `${TASK_SELECT}
      WHERE t.status = 'submitted'
      ${pmWhere}
-     ORDER BY t.reviewed_at DESC NULLS LAST, t.created_at ASC`,
+     ORDER BY COALESCE(t.due_date, '9999-12-31') ASC,
+              COALESCE(
+                (SELECT MAX(tc.submitted_at) FROM task_contributions tc WHERE tc.task_id = t.id),
+                t.remarks_edited_at,
+                t.created_at
+              ) DESC`,
     params
   );
 }

@@ -236,9 +236,17 @@ export default function ProjectPipeline({
   const sortedActive = useMemo(
     () =>
       [...board.active].sort((a, b) => {
-        // Tasks awaiting QC review float to the top so the gatekeeper sees them.
+        // Tasks awaiting QC review float to the top so the gatekeeper sees them,
+        // nearest due date first (overdue/today on top), latest submission first
+        // as tiebreaker.
         if (a.status === "submitted" && b.status !== "submitted") return -1;
         if (b.status === "submitted" && a.status !== "submitted") return 1;
+        const ka = new Date(`${a.due_date}T00:00:00`).getTime();
+        const kb = new Date(`${b.due_date}T00:00:00`).getTime();
+        if (!Number.isFinite(ka) && !Number.isFinite(kb)) return a.created_at < b.created_at ? -1 : 1;
+        if (!Number.isFinite(ka)) return 1;
+        if (!Number.isFinite(kb)) return -1;
+        if (ka !== kb) return ka - kb;
         return a.created_at < b.created_at ? -1 : 1;
       }),
     [board.active]
