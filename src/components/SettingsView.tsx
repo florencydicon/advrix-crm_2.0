@@ -9,6 +9,7 @@ import type { RoleWithPerms } from "@/lib/actions/roles";
 import TeamView from "@/components/TeamView";
 import RolesManager from "@/components/RolesManager";
 import DataExportPanel from "@/components/DataExportPanel";
+import BackupPanel from "@/components/BackupPanel";
 import AttendanceSettingsPanel from "@/components/AttendanceSettingsPanel";
 import { Modal } from "@/components/ui";
 import { useToast } from "@/components/Toast";
@@ -161,6 +162,8 @@ export default function SettingsView({
           </div>
 
           <DataExportPanel />
+
+          {sessionRoleKey === "SUPER_ADMIN" && <BackupPanel />}
 
           {sessionRoleKey === "SUPER_ADMIN" && <FlushDatabasePanel counts={counts} />}
         </div>
