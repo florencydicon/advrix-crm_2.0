@@ -63,6 +63,9 @@ export default function NativeNotificationRegistrar() {
           (await PushNotifications.addListener("registration", async ({ value }) => {
             if (!active || !value) return;
             try {
+              // Remember this device's token so logout can unregister it —
+              // otherwise the phone keeps receiving the old account's pushes.
+              try { localStorage.setItem("advrix.fcmToken", value); } catch {}
               await fetch("/api/push/fcm", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

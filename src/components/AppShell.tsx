@@ -350,6 +350,20 @@ export default function AppShell({
     .toUpperCase();
 
   async function handleLogout() {
+    // Unregister this device's push token BEFORE the session cookie is
+    // cleared (the DELETE endpoint requires auth). After logout the phone
+    // must not receive this account's notifications anymore.
+    try {
+      const token = localStorage.getItem("advrix.fcmToken");
+      if (token) {
+        await fetch("/api/push/fcm", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(() => {});
+        localStorage.removeItem("advrix.fcmToken");
+      }
+    } catch {}
     await logoutAction();
     router.push("/login");
   }
