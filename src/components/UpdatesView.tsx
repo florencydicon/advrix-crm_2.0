@@ -38,6 +38,9 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
   const filter = searchParams.get("filter") || "all";
   const typeFilter = searchParams.get("type") || "all";
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  // Live list seeded from the server prop — refreshed by polling below so the
+  // page, the bell dropdown, and the sidebar badge always agree.
+  const [live, setLive] = useState<Notification[]>(notifications);
   const TOASTED_KEY = "advrix.toastedIds";
   // Hydrate persisted read set so Mark all remains sticky across refresh for all roles
   useEffect(() => {
@@ -56,10 +59,33 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
     } catch {}
   }, []);
 
-  const isRead = (n: any) => (n.read === true || (n as any).isRead === true) || readIds.has(n.id);
-  const unreadCount = notifications.filter((n: any) => !isRead(n)).length;
+  // Poll the same source as the bell — the server prop goes stale otherwise
+  // (new notifications arrive while the page is open) and counts mismatch.
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      if (document.hidden) return;
+      try {
+        const res = await fetch("/api/notifications?limit=200", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { items: Notification[]; unread: number };
+        if (cancelled || !Array.isArray(data.items)) return;
+        setLive(data.items);
+      } catch {}
+    }
+    const id = window.setInterval(poll, 7000);
+    const once = window.setTimeout(poll, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.clearTimeout(once);
+    };
+  }, []);
 
-  const filtered = notifications.filter((n) => {
+  const isRead = (n: any) => (n.read === true || (n as any).isRead === true) || readIds.has(n.id);
+  const unreadCount = live.filter((n: any) => !isRead(n)).length;
+
+  const filtered = live.filter((n) => {
     if (filter === "unread" && isRead(n)) return false;
     if (typeFilter !== "all" && n.type !== typeFilter) return false;
     return true;
@@ -79,6 +105,11 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
     router.push(`/updates?${params.toString()}`);
   }
 
+  // Tell the AppShell bell to re-sync immediately (it also polls every 7s).
+  function broadcastRead() {
+    try { window.dispatchEvent(new Event("advrix:notifications-updated")); } catch {}
+  }
+
   async function handleOpen(n: Notification) {
     if (!isRead(n)) {
       setReadIds((prev) => {
@@ -88,22 +119,24 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
         return next;
       });
       await markNotificationReadAction(n.id);
+      broadcastRead();
     }
     if (n.link && n.link.startsWith("/") && !n.link.startsWith("//")) router.push(n.link);
   }
 
   async function handleMarkAll() {
     // Persist immediately so even starring employees / super admins see no re-toast after reload
-    const unreadIds = notifications.filter((n) => !isRead(n)).map((n) => n.id);
+    const unreadIds = live.filter((n) => !isRead(n)).map((n) => n.id);
     const nextSet = new Set([...readIds, ...unreadIds]);
     try { localStorage.setItem(TOASTED_KEY, JSON.stringify([...nextSet])); } catch {}
     setReadIds(nextSet);
     await markAllNotificationsReadAction();
+    broadcastRead();
     router.refresh();
   }
 
   const tabs = [
-    { key: "all", label: "All", count: notifications.length },
+    { key: "all", label: "All", count: live.length },
     { key: "unread", label: "Unread", count: unreadCount },
   ];
 
@@ -124,7 +157,7 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
           <h1 className="text-xl font-bold tracking-tight">Updates</h1>
           <p className="text-sm text-slate-400">Activity, tasks, projects, and approvals.</p>
         </div>
-        {notifications.length > 0 && (
+        {live.length > 0 && (
           <button
             onClick={handleMarkAll}
             disabled={unreadCount === 0}
@@ -139,7 +172,7 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {Object.entries(TYPE_META).map(([key, meta]) => {
-          const count = notifications.filter((n) => n.type === key).length;
+          const count = live.filter((n) => n.type === key).length;
           return (
             <button
               key={key}
@@ -174,11 +207,9 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
             }`}
           >
             {t.label}
-            {t.count > 0 && (
-              <span className={`ml-1.5 text-[10px] ${filter === t.key ? "opacity-70" : "opacity-60"}`}>
-                {t.count}
-              </span>
-            )}
+            <span className={`ml-1.5 text-[10px] ${filter === t.key ? "opacity-70" : "opacity-60"}`}>
+              {t.count}
+            </span>
           </button>
         ))}
       </div>

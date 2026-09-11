@@ -376,7 +376,14 @@ export async function getProjectEditDataAction(projectId: string) {
     `SELECT category_key, category_label, quantity, is_custom, custom_label FROM project_deliverables WHERE project_id = $1`,
     [projectId]
   );
-  return { ok: true as const, project: project[0], deliverables };
+  // Per-subtask snapshot so the edit form can pre-fill exact titles (by step
+  // index, never by list position) and show number / due date / priority.
+  const editTasks = await query<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null }>(
+    `SELECT id, title, step_key, status, priority, due_date::text AS due_date FROM tasks
+     WHERE project_id = $1 ORDER BY created_at ASC`,
+    [projectId]
+  );
+  return { ok: true as const, project: project[0], deliverables, tasks: editTasks };
 }
 
 export async function addTasksToProjectAction(projectId: string, deliverablesJson: string, taskTitlesJson?: string, priority?: string) {
@@ -431,13 +438,19 @@ export async function addTasksToProjectAction(projectId: string, deliverablesJso
       if (ex.quantity !== d.quantity) {
         await query(`UPDATE project_deliverables SET quantity = $1, category_label = $2, is_custom = $3, custom_label = $4 WHERE id = $5`, [d.quantity, label, d.isCustom, d.customLabel || null, ex.id]);
         if (d.quantity < ex.quantity) {
-          // Delete excess tasks beyond new quantity (e.g., 3->2, delete _d_03)
+          // Trim excess tasks beyond the new quantity (e.g., 3->2 removes _d_3).
+          // SAFETY: only untouched tasks (status 'approved', never started) may
+          // be auto-removed. Started / completed work is NEVER deleted by an
+          // edit — it stays on the project even if the quantity was lowered.
           for (let i = d.quantity + 1; i <= ex.quantity; i++) {
             const pad2 = String(i).padStart(2, "0");
-            await query(`DELETE FROM tasks WHERE project_id = $1 AND step_key IN ($2, $3)`, [projectId, `${d.key}_d_${i}`, `${d.key}_d_${pad2}`]);
+            await query(
+              `DELETE FROM tasks WHERE project_id = $1 AND status = 'approved' AND step_key IN ($2, $3)`,
+              [projectId, `${d.key}_d_${i}`, `${d.key}_d_${pad2}`]
+            );
             // Also handle custom
             if (d.isCustom) {
-              await query(`DELETE FROM tasks WHERE deliverable_id = $1 AND step_key LIKE $2`, [ex.id, `%_d_${i}`]);
+              await query(`DELETE FROM tasks WHERE deliverable_id = $1 AND status = 'approved' AND step_key LIKE $2`, [ex.id, `%_d_${i}`]);
             }
           }
         }

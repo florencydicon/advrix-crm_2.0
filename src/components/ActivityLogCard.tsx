@@ -28,7 +28,7 @@ export default function ActivityLogCard({ activity }: { activity: ActivityLogRow
     <div className="card overflow-hidden">
       <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
         <History className="h-4 w-4 text-brand-300" />
-        <h3 className="font-semibold text-sm">Activity Log — Permanent Audit Trail</h3>
+        <h3 className="font-semibold text-sm">Attendance &amp; Leave Log</h3>
         <span className="badge bg-white/5 text-slate-400 ml-auto">last {activity.length}</span>
       </div>
       {activity.length === 0 ? (

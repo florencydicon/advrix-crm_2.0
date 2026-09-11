@@ -12,9 +12,9 @@ export function DashboardActivityLogTrigger({ activity }: { activity: ActivityLo
       <button
         onClick={() => setOpen((v) => !v)}
         className="btn-secondary !py-2 text-xs"
-        aria-label="Open activity log"
+        aria-label="Open attendance and leave log"
       >
-        <Clock className="h-3.5 w-3.5" /> Activity Log
+        <Clock className="h-3.5 w-3.5" /> Attendance &amp; Leave Log
       </button>
       <ActivityLogOverlay open={open} onClose={() => setOpen(false)} activity={activity} />
     </>

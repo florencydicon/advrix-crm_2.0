@@ -130,10 +130,10 @@ export default function ActivityLogOverlay({
         <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-white/10">
           <div className="flex items-center gap-2 min-w-0">
             <History className="h-4 w-4 text-brand-300 shrink-0" />
-            <h3 className="font-semibold text-sm text-white truncate">Activity Log — Permanent Audit Trail</h3>
+            <h3 className="font-semibold text-sm text-white truncate">Attendance &amp; Leave Log</h3>
             <span className="badge bg-white/5 text-slate-400 ml-2 shrink-0">last {activity.length}</span>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors shrink-0" aria-label="Close activity log">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors shrink-0" aria-label="Close attendance and leave log">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -148,7 +148,7 @@ export default function ActivityLogOverlay({
           <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-white/10">
             <div className="flex items-center gap-2 min-w-0">
               <History className="h-4 w-4 text-brand-300 shrink-0" />
-              <h3 className="font-semibold text-sm text-white">Activity Log</h3>
+              <h3 className="font-semibold text-sm text-white">Attendance &amp; Leave Log</h3>
               <span className="badge bg-white/5 text-slate-400 shrink-0">{activity.length}</span>
             </div>
             <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors" aria-label="Close">
@@ -162,7 +162,7 @@ export default function ActivityLogOverlay({
         {/* Mobile Floating Close FAB — exact required classes */}
         <button
           onClick={onClose}
-          aria-label="Close activity log"
+          aria-label="Close attendance and leave log"
           className="fixed bottom-24 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-gray-800 text-white shadow-2xl border border-gray-600 active:scale-95 transition-transform md:hidden"
         >
           <X className="h-6 w-6" />

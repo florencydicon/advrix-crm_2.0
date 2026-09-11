@@ -202,6 +202,8 @@ export default function ClientDetailModal({
   const [customQty, setCustomQty] = useState(1);
   const [taskTitles, setTaskTitles] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [existingTasks, setExistingTasks] = useState<Array<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null }>>([]);
   const [isPending, startTransition] = useTransition();
 
   const refreshDetail = async () => {
@@ -249,43 +251,64 @@ export default function ClientDetailModal({
     setCustom(false);
     setCustomLabel("");
     setCustomQty(1);
-    const res: any = await getProjectEditDataAction(p.id);
-    if (res.ok) {
-      setEditName(res.project.name || p.name);
-      setEditBrief(res.project.brief || "");
-      setEditDeadline(res.project.deadline ? res.project.deadline.slice(0,10) : "");
-      const q: Record<string, number> = {};
-      const titles: Record<string, string[]> = {};
-      let foundCustom = false;
-      const projTasks = tasks.filter((t) => t.project_name === p.name);
-      let taskIdx = 0;
-      for (const d of res.deliverables || []) {
-        const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
-        if (d.is_custom) {
-          if (!foundCustom) {
-            setCustom(true);
-            setCustomLabel(d.custom_label || d.category_label || "");
-            setCustomQty(d.quantity || 1);
-            foundCustom = true;
-            const arr: string[] = [];
-            for (let i = 0; i < d.quantity; i++) {
-              if (taskIdx < projTasks.length) arr.push(projTasks[taskIdx++].title);
-              else arr.push(`${label} ${String(i + 1).padStart(2, "0")}`);
-            }
-            titles["custom"] = arr;
-          }
-        } else {
-          q[d.category_key] = d.quantity;
-          const arr: string[] = [];
-          for (let i = 0; i < d.quantity; i++) {
-            if (taskIdx < projTasks.length) arr.push(projTasks[taskIdx++].title);
-            else arr.push(`${label} ${String(i + 1).padStart(2, "0")}`);
-          }
-          titles[d.category_key] = arr;
+    setExistingTasks([]);
+    setEditLoading(true);
+    try {
+      const res: any = await getProjectEditDataAction(p.id);
+      if (res.ok) {
+        setEditName(res.project.name || p.name);
+        setEditBrief(res.project.brief || "");
+        setEditDeadline(res.project.deadline ? res.project.deadline.slice(0,10) : "");
+        const serverTasks: Array<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null }> = res.tasks || [];
+        setExistingTasks(serverTasks);
+        // Pre-fill priority from the subtasks' actual priority (most common)
+        if (serverTasks.length > 0) {
+          const counts: Record<string, number> = {};
+          for (const t of serverTasks) counts[t.priority] = (counts[t.priority] || 0) + 1;
+          const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+          if (top && ["low", "medium", "high", "urgent"].includes(top)) setEditPriority(top);
         }
+        // Group existing titles by deliverable key + step number parsed from
+        // step_key (e.g. "reel_d_02" -> key "reel", #2). Never by list position:
+        // the modal task list is newest-first and name matching breaks on
+        // duplicate project names, both of which scrambled titles on save.
+        const grouped = new Map<string, Map<number, string>>();
+        for (const t of serverTasks) {
+          const m = t.step_key ? /^(.+)_d_0*(\d+)$/.exec(t.step_key) : null;
+          if (!m) continue;
+          const g = m[1];
+          const n = Number(m[2]);
+          if (!grouped.has(g)) grouped.set(g, new Map());
+          grouped.get(g)!.set(n, t.title);
+        }
+        const q: Record<string, number> = {};
+        const titles: Record<string, string[]> = {};
+        let foundCustom = false;
+        for (const d of res.deliverables || []) {
+          const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
+          const map = grouped.get(d.category_key);
+          const arr: string[] = [];
+          for (let i = 1; i <= d.quantity; i++) {
+            arr.push(map?.get(i) ?? `${label} ${String(i).padStart(2, "0")}`);
+          }
+          if (d.is_custom) {
+            if (!foundCustom) {
+              setCustom(true);
+              setCustomLabel(d.custom_label || d.category_label || "");
+              setCustomQty(d.quantity || 1);
+              foundCustom = true;
+              titles["custom"] = arr;
+            }
+          } else {
+            q[d.category_key] = d.quantity;
+            titles[d.category_key] = arr;
+          }
+        }
+        setQuantities(q);
+        if (Object.keys(titles).length > 0) setTaskTitles(titles);
       }
-      setQuantities(q);
-      if (Object.keys(titles).length > 0) setTaskTitles(titles);
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -336,6 +359,7 @@ export default function ClientDetailModal({
     setCustom(false);
     setCustomLabel("");
     setCustomQty(1);
+    setExistingTasks([]);
     await refreshDetail();
   };
 
@@ -421,6 +445,34 @@ export default function ClientDetailModal({
                 <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={2} className="input" placeholder="Campaign goal, tone, audience..." />
               </div>
               <div>
+                <label className="label">Current subtasks {existingTasks.length > 0 && <span className="text-slate-500 font-normal">({existingTasks.length})</span>}</label>
+                {editLoading ? (
+                  <p className="text-xs text-slate-500 py-2">Loading current subtasks...</p>
+                ) : existingTasks.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-2">No subtasks yet — add below.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-[28vh] overflow-y-auto pr-1">
+                    {existingTasks.map((t, idx) => {
+                      const m = t.step_key ? /^.+_d_0*(\d+)$/.exec(t.step_key) : null;
+                      const num = m ? m[1].padStart(2, "0") : String(idx + 1).padStart(2, "0");
+                      return (
+                        <div key={t.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] font-bold text-brand-300 shrink-0">#{num}</span>
+                            <p className="text-xs font-medium text-white truncate flex-1">{t.title}</p>
+                            <StatusBadge status={t.status} />
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-1 ml-7">
+                            <PriorityBadge priority={t.priority} />
+                            {t.due_date && <span className="text-[11px] text-slate-500">Due {t.due_date.slice(0, 10)}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div>
                 <label className="label">Add new posts / reels to this project</label>
                 <p className="text-xs text-slate-500 mb-2">Existing data pre-filled (e.g., Static Post 3). Change to 4 to add one more — titles below are editable.</p>
                 <DeliverablesPicker
@@ -469,8 +521,8 @@ export default function ClientDetailModal({
             </div>
             <div className="shrink-0 flex items-center gap-2 px-5 py-3 border-t border-white/[0.06] bg-white/[0.02]">
               <button onClick={() => setEditingProject(null)} className="btn-ghost flex-1">Cancel</button>
-              <button onClick={handleSaveEdit} disabled={saving || isPending} className="btn-primary flex-1 !py-2 text-sm">
-                {saving ? "Saving..." : "Save Changes"}
+              <button onClick={handleSaveEdit} disabled={saving || isPending || editLoading} className="btn-primary flex-1 !py-2 text-sm disabled:opacity-50">
+                {saving ? "Saving..." : editLoading ? "Loading..." : "Save Changes"}
               </button>
             </div>
           </>
@@ -536,7 +588,7 @@ export default function ClientDetailModal({
                             </button>
                             <div className="flex items-center gap-1.5 mt-2">
                               <button
-                                onClick={(e) => { e.stopPropagation(); setEditingProject(p); setEditName(p.name); }}
+                                onClick={(e) => { e.stopPropagation(); startEdit(p); }}
                                 className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10"
                               >
                                 <Pencil className="h-3 w-3" /> Edit

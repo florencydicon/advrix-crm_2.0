@@ -202,43 +202,51 @@ export default function AppShell({
       localStorage.setItem(TOASTED_KEY, JSON.stringify([...toastedIds.current]));
     } catch {}
   }
-  useEffect(() => {
-    let cancelled = false;
-    async function poll() {
-      if (document.hidden) return;
-      try {
-        const res = await fetch("/api/notifications", { cache: "no-store" });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { items: Notification[]; unread: number };
-        if (cancelled) return;
-        // Strict filter: unread only + not already toasted in this session/persisted
-        const fresh = data.items.filter((n: any) => isUnread(n) && !toastedIds.current.has(n.id));
-        if (fresh.length > 0) {
-          fresh.forEach((n) => toastedIds.current.add(n.id));
-          persistToasted();
-          // ring bell + toast each fresh unread item once
-          setRinging(true);
-          setTimeout(() => !cancelled && setRinging(false), 6000);
-          for (const n of fresh) {
-            const label = (n as any).type === "attendance" || (n as any).type === "leave" ? `${n.title}: ${n.body}` : n.title;
-            // Spec example: if (!notification.isRead && !toastedIds.current.has(notification.id)) { toast(notification.message); toastedIds.current.add(notification.id); }
-            toast(label, "info");
-          }
+  const cancelledRef = useRef(false);
+  const pollNotifs = useCallback(async () => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    try {
+      const res = await fetch("/api/notifications", { cache: "no-store" });
+      if (!res.ok || cancelledRef.current) return;
+      const data = (await res.json()) as { items: Notification[]; unread: number };
+      if (cancelledRef.current) return;
+      // Strict filter: unread only + not already toasted in this session/persisted
+      const fresh = data.items.filter((n: any) => isUnread(n) && !toastedIds.current.has(n.id));
+      if (fresh.length > 0) {
+        fresh.forEach((n) => toastedIds.current.add(n.id));
+        persistToasted();
+        // ring bell + toast each fresh unread item once
+        setRinging(true);
+        setTimeout(() => !cancelledRef.current && setRinging(false), 6000);
+        for (const n of fresh) {
+          const label = (n as any).type === "attendance" || (n as any).type === "leave" ? `${n.title}: ${n.body}` : n.title;
+          // Spec example: if (!notification.isRead && !toastedIds.current.has(notification.id)) { toast(notification.message); toastedIds.current.add(notification.id); }
+          toast(label, "info");
         }
-        // keep the panel state in sync even when no fresh toast needed
-        setNotifs(data.items);
-        setUnread(data.unread);
-      } catch {}
-    }
-    const id = window.setInterval(poll, 7000);
+      }
+      // keep the panel state in sync even when no fresh toast needed
+      setNotifs(data.items);
+      setUnread(data.unread);
+    } catch {}
+  }, [toast]);
+  useEffect(() => {
+    cancelledRef.current = false;
+    const id = window.setInterval(pollNotifs, 7000);
     // also poll once shortly after mount so HR events appear within seconds
-    const once = window.setTimeout(poll, 2500);
+    const once = window.setTimeout(pollNotifs, 2500);
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       window.clearInterval(id);
       window.clearTimeout(once);
     };
-  }, [toast]);
+  }, [pollNotifs]);
+  // Instant sync when the Updates page (or anything else) marks reads —
+  // no waiting for the next 7s poll tick.
+  useEffect(() => {
+    const onUpdated = () => { pollNotifs(); };
+    window.addEventListener("advrix:notifications-updated", onUpdated);
+    return () => window.removeEventListener("advrix:notifications-updated", onUpdated);
+  }, [pollNotifs]);
 
   // PWA: register service worker + capture install prompt
   useEffect(() => {
@@ -375,6 +383,7 @@ export default function AppShell({
     setNotifs((list) => list.map((n) => ({ ...n, read: true })));
     setUnread(0);
     setNotifOpen(false);
+    try { window.dispatchEvent(new Event("advrix:notifications-updated")); } catch {}
     if (res && (res as any).error) {
       // If server failed, let next poll re-sync
     }
