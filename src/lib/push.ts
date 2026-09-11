@@ -288,9 +288,9 @@ async function dispatchFcmToTokens(tokens: FcmTokenRow[], payload: PushPayload) 
                   body: payload.body,
                 },
                 android: {
+                  priority: "HIGH",
                   notification: {
-                    channelId: "advrix",
-                    priority: "HIGH",
+                    channel_id: "advrix",
                     tag: payload.tag,
                   },
                 },
