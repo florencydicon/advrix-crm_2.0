@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "791983792407",
+    "project_id": "advrix-crm",
+    "storage_bucket": "advrix-crm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:791983792407:android:8ee1572f7fdf72d5215752",
+        "android_client_info": {
+          "package_name": "com.advrix.crm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyBuLdsb1_rSla_Wij0b3QuePByHWYTVo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

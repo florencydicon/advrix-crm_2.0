@@ -7,9 +7,6 @@ android/.gradle/
 android/local.properties
 android/app/.cxx/
 android/capacitor-cordova-android-plugins/**/build/
-ios/App/build/
-ios/App/Pods/
-ios/DerivedData/
 
 # Generated native folders are committed; only builds above are ignored.
 
