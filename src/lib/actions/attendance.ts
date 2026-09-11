@@ -6,6 +6,7 @@ import { hasPermission } from "@/lib/permissions";
 import { query } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { notifyHrManagers } from "@/lib/notifications";
+import { formatTimeIST } from "@/lib/utils";
 import {
   getAttendanceSettings,
   ensureAttendanceSettingsTable,
@@ -110,7 +111,7 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
 
   // HR feed + OS push (via notifications batch) to SUPER_ADMIN + managing PM(s)
   try {
-    const time = new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const time = formatTimeIST(now);
     await notifyHrManagers(session.sub, {
       type: "attendance",
       title: "Clock in",
