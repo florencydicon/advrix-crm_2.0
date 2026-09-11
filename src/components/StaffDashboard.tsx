@@ -96,10 +96,9 @@ export default function StaffDashboard({
 
   const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "uploading", "approved"];
 
-  // Terminal "Done" states live in the History tab; everything else stays active.
-  const isDone = (t: Task) => t.status === "completed" || t.status === "upload_done";
-  const activeTasks = useMemo(() => tasks.filter((t) => !isDone(t)), [tasks]);
-  const historyTasks = useMemo(() => tasks.filter((t) => isDone(t)), [tasks]);
+  // Active = tasks currently held by this user; History = everything else (moved past or completed).
+  const activeTasks = useMemo(() => tasks.filter((t) => t.assigned_to === userId), [tasks, userId]);
+  const historyTasks = useMemo(() => tasks.filter((t) => t.assigned_to !== userId), [tasks, userId]);
   const [tab, setTab] = useState<"active" | "history">("active");
 
   const af = useAdvancedFilters(activeTasks, {
@@ -130,9 +129,9 @@ export default function StaffDashboard({
   });
 
   const metrics = [
-    { label: "Active", value: tasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
-    { label: "Ready", value: tasks.filter((t) => t.status === "approved").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
-    { label: "Done", value: tasks.filter((t) => t.status === "completed" || t.status === "upload_done").length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+    { label: "Active", value: activeTasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
+    { label: "Ready", value: activeTasks.filter((t) => t.status === "approved").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
+    { label: "Done", value: historyTasks.length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
   // Nearest deadline first (nulls last) so the most urgent tasks surface on top.

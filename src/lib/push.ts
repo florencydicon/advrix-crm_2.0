@@ -216,17 +216,16 @@ interface FcmServiceAccount {
 function getFcmServiceAccount(): FcmServiceAccount | null {
   const raw = process.env.FCM_SERVICE_ACCOUNT_JSON;
   if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as FcmServiceAccount;
-    if (parsed.project_id && parsed.client_email && parsed.private_key) return parsed;
-  } catch {
-    // If not raw JSON, try base64-encoded JSON
+  // Strip wrapping quotes (Vercel .env import may include them)
+  const cleaned = raw.trim().replace(/^['"]|['"]$/g, "");
+  const tryParse = (s: string): FcmServiceAccount | null => {
     try {
-      const parsed = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as FcmServiceAccount;
+      const parsed = JSON.parse(s) as FcmServiceAccount;
       if (parsed.project_id && parsed.client_email && parsed.private_key) return parsed;
     } catch {}
-  }
-  return null;
+    return null;
+  };
+  return tryParse(cleaned) || tryParse(Buffer.from(cleaned, "base64").toString("utf8")) || null;
 }
 
 async function getFcmAccessToken(sa: FcmServiceAccount): Promise<string | null> {
