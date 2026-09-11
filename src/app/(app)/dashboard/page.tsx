@@ -16,6 +16,7 @@ import PushNotificationPrompt from "@/components/PushNotificationPrompt";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
 import SubmittedTaskReview from "@/components/SubmittedTaskReview";
+import AnnouncementComposer from "@/components/AnnouncementComposer";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 import { LEAD_STATUSES } from "@/lib/types";
 import { Greeting, TodayBadge } from "@/components/DashboardHeader";
@@ -163,6 +164,16 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
     // Fallback: individual catches already return safe defaults, this is absolute safety
     projects = projects || [];
     clients = clients || [];
+  }
+  // Active members for the Super Admin broadcast composer
+  let announcementMembers: { id: string; full_name: string; email: string; role_label: string }[] = [];
+  if (isSuperAdmin) {
+    try {
+      const team = await getTeam();
+      announcementMembers = team
+        .filter((u) => u.is_active)
+        .map((u) => ({ id: u.id, full_name: u.full_name, email: u.email, role_label: u.role_label }));
+    } catch {}
   }
   const active = projects.filter((p) => p.status === "in_progress");
 
@@ -331,6 +342,9 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </div>
           <SubmittedTaskReview tasks={reviewTasks} />
         </div>
+
+        {/* ── Row 5: Broadcast announcement (web + mobile push) ── */}
+        <AnnouncementComposer members={announcementMembers} />
       </div>
     );
   }
