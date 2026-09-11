@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/push-notifications": "^8.1.2",
     "@neondatabase/serverless": "^0.10.4",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",

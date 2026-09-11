@@ -5,14 +5,14 @@
   "scripts": {
     "sync": "cap sync",
     "sync:android": "cap sync android",
-    "sync:ios": "cap sync ios",
     "assets": "npx @capacitor/assets generate"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
     "@capacitor/app": "^8.0.0",
     "@capacitor/core": "^8.0.0",
-    "@capacitor/ios": "^8.0.0"
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/push-notifications": "^8.1.2"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

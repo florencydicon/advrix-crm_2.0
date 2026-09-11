@@ -30,6 +30,7 @@ import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
 import { BrandMark, BrandLogoFull } from "@/components/brand";
 import { useToast } from "@/components/Toast";
+import NativeNotificationRegistrar from "@/components/NativeNotificationRegistrar";
 
 interface NavItem {
   href: string;
@@ -512,6 +513,7 @@ export default function AppShell({
 
   return (
     <div className="min-h-screen flex bg-paper overflow-x-hidden">
+      <NativeNotificationRegistrar />
       {/* Return-to-tab popup modal */}
       {missedToast > 0 && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 animate-fade-in">
