@@ -74,7 +74,17 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
     });
     setSending(false);
     if (res?.error) { toast(res.error, "error"); return; }
-    toast(`Announcement sent to ${res.count} member${res.count === 1 ? "" : "s"}.`, "success");
+    if (res.pushed > 0) {
+      toast(`Sent to ${res.count} member${res.count === 1 ? "" : "s"} · mobile push to ${res.pushed} device${res.pushed === 1 ? "" : "s"}.`, "success");
+    } else if ((res.pushDevices || 0) === 0) {
+      toast(`Sent in-app to ${res.count}, but no phones are registered for push.`, "error");
+    } else {
+      const reason =
+        res.pushError === "no-fcm-credentials" ? "push credentials missing on server" :
+        res.pushError === "fcm-auth-failed" ? "push login failed on server" :
+        "mobile push failed";
+      toast(`Sent in-app, but ${reason}. Tell the developer: ${res.pushError || "push-failed"}.`, "error");
+    }
     setTitle("");
     setBody("");
     setSelected(new Set());

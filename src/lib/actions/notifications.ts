@@ -67,12 +67,18 @@ export async function sendAnnouncementAction(input: {
   }
 
   const { createNotificationsBatch } = await import("@/lib/notifications");
-  await createNotificationsBatch(recipientIds, {
+  const push = await createNotificationsBatch(recipientIds, {
     type: "system",
     title,
     body: `${body} — ${session.name}`,
     link: "/updates",
   });
   revalidatePath("/updates");
-  return { ok: true as const, count: recipientIds.length };
+  return {
+    ok: true as const,
+    count: recipientIds.length,
+    pushed: push.sent,
+    pushDevices: push.targeted,
+    pushError: push.error || null,
+  };
 }

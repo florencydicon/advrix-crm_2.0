@@ -139,13 +139,20 @@ export interface PushPayload {
   tag?: string;
 }
 
+export interface PushDispatchResult {
+  targeted: number;
+  sent: number;
+  failed: number;
+  error?: string;
+}
+
 async function dispatchPushToEndpoints(
   endpoints: { endpoint: string; p256dh: string; auth: string }[],
   payload: PushPayload
-) {
-  if (endpoints.length === 0) return;
+): Promise<PushDispatchResult> {
+  if (endpoints.length === 0) return { targeted: 0, sent: 0, failed: 0 };
   const keys = getVapidKeys();
-  if (!keys) return;
+  if (!keys) return { targeted: endpoints.length, sent: 0, failed: 0, error: "no-vapid-keys" };
   try {
     // Lazy import to avoid bundling web-push on edge/client
     const webPush: any = await import("web-push").then((m) => (m as any).default || m);
@@ -160,13 +167,14 @@ async function dispatchPushToEndpoints(
       tag: payload.tag,
     });
 
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       endpoints.map(async (sub) => {
         try {
           await webPush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } } as any,
             data
           );
+          return true;
         } catch (err: any) {
           // 410 Gone = unsubscribed; clean up stale endpoint
           const status = err?.statusCode;
@@ -175,30 +183,44 @@ async function dispatchPushToEndpoints(
               await removePushSubscription(sub.endpoint);
             } catch {}
           }
+          return false;
         }
       })
     );
-  } catch {}
+    let sent = 0;
+    for (const r of results) if (r.status === "fulfilled" && r.value) sent++;
+    return { targeted: endpoints.length, sent, failed: endpoints.length - sent };
+  } catch {
+    return { targeted: endpoints.length, sent: 0, failed: endpoints.length, error: "vapid-send-failed" };
+  }
 }
 
-export async function sendPushNotification(userId: string, payload: PushPayload) {
+export async function sendPushNotification(userId: string, payload: PushPayload): Promise<PushDispatchResult> {
   try {
-    const subs = await getSubscriptionsForUsers([userId]);
-    await dispatchPushToEndpoints(subs, payload);
-    const tokens = await getFcmTokensForUsers([userId]);
-    await dispatchFcmToTokens(tokens, payload);
-  } catch {}
+    return await sendPushToUsers([userId], payload);
+  } catch {
+    return { targeted: 0, sent: 0, failed: 0, error: "push-failed" };
+  }
 }
 
-export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
+export async function sendPushToUsers(userIds: string[], payload: PushPayload): Promise<PushDispatchResult> {
   try {
     const deduped = [...new Set(userIds)];
-    if (deduped.length === 0) return;
+    if (deduped.length === 0) return { targeted: 0, sent: 0, failed: 0 };
     const subs = await getSubscriptionsForUsers(deduped);
-    await dispatchPushToEndpoints(subs, payload);
+    const vapid = await dispatchPushToEndpoints(subs, payload);
     const tokens = await getFcmTokensForUsers(deduped);
-    await dispatchFcmToTokens(tokens, payload);
-  } catch {}
+    const fcm = await dispatchFcmToTokens(tokens, payload);
+    const errors = [vapid.error, fcm.error].filter(Boolean);
+    return {
+      targeted: vapid.targeted + fcm.targeted,
+      sent: vapid.sent + fcm.sent,
+      failed: vapid.failed + fcm.failed,
+      ...(errors.length ? { error: errors.join(",") } : {}),
+    };
+  } catch {
+    return { targeted: 0, sent: 0, failed: 0, error: "push-failed" };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -267,16 +289,16 @@ async function getFcmAccessToken(sa: FcmServiceAccount): Promise<string | null> 
   }
 }
 
-async function dispatchFcmToTokens(tokens: FcmTokenRow[], payload: PushPayload) {
-  if (tokens.length === 0) return;
+async function dispatchFcmToTokens(tokens: FcmTokenRow[], payload: PushPayload): Promise<PushDispatchResult> {
+  if (tokens.length === 0) return { targeted: 0, sent: 0, failed: 0 };
 
   // Preferred: HTTP v1 via service account.
   const sa = getFcmServiceAccount();
   if (sa) {
     try {
       const access = await getFcmAccessToken(sa);
-      if (!access) return;
-      await Promise.allSettled(
+      if (!access) return { targeted: tokens.length, sent: 0, failed: tokens.length, error: "fcm-auth-failed" };
+      const results = await Promise.allSettled(
         tokens.map(async (t) => {
           try {
             const body = {
@@ -315,18 +337,23 @@ async function dispatchFcmToTokens(tokens: FcmTokenRow[], payload: PushPayload) 
                 await removeFcmToken(t.token);
               }
             }
-          } catch {}
+            return res.ok;
+          } catch { return false; }
         })
       );
-    } catch {}
-    return;
+      let sent = 0;
+      for (const r of results) if (r.status === "fulfilled" && r.value) sent++;
+      return { targeted: tokens.length, sent, failed: tokens.length - sent };
+    } catch {
+      return { targeted: tokens.length, sent: 0, failed: tokens.length, error: "fcm-send-failed" };
+    }
   }
 
   // Fallback: legacy FCM HTTP API with a server key.
   const serverKey = process.env.FCM_SERVER_KEY;
-  if (!serverKey) return;
+  if (!serverKey) return { targeted: tokens.length, sent: 0, failed: tokens.length, error: "no-fcm-credentials" };
   try {
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       tokens.map(async (t) => {
         try {
           const body = {
@@ -346,10 +373,16 @@ async function dispatchFcmToTokens(tokens: FcmTokenRow[], payload: PushPayload) 
           if (res.status === 404) {
             await removeFcmToken(t.token);
           }
-        } catch {}
+          return res.ok;
+        } catch { return false; }
       })
     );
-  } catch {}
+    let sent = 0;
+    for (const r of results) if (r.status === "fulfilled" && r.value) sent++;
+    return { targeted: tokens.length, sent, failed: tokens.length - sent };
+  } catch {
+    return { targeted: tokens.length, sent: 0, failed: tokens.length, error: "fcm-send-failed" };
+  }
 }
 
 export async function sendPushToRoles(roleKeys: string[], payload: PushPayload) {

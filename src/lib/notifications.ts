@@ -19,13 +19,15 @@ export async function createNotification(input: NotificationInput) {
   // Best-effort OS push (background lock-screen) mirroring the in-app notification
   try {
     const { sendPushNotification } = await import("@/lib/push");
-    await sendPushNotification(userId, {
+    return await sendPushNotification(userId, {
       title,
       body: body || title,
       icon: "/logo-mark.png",
       url: link || "/dashboard",
     });
-  } catch {}
+  } catch {
+    return { targeted: 0, sent: 0, failed: 0, error: "push-failed" };
+  }
 }
 
 /**
@@ -36,7 +38,7 @@ export async function createNotificationsBatch(
   userIds: string[],
   input: Omit<NotificationInput, "userId">
 ) {
-  if (userIds.length === 0) return;
+  if (userIds.length === 0) return { targeted: 0, sent: 0, failed: 0 };
   const { type, title, body = "", link = null } = input;
   const flatValues: any[] = [];
   const placeholders: string[] = [];
@@ -52,13 +54,15 @@ export async function createNotificationsBatch(
   // OS push for the same recipients (background)
   try {
     const { sendPushToUsers } = await import("@/lib/push");
-    await sendPushToUsers(userIds, {
+    return await sendPushToUsers(userIds, {
       title,
       body: body || title,
       icon: "/logo-mark.png",
       url: link || "/dashboard",
     });
-  } catch {}
+  } catch {
+    return { targeted: 0, sent: 0, failed: 0, error: "push-failed" };
+  }
 }
 
 export async function getNotifications(userId: string, limit = 50): Promise<Notification[]> {
