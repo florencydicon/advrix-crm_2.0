@@ -25,6 +25,8 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  // Two-tap inline confirm — window.confirm is unreliable inside mobile WebViews
+  const [confirming, setConfirming] = useState(false);
 
   const q = search.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -35,6 +37,7 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
   }, [members, q]);
 
   const toggle = (id: string) => {
+    setConfirming(false);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -43,15 +46,25 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
     });
   };
 
+  const switchMode = (m: "all" | "selected") => {
+    setConfirming(false);
+    setMode(m);
+  };
+
   const recipientCount = mode === "all" ? members.length : selected.size;
 
-  const handleSend = async () => {
+  const handleSend = () => {
     const cleanTitle = title.trim();
     const cleanBody = body.trim();
     if (cleanTitle.length < 3) { toast("Title too short (min 3 characters).", "error"); return; }
     if (!cleanBody) { toast("Message cannot be empty.", "error"); return; }
     if (mode === "selected" && selected.size === 0) { toast("Select at least one member.", "error"); return; }
-    if (!window.confirm(`Send this announcement to ${recipientCount} member${recipientCount === 1 ? "" : "s"}?`)) return;
+    // First tap arms the confirm, second tap actually sends
+    if (!confirming) { setConfirming(true); return; }
+    void doSend(cleanTitle, cleanBody);
+  };
+
+  const doSend = async (cleanTitle: string, cleanBody: string) => {
     setSending(true);
     const res: any = await sendAnnouncementAction({
       title: cleanTitle,
@@ -67,6 +80,7 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
     setSelected(new Set());
     setSearch("");
     setMode("all");
+    setConfirming(false);
   };
 
   return (
@@ -87,7 +101,7 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setMode("all")}
+              onClick={() => switchMode("all")}
               className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold border transition-colors ${
                 mode === "all"
                   ? "border-brand-300/50 bg-brand-300/10 text-brand-200"
@@ -98,7 +112,7 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
             </button>
             <button
               type="button"
-              onClick={() => setMode("selected")}
+              onClick={() => switchMode("selected")}
               className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold border transition-colors ${
                 mode === "selected"
                   ? "border-brand-300/50 bg-brand-300/10 text-brand-200"
@@ -197,14 +211,30 @@ export default function AnnouncementComposer({ members }: { members: Announcemen
           />
         </div>
 
-        <button
-          onClick={handleSend}
-          disabled={sending || recipientCount === 0}
-          className="btn-primary w-full !py-2.5 text-sm disabled:opacity-50"
-        >
-          <Send className="h-3.5 w-3.5" />
-          {sending ? "Sending..." : `Send to ${recipientCount} member${recipientCount === 1 ? "" : "s"}`}
-        </button>
+        {confirming && !sending ? (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-3 space-y-2.5">
+            <p className="text-xs text-amber-200">
+              Send “{title.trim()}” to {recipientCount} member{recipientCount === 1 ? "" : "s"}? They get it in web notifications + mobile push.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirming(false)} className="btn-ghost flex-1 !py-2 text-xs">
+                Cancel
+              </button>
+              <button onClick={handleSend} className="btn-primary flex-1 !py-2 text-xs">
+                <Send className="h-3.5 w-3.5" /> Confirm send
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={sending || recipientCount === 0}
+            className="btn-primary w-full !py-2.5 text-sm disabled:opacity-50"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {sending ? "Sending..." : `Send to ${recipientCount} member${recipientCount === 1 ? "" : "s"}`}
+          </button>
+        )}
       </div>
     </div>
   );
