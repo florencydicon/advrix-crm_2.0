@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { FileText, CheckCircle2, Plus } from "lucide-react";
 import type { Client, ContentItem, Project, UserRow, StandaloneContentStatus } from "@/lib/types";
 import { STATUS_META } from "@/components/ui";
 import { useAdvancedFilters, AdvancedFilterBar } from "@/components/AdvancedFilterBar";
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
-import ContentModal from "@/components/ContentModal";
+// Lazy: the editor modal is only needed once a user opens it.
+const ContentModal = dynamic(() => import("@/components/ContentModal"), { ssr: false });
 import BulkActionBar from "@/components/BulkActionBar";
 import { useToast } from "@/components/Toast";
 import {
@@ -57,6 +59,127 @@ function PipelineChip({ taskId, status }: { taskId: string | null; status: strin
     </span>
   );
 }
+
+// --- Memoized row components ------------------------------------------------
+// Rows re-render on every items-array identity change; memoizing lets a checkbox
+// toggle / filter keystroke / tab switch re-render only the touched row instead
+// of the whole table. `isSelected` is a per-row boolean so a selection change
+// re-renders just the two rows it affects.
+
+const ContentDesktopRow = memo(function ContentDesktopRow({
+  t,
+  bulkVisible,
+  isSelected,
+  onOpen,
+  onToggleSelect,
+}: {
+  t: ContentItem;
+  bulkVisible: boolean;
+  isSelected: boolean;
+  onOpen: (t: ContentItem) => void;
+  onToggleSelect: (id: string) => void;
+}) {
+  return (
+    <tr
+      onClick={() => onOpen(t)}
+      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
+    >
+      {bulkVisible && (
+        <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={isSelected}
+            onChange={() => onToggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 accent-emerald-400 cursor-pointer"
+          />
+        </td>
+      )}
+      <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
+        <p className="text-sm text-white font-medium leading-tight truncate max-w-[300px]">
+          {t.title}
+        </p>
+        <p className="text-xs text-slate-400 leading-snug line-clamp-2 max-w-[320px] mt-0.5">
+          {preview(t.body)}
+        </p>
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[160px]">
+          {t.client_company || t.client_name}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="text-xs text-slate-300">{t.assignee_name || "Unassigned"}</span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="text-xs tabular-nums text-slate-400">{fmtDate(t.created_at)}</span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="text-xs tabular-nums text-slate-400">{fmtDate(t.completed_at)}</span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <StatusPill status={t.status} />
+        <PipelineChip taskId={t.task_id} status={t.task_status} />
+      </td>
+    </tr>
+  );
+});
+
+const ContentMobileCard = memo(function ContentMobileCard({
+  t,
+  bulkVisible,
+  isSelected,
+  onOpen,
+  onToggleSelect,
+}: {
+  t: ContentItem;
+  bulkVisible: boolean;
+  isSelected: boolean;
+  onOpen: (t: ContentItem) => void;
+  onToggleSelect: (id: string) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(t)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(t);
+        }
+      }}
+      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
+    >
+      <p className="text-sm font-semibold text-white leading-snug">{t.title}</p>
+      <p className="text-xs text-slate-400 mt-1 leading-snug line-clamp-3">{preview(t.body)}</p>
+      <div className="flex items-start justify-between gap-2 mt-1.5">
+        <p className="text-xs text-slate-500 truncate min-w-0 flex-1">
+          {t.client_company || t.client_name} · {t.assignee_name || "Unassigned"}
+        </p>
+        {bulkVisible && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={isSelected}
+            onChange={() => onToggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 accent-emerald-400 cursor-pointer shrink-0"
+          />
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5">
+        <StatusPill status={t.status} />
+        <PipelineChip taskId={t.task_id} status={t.task_status} />
+        <span className="text-[10px] text-slate-500">
+          Added {fmtDate(t.created_at)}
+          {t.completed_at ? ` · Uploaded ${fmtDate(t.completed_at)}` : ""}
+        </span>
+      </div>
+    </div>
+  );
+});
 
 /**
  * Standalone Content hub — independent of the Project Pipeline.
@@ -128,8 +251,11 @@ export default function ContentHub({
     labels: { stage: "Assignee", status: "Content Status" },
   });
 
-  const toggleSelect = (id: string) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  const toggleSelectId = useCallback(
+    (id: string) =>
+      setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id])),
+    []
+  );
 
   // Prune bulk selection to rows that still exist.
   useEffect(() => {
@@ -145,10 +271,12 @@ export default function ContentHub({
     setModalOpen(true);
   };
 
-  const openRow = (t: ContentItem) => {
+  // Stable callback so memoized rows skip re-renders when only the array
+  // identity changes (selection/filter/tab interactions).
+  const openRow = useCallback((t: ContentItem) => {
     setEditing(t);
     setModalOpen(true);
-  };
+  }, []);
 
   const filtered = useMemo(() => {
     const inTab = items.filter((t) =>
@@ -199,48 +327,6 @@ export default function ContentHub({
   };
 
   const bulkVisible = canManage || canEdit;
-
-  const mobileCard = (t: ContentItem) => (
-    <div
-      key={t.id}
-      role="button"
-      tabIndex={0}
-      onClick={() => openRow(t)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          openRow(t);
-        }
-      }}
-      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
-    >
-      <p className="text-sm font-semibold text-white leading-snug">{t.title}</p>
-      <p className="text-xs text-slate-400 mt-1 leading-snug line-clamp-3">{preview(t.body)}</p>
-      <div className="flex items-start justify-between gap-2 mt-1.5">
-        <p className="text-xs text-slate-500 truncate min-w-0 flex-1">
-          {t.client_company || t.client_name} · {t.assignee_name || "Unassigned"}
-        </p>
-        {bulkVisible && (
-          <input
-            type="checkbox"
-            aria-label={`Select ${t.title}`}
-            checked={selected.includes(t.id)}
-            onChange={() => toggleSelect(t.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="h-4 w-4 accent-emerald-400 cursor-pointer shrink-0"
-          />
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5">
-        <StatusPill status={t.status} />
-        <PipelineChip taskId={t.task_id} status={t.task_status} />
-        <span className="text-[10px] text-slate-500">
-          Added {fmtDate(t.created_at)}
-          {t.completed_at ? ` · Uploaded ${fmtDate(t.completed_at)}` : ""}
-        </span>
-      </div>
-    </div>
-  );
 
   return (
     <div className="w-full max-w-none space-y-3 pb-20 md:pb-0">
@@ -366,50 +452,14 @@ export default function ContentHub({
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
                   {filtered.map((t) => (
-                    <tr
+                    <ContentDesktopRow
                       key={t.id}
-                      onClick={() => openRow(t)}
-                      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
-                    >
-                      {bulkVisible && (
-                        <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${t.title}`}
-                            checked={selected.includes(t.id)}
-                            onChange={() => toggleSelect(t.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-4 w-4 accent-emerald-400 cursor-pointer"
-                          />
-                        </td>
-                      )}
-                      <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
-                        <p className="text-sm text-white font-medium leading-tight truncate max-w-[300px]">
-                          {t.title}
-                        </p>
-                        <p className="text-xs text-slate-400 leading-snug line-clamp-2 max-w-[320px] mt-0.5">
-                          {preview(t.body)}
-                        </p>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[160px]">
-                          {t.client_company || t.client_name}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="text-xs text-slate-300">{t.assignee_name || "Unassigned"}</span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="text-xs tabular-nums text-slate-400">{fmtDate(t.created_at)}</span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="text-xs tabular-nums text-slate-400">{fmtDate(t.completed_at)}</span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <StatusPill status={t.status} />
-                        <PipelineChip taskId={t.task_id} status={t.task_status} />
-                      </td>
-                    </tr>
+                      t={t}
+                      bulkVisible={bulkVisible}
+                      isSelected={selected.includes(t.id)}
+                      onOpen={openRow}
+                      onToggleSelect={toggleSelectId}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -418,7 +468,16 @@ export default function ContentHub({
 
           {/* Mobile cards */}
           <div className="md:hidden space-y-2.5">
-            {filtered.map((t) => mobileCard(t))}
+            {filtered.map((t) => (
+              <ContentMobileCard
+                key={t.id}
+                t={t}
+                bulkVisible={bulkVisible}
+                isSelected={selected.includes(t.id)}
+                onOpen={openRow}
+                onToggleSelect={toggleSelectId}
+              />
+            ))}
           </div>
         </>
       )}

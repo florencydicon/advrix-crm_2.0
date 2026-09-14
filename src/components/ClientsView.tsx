@@ -23,7 +23,9 @@ import { Modal, EmptyState } from "@/components/ui";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { useToast } from "@/components/Toast";
-import ClientDetailModal from "@/components/ClientDetailModal";
+import dynamic from "next/dynamic";
+// Lazy: the client detail modal is only needed once a user opens it.
+const ClientDetailModal = dynamic(() => import("@/components/ClientDetailModal"), { ssr: false });
 
 interface Deliv {
   key: string;

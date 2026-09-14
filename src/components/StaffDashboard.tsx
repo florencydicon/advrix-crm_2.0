@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PlayCircle, Clock, CheckCircle2, MoreVertical, AlertTriangle, History } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
@@ -11,7 +11,9 @@ import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
 import { isOverdue } from "@/lib/deadlines";
 import { formatClientName } from "@/lib/utils";
-import TaskModal from "@/components/TaskModalFull";
+import dynamic from "next/dynamic";
+// Lazy: the task editor modal is only needed once a user opens it.
+const TaskModal = dynamic(() => import("@/components/TaskModalFull"), { ssr: false });
 import BulkActionBar from "@/components/BulkActionBar";
 import { useToast } from "@/components/Toast";
 import {
@@ -37,6 +39,221 @@ function useIsMobile() {
   }, []);
   return mobile;
 }
+
+// --- Memoized row components ------------------------------------------------
+// Rows re-render on every task-array identity change; memoizing the rows lets a
+// checkbox toggle / filter keystroke / tab switch re-render only the touched row
+// instead of the whole table. `isSelected` is passed as a per-row boolean so a
+// selection change re-renders just the two rows it affects.
+
+const ActiveDesktopRow = memo(function ActiveDesktopRow({
+  t,
+  isManager,
+  isSelected,
+  onOpen,
+  onToggleSelect,
+}: {
+  t: Task;
+  isManager: boolean;
+  isSelected: boolean;
+  onOpen: (t: Task) => void;
+  onToggleSelect: (id: string) => void;
+}) {
+  const overdue = isOverdue(t);
+  return (
+    <tr
+      onClick={() => onOpen(t)}
+      className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${overdue ? "bg-rose-500/[0.07] hover:bg-rose-500/[0.12]" : ""}`}
+    >
+      {isManager && (
+        <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={isSelected}
+            onChange={() => onToggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 accent-emerald-400 cursor-pointer"
+          />
+        </td>
+      )}
+      <td className="px-4 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
+        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
+          {formatClientName(t.client_company, t.client_name)}
+        </span>
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
+      </td>
+      <td className="px-3 py-2.5">
+        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+        {overdue && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 mt-0.5">
+            <AlertTriangle className="h-3 w-3" /> Overdue
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+          {taskTypeLabel(t.group_key)}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <StatusBadge status={t.status} />
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <PriorityBadge priority={t.priority} />
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className={`text-xs tabular-nums ${overdue ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+          {overdue ? `${t.due_date?.slice(0, 10)} ⚠` : (t.due_date ? t.due_date.slice(0, 10) : "—")}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">
+        {(t.assignees || [])[(t.current_step ?? 0) % Math.max((t.assignees?.length || 1), 1)]?.name || "—"}
+      </td>
+    </tr>
+  );
+});
+
+const HistoryDesktopRow = memo(function HistoryDesktopRow({
+  t,
+  onOpen,
+}: {
+  t: Task;
+  onOpen: (t: Task) => void;
+}) {
+  return (
+    <tr
+      onClick={() => onOpen(t)}
+      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
+    >
+      <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
+        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
+          {formatClientName(t.client_company, t.client_name)}
+        </span>
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
+      </td>
+      <td className="px-3 py-2.5">
+        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+          {taskTypeLabel(t.group_key)}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <StatusBadge status={t.status} />
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <PriorityBadge priority={t.priority} />
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="text-xs tabular-nums text-slate-400">
+          {t.due_date ? t.due_date.slice(0, 10) : "—"}
+        </span>
+      </td>
+    </tr>
+  );
+});
+
+const ActiveMobileCard = memo(function ActiveMobileCard({
+  t,
+  isManager,
+  isSelected,
+  onOpen,
+  onToggleSelect,
+}: {
+  t: Task;
+  isManager: boolean;
+  isSelected: boolean;
+  onOpen: (t: Task) => void;
+  onToggleSelect: (id: string) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(t)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(t);
+        }
+      }}
+      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
+          <p className="text-xs text-slate-400 mt-0.5 truncate">
+            {formatClientName(t.client_company, t.client_name)} · {t.project_name}
+          </p>
+        </div>
+        {isManager && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={isSelected}
+            onChange={() => onToggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 mt-1 accent-emerald-400 cursor-pointer shrink-0"
+          />
+        )}
+        <MoreVertical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+        <StatusBadge status={t.status} />
+        <PriorityBadge priority={t.priority} />
+        <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500">
+          {taskTypeLabel(t.group_key)}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-white/[0.06]">
+        <DeadlineBadge task={t} />
+        <span className={`inline-flex items-center gap-1 text-[11px] ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-500"}`}>
+          {isOverdue(t) ? (
+            <AlertTriangle className="h-3 w-3 text-rose-400" />
+          ) : (
+            <Clock className="h-3 w-3" />
+          )}
+          Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+const HistoryMobileCard = memo(function HistoryMobileCard({
+  t,
+  onOpen,
+}: {
+  t: Task;
+  onOpen: (t: Task) => void;
+}) {
+  return (
+    <button
+      onClick={() => onOpen(t)}
+      className="w-full text-left px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
+        <StatusBadge status={t.status} />
+      </div>
+      <p className="text-xs text-slate-400 mt-0.5 truncate">
+        {formatClientName(t.client_company, t.client_name)} · {t.project_name}
+      </p>
+      <div className="flex items-center gap-2 mt-2">
+        <PriorityBadge priority={t.priority} />
+        <span className="ml-auto text-[11px] text-slate-500">
+          Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
+        </span>
+      </div>
+    </button>
+  );
+});
 
 export default function StaffDashboard({
   tasks,
@@ -79,8 +296,6 @@ export default function StaffDashboard({
     canManageTeam ||
     ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"].includes((roleKey || "").toUpperCase());
   const [selected, setSelected] = useState<string[]>([]);
-  const toggleSelect = (id: string) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -195,58 +410,13 @@ export default function StaffDashboard({
     label: STATUS_META[s]?.label || s,
   }));
 
-  const mobileCard = (t: Task) => (
-    <div
-      key={t.id}
-      role="button"
-      tabIndex={0}
-      onClick={() => setOpenTask(t)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          setOpenTask(t);
-        }
-      }}
-      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
-          <p className="text-xs text-slate-400 mt-0.5 truncate">
-            {formatClientName(t.client_company, t.client_name)} · {t.project_name}
-          </p>
-        </div>
-        {isManager && (
-          <input
-            type="checkbox"
-            aria-label={`Select ${t.title}`}
-            checked={selected.includes(t.id)}
-            onChange={() => toggleSelect(t.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="h-4 w-4 mt-1 accent-emerald-400 cursor-pointer shrink-0"
-          />
-        )}
-        <MoreVertical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-        <StatusBadge status={t.status} />
-        <PriorityBadge priority={t.priority} />
-        <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500">
-          {taskTypeLabel(t.group_key)}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-white/[0.06]">
-        <DeadlineBadge task={t} />
-        <span className={`inline-flex items-center gap-1 text-[11px] ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-500"}`}>
-          {isOverdue(t) ? (
-            <AlertTriangle className="h-3 w-3 text-rose-400" />
-          ) : (
-            <Clock className="h-3 w-3" />
-          )}
-          Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
-        </span>
-      </div>
-    </div>
+  // Stable callbacks so memoized rows skip re-rendering when only the array
+  // identity changes (selection/filter/tab interactions).
+  const openTaskById = useCallback((t: Task) => setOpenTask(t), []);
+  const toggleSelectId = useCallback(
+    (id: string) =>
+      setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id])),
+    []
   );
 
   return (
@@ -312,39 +482,7 @@ export default function StaffDashboard({
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
                   {historyTasks.map((t) => (
-                    <tr
-                      key={t.id}
-                      onClick={() => setOpenTask(t)}
-                      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
-                    >
-                      <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
-                        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
-                          {formatClientName(t.client_company, t.client_name)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
-                          {taskTypeLabel(t.group_key)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <StatusBadge status={t.status} />
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <PriorityBadge priority={t.priority} />
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="text-xs tabular-nums text-slate-400">
-                          {t.due_date ? t.due_date.slice(0, 10) : "—"}
-                        </span>
-                      </td>
-                    </tr>
+                    <HistoryDesktopRow key={t.id} t={t} onOpen={openTaskById} />
                   ))}
                 </tbody>
               </table>
@@ -352,25 +490,7 @@ export default function StaffDashboard({
             {/* Mobile: history cards */}
             <div className="md:hidden divide-y divide-white/[0.04]">
               {historyTasks.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setOpenTask(t)}
-                  className="w-full text-left px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
-                    <StatusBadge status={t.status} />
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">
-                    {formatClientName(t.client_company, t.client_name)} · {t.project_name}
-                  </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <PriorityBadge priority={t.priority} />
-                    <span className="ml-auto text-[11px] text-slate-500">
-                      Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
-                    </span>
-                  </div>
-                </button>
+                <HistoryMobileCard key={t.id} t={t} onOpen={openTaskById} />
               ))}
             </div>
           </div>
@@ -439,61 +559,14 @@ export default function StaffDashboard({
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
                   {filtered.map((t) => (
-                    <tr
+                    <ActiveDesktopRow
                       key={t.id}
-                      onClick={() => setOpenTask(t)}
-                      className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${
-                        isOverdue(t) ? "bg-rose-500/[0.07] hover:bg-rose-500/[0.12]" : ""
-                      }`}
-                    >
-                      {isManager && (
-                        <td className="px-3 py-2.5 w-10" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${t.title}`}
-                            checked={selected.includes(t.id)}
-                            onChange={() => toggleSelect(t.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-4 w-4 accent-emerald-400 cursor-pointer"
-                          />
-                        </td>
-                      )}
-                      <td className="px-4 py-2.5 sticky left-0 bg-night-850 group-hover:bg-white/[0.03] z-[5]">
-                        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
-                          {formatClientName(t.client_company, t.client_name)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
-                        {isOverdue(t) && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 mt-0.5">
-                            <AlertTriangle className="h-3 w-3" /> Overdue
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
-                          {taskTypeLabel(t.group_key)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <StatusBadge status={t.status} />
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <PriorityBadge priority={t.priority} />
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={`text-xs tabular-nums ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
-                          {isOverdue(t) ? `${t.due_date?.slice(0, 10)} ⚠` : (t.due_date ? t.due_date.slice(0, 10) : "—")}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">
-                        {(t.assignees || [])[(t.current_step ?? 0) % Math.max((t.assignees?.length || 1), 1)]?.name || "—"}
-                      </td>
-                    </tr>
+                      t={t}
+                      isManager={isManager}
+                      isSelected={selected.includes(t.id)}
+                      onOpen={openTaskById}
+                      onToggleSelect={toggleSelectId}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -502,7 +575,16 @@ export default function StaffDashboard({
 
           {/* Mobile: touch-friendly stacked cards */}
           <div className="md:hidden space-y-2.5">
-            {filtered.map((t) => mobileCard(t))}
+            {filtered.map((t) => (
+              <ActiveMobileCard
+                key={t.id}
+                t={t}
+                isManager={isManager}
+                isSelected={selected.includes(t.id)}
+                onOpen={openTaskById}
+                onToggleSelect={toggleSelectId}
+              />
+            ))}
           </div>
         </>
         )}

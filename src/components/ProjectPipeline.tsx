@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Layers,
@@ -32,8 +32,10 @@ import {
   moveBackPipelineTaskAction,
 } from "@/lib/actions/pipeline";
 import type { PipelineBoardPayload } from "@/lib/actions/pipeline";
-import TaskModal from "@/components/TaskModal";
-import TaskModalFull from "@/components/TaskModalFull";
+import dynamic from "next/dynamic";
+// Lazy: both editing modals are only needed once a user opens them.
+const TaskModal = dynamic(() => import("@/components/TaskModal"), { ssr: false });
+const TaskModalFull = dynamic(() => import("@/components/TaskModalFull"), { ssr: false });
 import BulkActionBar from "@/components/BulkActionBar";
 
 function initials(name?: string | null) {
@@ -61,6 +63,15 @@ function fmtDateTime(v?: string | null) {
 
 const clientName = (t: Task) => t.client_company || t.client_name || "";
 
+function stageLabel(task: Task) {
+  if (task.status === "completed") return "Completed";
+  const step = task.current_step ?? 0;
+  const seq = task.assignees || [];
+  if (seq.length === 0) return "Unassigned";
+  const idx = Math.min(step, seq.length - 1);
+  return seq[idx]?.name || "Unassigned";
+}
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
   useEffect(() => {
@@ -82,6 +93,254 @@ function QcPill() {
   );
 }
 
+// --- Memoized row components ------------------------------------------------
+// Rows re-render on every board-poll; memoizing lets a checkbox toggle / filter
+// keystroke re-render only the touched row instead of the whole table. Callbacks
+// are kept stable via useCallback; `isSelected` is a per-row boolean so a
+// selection change re-renders just the two rows it affects.
+
+const PipelineActiveRow = memo(function PipelineActiveRow({
+  t,
+  isManager,
+  isSelected,
+  onOpen,
+  onToggleSelect,
+}: {
+  t: Task;
+  isManager: boolean;
+  isSelected: boolean;
+  onOpen: (t: Task) => void;
+  onToggleSelect: (id: string) => void;
+}) {
+  const overdue = isOverdue(t);
+  const sub = t.status === "submitted";
+  return (
+    <tr
+      onClick={() => onOpen(t)}
+      className={`transition-colors cursor-pointer ${
+        overdue
+          ? "bg-rose-500/[0.07] hover:bg-rose-500/[0.13]"
+          : sub
+            ? "bg-violet-400/[0.07] hover:bg-violet-400/[0.12]"
+            : "hover:bg-white/[0.04]"
+      }`}
+    >
+      {isManager && (
+        <td className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={isSelected}
+            onChange={() => onToggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 accent-emerald-400 cursor-pointer"
+          />
+        </td>
+      )}
+      <td className="px-4 py-3 text-xs text-slate-300">{t.client_company || t.client_name}</td>
+      <td className="px-4 py-3 text-xs text-slate-300">{t.project_name}</td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="max-w-[260px] truncate text-sm font-medium text-white">{t.title}</div>
+          {t.status === "submitted" && <QcPill />}
+          {overdue && (
+            <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" aria-label="Overdue" />
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
+      <td className="px-4 py-3"><PriorityBadge priority={t.priority} /></td>
+      <td className={`px-4 py-3 text-xs whitespace-nowrap ${overdue ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+        {overdue && <AlertTriangle className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5 text-rose-400" />}
+        {fmtDate(t.due_date)}
+      </td>
+      <td className="px-4 py-3 text-right text-xs text-slate-400 whitespace-nowrap">{stageLabel(t)}</td>
+    </tr>
+  );
+});
+
+const PipelineHistoryRow = memo(function PipelineHistoryRow({
+  t,
+  canReopen,
+  canMoveBack,
+  isPending,
+  onOpen,
+  onReopen,
+  onMoveBack,
+}: {
+  t: Task;
+  canReopen: boolean;
+  canMoveBack: boolean;
+  isPending: boolean;
+  onOpen: (t: Task) => void;
+  onReopen: (id: string) => void;
+  onMoveBack: (id: string) => void;
+}) {
+  return (
+    <tr
+      onClick={() => onOpen(t)}
+      className="hover:bg-white/[0.04] transition-colors cursor-pointer"
+    >
+      <td className="px-4 py-3">
+        <div className="max-w-[280px] truncate text-sm font-medium text-white">{t.title}</div>
+        <div className="text-xs text-slate-500">{t.project_name}</div>
+      </td>
+      <td className="px-4 py-3 text-xs text-slate-300">{t.client_company || t.client_name}</td>
+      <td className="px-4 py-3">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300">
+            {initials(t.assignee_name)}
+          </span>
+          <span className="text-xs text-slate-300">{t.assignee_name || "—"}</span>
+        </span>
+      </td>
+      <td className="px-4 py-3"><StatusBadge status="completed" /></td>
+      <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDateTime(t.completed_at)}</td>
+      {canReopen && (
+        <td className="px-4 py-3 text-right">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={(e) => {
+              e.stopPropagation();
+              onReopen(t.id);
+            }}
+            className="btn-ghost !px-2.5 !py-1.5 text-xs"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Re-open
+          </button>
+        </td>
+      )}
+      {canMoveBack && (
+        <td className="px-4 py-3 text-right">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveBack(t.id);
+            }}
+            className="btn-ghost !px-2.5 !py-1.5 text-xs"
+          >
+            <Undo2 className="h-3.5 w-3.5" /> Move Back
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+});
+
+const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
+  t,
+  isManager,
+  isSelected,
+  onOpen,
+  onToggleSelect,
+}: {
+  t: Task;
+  isManager: boolean;
+  isSelected: boolean;
+  onOpen: (t: Task) => void;
+  onToggleSelect: (id: string) => void;
+}) {
+  const overdue = isOverdue(t);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(t)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(t);
+        }
+      }}
+      className={`w-full text-left rounded-xl border p-3.5 transition-colors cursor-pointer ${
+        overdue
+          ? "border-rose-500/40 bg-rose-500/[0.08]"
+          : t.status === "submitted"
+            ? "border-violet-300/40 bg-violet-400/[0.08]"
+            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
+          <p className="text-xs text-slate-400 mt-0.5 truncate">{t.client_company || t.client_name} · {t.project_name}</p>
+        </div>
+        {isManager && (
+          <input
+            type="checkbox"
+            aria-label={`Select ${t.title}`}
+            checked={isSelected}
+            onChange={() => onToggleSelect(t.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 mt-1 accent-emerald-400 cursor-pointer shrink-0"
+          />
+        )}
+        <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+        {t.status === "submitted" && <QcPill />}
+        <StatusBadge status={t.status} />
+        <DeadlineBadge task={t} />
+        <PriorityBadge priority={t.priority} />
+        <span className={`inline-flex items-center gap-1 text-xs ml-auto ${overdue ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+          {overdue ? (
+            <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+          ) : (
+            <CalendarDays className="h-3.5 w-3.5" />
+          )}
+          {fmtDate(t.due_date)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
+        <span className="text-slate-400">Stage · <span className="text-brand-300">{stageLabel(t)}</span></span>
+      </div>
+    </div>
+  );
+});
+
+const PipelineHistoryMobileCard = memo(function PipelineHistoryMobileCard({
+  t,
+  onOpen,
+}: {
+  t: Task;
+  onOpen: (t: Task) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(t)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(t);
+        }
+      }}
+      className="w-full text-left rounded-xl border p-3.5 transition-colors cursor-pointer border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
+          <p className="text-xs text-slate-400 mt-0.5 truncate">{t.client_company || t.client_name} · {t.project_name}</p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+        <StatusBadge status={t.status} />
+        <DeadlineBadge task={t} />
+        <PriorityBadge priority={t.priority} />
+      </div>
+      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
+        <span className="text-slate-400">By <span className="text-slate-200">{t.assignee_name || "—"}</span></span>
+        <span className="text-slate-500">{fmtDateTime(t.completed_at)}</span>
+      </div>
+    </div>
+  );
+});
+
 export default function ProjectPipeline({
   initial,
   team,
@@ -91,8 +350,17 @@ export default function ProjectPipeline({
 }) {
   const [tab, setTab] = useState<"active" | "history">("active");
   const [board, setBoard] = useState(initial);
+  // Equal-data short-circuit: the 20s background poll rebuilds the whole board
+  // object; if the payload is unchanged (JSON-equal) we skip setBoard so the
+  // table/cards/kanban are not re-rendered at all. Client-side ETag equivalent.
+  const boardDataRef = useRef<string>("");
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
+
+  const notify = useCallback((msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 2600);
+  }, []);
 
   // Active board layout: grouped by project (default) or flat list.
   const [view, setView] = useState<"projects" | "list">("projects");
@@ -141,16 +409,14 @@ export default function ProjectPipeline({
 
   // Multi-select bulk actions (active board only).
   const [selected, setSelected] = useState<string[]>([]);
-  const toggleSelect = (id: string) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  const toggleSelectId = useCallback(
+    (id: string) =>
+      setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id])),
+    []
+  );
 
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
-
-  const notify = (msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 2600);
-  };
 
   // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
   const openedLinkId = useRef<string | null>(null);
@@ -170,10 +436,44 @@ export default function ProjectPipeline({
 
   const reload = useCallback(async () => {
     const next = await getPipelineBoardAction();
+    // Equal-data short-circuit: skip the state update (and the whole re-render)
+    // when the 20s poll returns an identical payload.
+    const key = JSON.stringify(next);
+    if (key === boardDataRef.current) return;
+    boardDataRef.current = key;
     setBoard(next);
     // Prune bulk selection to rows that still exist.
     setSelected((prev) => prev.filter((id) => next.active.some((t) => t.id === id)));
   }, []);
+
+  // Stable row callbacks so memoized rows skip re-rendering when only the array
+  // identity changes (selection/filter interactions).
+  const openActive = useCallback((t: Task) => setActiveTask(t), []);
+  const openHistory = useCallback((t: Task) => setHistoryTask(t), []);
+  const reopenTask = useCallback(
+    (id: string) => {
+      startTransition(async () => {
+        const res = await reopenPipelineTaskAction(id);
+        if (!res.ok) return notify(res.error || "Could not reopen.");
+        await reload();
+        notify("Task reopened.");
+        setHistoryTask(null);
+      });
+    },
+    [reload, notify, startTransition]
+  );
+  const moveBackTask = useCallback(
+    (id: string) => {
+      startTransition(async () => {
+        const res = await moveBackPipelineTaskAction(id);
+        if (!res.ok) return notify(res.error || "Could not move back.");
+        await reload();
+        notify("Moved back one stage.");
+        setHistoryTask(null);
+      });
+    },
+    [reload, notify, startTransition]
+  );
 
   // Reset inner task when switching projects — keeps single-modal navigation clean
   useEffect(() => {
@@ -372,48 +672,14 @@ export default function ProjectPipeline({
           </thead>
           <tbody className="divide-y divide-white/[0.06]">
             {filteredActive.map((t) => (
-              <tr
+              <PipelineActiveRow
                 key={t.id}
-                onClick={() => setActiveTask(t)}
-                className={`transition-colors cursor-pointer ${
-                  isOverdue(t)
-                    ? "bg-rose-500/[0.07] hover:bg-rose-500/[0.13]"
-                    : t.status === "submitted"
-                      ? "bg-violet-400/[0.07] hover:bg-violet-400/[0.12]"
-                      : "hover:bg-white/[0.04]"
-                }`}
-              >
-                {isManager && (
-                  <td className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${t.title}`}
-                      checked={selected.includes(t.id)}
-                      onChange={() => toggleSelect(t.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="h-4 w-4 accent-emerald-400 cursor-pointer"
-                    />
-                  </td>
-                )}
-                <td className="px-4 py-3 text-xs text-slate-300">{t.client_company || t.client_name}</td>
-                <td className="px-4 py-3 text-xs text-slate-300">{t.project_name}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="max-w-[260px] truncate text-sm font-medium text-white">{t.title}</div>
-                    {t.status === "submitted" && <QcPill />}
-                    {isOverdue(t) && (
-                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" aria-label="Overdue" />
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                <td className="px-4 py-3"><PriorityBadge priority={t.priority} /></td>
-                <td className={`px-4 py-3 text-xs whitespace-nowrap ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
-                  {isOverdue(t) && <AlertTriangle className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5 text-rose-400" />}
-                  {fmtDate(t.due_date)}
-                </td>
-                <td className="px-4 py-3 text-right text-xs text-slate-400 whitespace-nowrap">{stageLabel(t)}</td>
-              </tr>
+                t={t}
+                isManager={isManager}
+                isSelected={selected.includes(t.id)}
+                onOpen={openActive}
+                onToggleSelect={toggleSelectId}
+              />
             ))}
           </tbody>
         </table>
@@ -442,69 +708,16 @@ export default function ProjectPipeline({
           </thead>
           <tbody className="divide-y divide-white/[0.06]">
             {filteredCompleted.map((t) => (
-              <tr
+              <PipelineHistoryRow
                 key={t.id}
-                onClick={() => setHistoryTask(t)}
-                className="hover:bg-white/[0.04] transition-colors cursor-pointer"
-              >
-                <td className="px-4 py-3">
-                  <div className="max-w-[280px] truncate text-sm font-medium text-white">{t.title}</div>
-                  <div className="text-xs text-slate-500">{t.project_name}</div>
-                </td>
-                <td className="px-4 py-3 text-xs text-slate-300">{t.client_company || t.client_name}</td>
-                <td className="px-4 py-3">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300">
-                      {initials(t.assignee_name)}
-                    </span>
-                    <span className="text-xs text-slate-300">{t.assignee_name || "—"}</span>
-                  </span>
-                </td>
-                <td className="px-4 py-3"><StatusBadge status="completed" /></td>
-                <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDateTime(t.completed_at)}</td>
-                {board.canReopen && (
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startTransition(async () => {
-                          const res = await reopenPipelineTaskAction(t.id);
-                          if (!res.ok) return notify(res.error || "Could not reopen.");
-                          await reload();
-                          notify("Task reopened.");
-                          setHistoryTask(null);
-                        });
-                      }}
-                      className="btn-ghost !px-2.5 !py-1.5 text-xs"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" /> Re-open
-                    </button>
-                  </td>
-                )}
-                {canBulkStage && (
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startTransition(async () => {
-                          const res = await moveBackPipelineTaskAction(t.id);
-                          if (!res.ok) return notify(res.error || "Could not move back.");
-                          await reload();
-                          notify("Moved back one stage.");
-                          setHistoryTask(null);
-                        });
-                      }}
-                      className="btn-ghost !px-2.5 !py-1.5 text-xs"
-                    >
-                      <Undo2 className="h-3.5 w-3.5" /> Move Back
-                    </button>
-                  </td>
-                )}
-              </tr>
+                t={t}
+                canReopen={board.canReopen}
+                canMoveBack={canBulkStage}
+                isPending={isPending}
+                onOpen={openHistory}
+                onReopen={reopenTask}
+                onMoveBack={moveBackTask}
+              />
             ))}
           </tbody>
         </table>
@@ -513,80 +726,26 @@ export default function ProjectPipeline({
   );
 
   // ---- Mobile stacked cards ----
-  const mobileCard = (t: Task, isHistory: boolean) => (
-    <div
-      key={t.id}
-      role="button"
-      tabIndex={0}
-      onClick={() => (isHistory ? setHistoryTask(t) : setActiveTask(t))}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          if (isHistory) setHistoryTask(t);
-          else setActiveTask(t);
-        }
-      }}
-      className={`w-full text-left rounded-xl border p-3.5 transition-colors cursor-pointer ${
-        isOverdue(t)
-          ? "border-rose-500/40 bg-rose-500/[0.08]"
-          : t.status === "submitted"
-            ? "border-violet-300/40 bg-violet-400/[0.08]"
-            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
-          <p className="text-xs text-slate-400 mt-0.5 truncate">{t.client_company || t.client_name} · {t.project_name}</p>
-        </div>
-        {isManager && !isHistory && (
-          <input
-            type="checkbox"
-            aria-label={`Select ${t.title}`}
-            checked={selected.includes(t.id)}
-            onChange={() => toggleSelect(t.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="h-4 w-4 mt-1 accent-emerald-400 cursor-pointer shrink-0"
-          />
-        )}
-        <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-        {t.status === "submitted" && <QcPill />}
-        <StatusBadge status={t.status} />
-        <DeadlineBadge task={t} />
-        <PriorityBadge priority={t.priority} />
-        <span className={`inline-flex items-center gap-1 text-xs ml-auto ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
-          {isOverdue(t) ? (
-            <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
-          ) : (
-            <CalendarDays className="h-3.5 w-3.5" />
-          )}
-          {fmtDate(t.due_date)}
-        </span>
-      </div>
-      {isHistory ? (
-        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
-          <span className="text-slate-400">By <span className="text-slate-200">{t.assignee_name || "—"}</span></span>
-          <span className="text-slate-500">{fmtDateTime(t.completed_at)}</span>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
-          <span className="text-slate-400">Stage · <span className="text-brand-300">{stageLabel(t)}</span></span>
-        </div>
-      )}
-    </div>
-  );
-
   const activeMobile = (
     <div className="space-y-2.5">
-      {filteredActive.map((t) => mobileCard(t, false))}
+      {filteredActive.map((t) => (
+        <PipelineActiveMobileCard
+          key={t.id}
+          t={t}
+          isManager={isManager}
+          isSelected={selected.includes(t.id)}
+          onOpen={openActive}
+          onToggleSelect={toggleSelectId}
+        />
+      ))}
     </div>
   );
 
   const historyMobile = (
     <div className="space-y-2.5">
-      {filteredCompleted.map((t) => mobileCard(t, true))}
+      {filteredCompleted.map((t) => (
+        <PipelineHistoryMobileCard key={t.id} t={t} onOpen={openHistory} />
+      ))}
     </div>
   );
 
