@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Bell, CheckCheck, Inbox, Clock, FileText, Briefcase, CalendarOff, Settings } from "lucide-react";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
 import type { Notification } from "@/lib/types";
+import { createEtagFetcher } from "@/lib/clientFetch";
 
 const TYPE_META: Record<string, { label: string; icon: React.ReactNode; bg: string; ring: string }> = {
   task:       { label: "Task",       icon: <FileText      className="h-4 w-4" />, bg: "bg-brand-300/10",   ring: "ring-brand-300/30" },
@@ -69,24 +70,35 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
 
   // Poll the same source as the bell — the server prop goes stale otherwise
   // (new notifications arrive while the page is open) and counts mismatch.
+  // Uses ETag/304 so an unchanged feed transfers nothing; cadence is slower
+  // than the bell poll to avoid two concurrent fetchers on the same endpoint.
   useEffect(() => {
     let cancelled = false;
+    const fetchJson = createEtagFetcher();
     async function poll() {
       if (document.hidden) return;
-      try {
-        const res = await fetch("/api/notifications?limit=200", { cache: "no-store" });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { items: Notification[]; unread: number };
-        if (cancelled || !Array.isArray(data.items)) return;
-        setLive(data.items);
-      } catch {}
+      const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications?limit=200");
+      if (data === null || cancelled || !Array.isArray(data.items)) return;
+      setLive(data.items);
     }
-    const id = window.setInterval(poll, 7000);
+    const id = window.setInterval(poll, 15000);
     const once = window.setTimeout(poll, 2500);
+    // The bell dropdown (AppShell) re-fetches on a 2.5s+10s cadence from every
+    // page; sync our list the instant its poll lands instead of waiting out the
+    // full interval here.
+    const onBellSync = async () => {
+      if (!document.hidden && !cancelled) {
+        const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications?limit=200");
+        if (data === null || cancelled || !Array.isArray(data.items)) return;
+        setLive(data.items);
+      }
+    };
+    window.addEventListener("advrix:notifications-polled", onBellSync);
     return () => {
       cancelled = true;
       window.clearInterval(id);
       window.clearTimeout(once);
+      window.removeEventListener("advrix:notifications-polled", onBellSync);
     };
   }, []);
 

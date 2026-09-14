@@ -15,7 +15,9 @@ import {
   type AttendanceSettings,
 } from "@/lib/data";
 
+let _locationColumnsEnsured = false;
 async function ensureLocationColumns() {
+  if (_locationColumnsEnsured) return;
   try {
     await query(`
       ALTER TABLE attendance
@@ -48,6 +50,7 @@ async function ensureLocationColumns() {
       WHERE key = 'video_shoot' AND visual_role = 'EDITOR'
     `);
   } catch {}
+  _locationColumnsEnsured = true;
 }
 
 export async function punchInAction(loc: { latitude: number | null; longitude: number | null; location_text: string | null }) {
@@ -323,24 +326,6 @@ export async function updateAttendanceRecordAction(input: {
     const initHours = hours_worked ?? 0;
     await query(`INSERT INTO attendance (user_id, date, status, hours_worked) VALUES ($1, $2, $3, $4)`, [user_id, cleanDate, initStatus, initHours]);
     if (note) await query(`UPDATE attendance SET note = $1 WHERE user_id = $2 AND date = $3`, [note, user_id, cleanDate]);
-  }
-  revalidatePath("/attendance");
-  return { ok: true };
-}
-
-export async function uploadAttendanceProofAction(input: { user_id: string; date: string; proof_image_url: string }) {
-  const session = await getSession();
-  if (!session) return { error: "Not authenticated" };
-  if (!hasPermission(session.permissions, "attendance:view")) return { error: "Not authorized" };
-  const { user_id, date, proof_image_url } = input;
-  if (!user_id || !date || !proof_image_url) return { error: "Missing fields" };
-  const cleanDate = String(date).slice(0, 10);
-  await query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS proof_image_url TEXT`);
-  const existing = await query<{ id: string }>(`SELECT id FROM attendance WHERE user_id = $1 AND date = $2`, [user_id, cleanDate]);
-  if (existing[0]) {
-    await query(`UPDATE attendance SET proof_image_url = $1 WHERE id = $2`, [proof_image_url, existing[0].id]);
-  } else {
-    await query(`INSERT INTO attendance (user_id, date, status, hours_worked, proof_image_url) VALUES ($1, $2, 'present', 0, $3)`, [user_id, cleanDate, proof_image_url]);
   }
   revalidatePath("/attendance");
   return { ok: true };

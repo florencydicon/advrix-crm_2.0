@@ -50,30 +50,36 @@ export async function clearSessionCookie() {
   store.delete(SESSION_COOKIE);
 }
 
+const SESSION_CACHE_TTL_MS = 10_000;
+const sessionCache = new Map<string, { active: boolean; permissions: string[]; at: number }>();
+
 export async function getSession(): Promise<SessionPayload | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const payload = await verifySessionToken(token);
   if (!payload) return null;
-  // Verify user is still active — catches deactivations before JWT expires.
+  // Verify user is still active + backfill current effective permissions / role.
+  // Cached briefly per-instance so heavy polling doesn't hammer the DB; a 10s
+  // staleness window is fine for deactivation enforcement.
+  const cached = sessionCache.get(payload.sub);
+  if (cached && Date.now() - cached.at < SESSION_CACHE_TTL_MS) {
+    if (!cached.active) return null;
+    payload.permissions = cached.permissions;
+    return payload;
+  }
   try {
-    const rows = await query<{ is_active: boolean }>(
-      `SELECT is_active FROM users WHERE id = $1`,
-      [payload.sub]
-    );
-    if (rows.length === 0 || !rows[0].is_active) return null;
-    // Backfill current effective permissions + role from the DB so role /
-    // permission changes apply without waiting for the JWT to expire.
-    const perm = await query<{ permissions: string[] | null }>(
-      `SELECT COALESCE(u.permissions, r.permissions) AS permissions
+    const rows = await query<{ is_active: boolean; permissions: string[] | null }>(
+      `SELECT u.is_active, COALESCE(u.permissions, r.permissions) AS permissions
        FROM users u JOIN roles r ON r.id = u.role_id
        WHERE u.id = $1`,
       [payload.sub]
     );
-    if (perm[0]) {
-      payload.permissions = perm[0].permissions || [];
-    }
+    const row = rows[0];
+    const result = { active: !!row?.is_active, permissions: (row?.permissions || []) as string[] };
+    sessionCache.set(payload.sub, { ...result, at: Date.now() });
+    if (!result.active) return null;
+    payload.permissions = result.permissions;
   } catch {
     // DB check is best-effort — if it fails, let the JWT session through.
   }

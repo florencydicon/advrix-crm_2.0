@@ -18,7 +18,9 @@ import { getAttendanceSettings } from "@/lib/data";
 
 export const metadata = { title: "Attendance & Leave — Advrix CRM" };
 
+let _locationColumnsEnsured = false;
 async function ensureLocationColumns() {
+  if (_locationColumnsEnsured) return;
   try {
     await query(`
       ALTER TABLE attendance
@@ -41,6 +43,7 @@ async function ensureLocationColumns() {
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_login_attempts_email_time ON login_attempts (lower(email), created_at)`);
   } catch {}
+  _locationColumnsEnsured = true;
 }
 
 function monthRange(month: number, year: number) {

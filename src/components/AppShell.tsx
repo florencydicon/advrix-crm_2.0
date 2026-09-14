@@ -28,6 +28,7 @@ import { getUpcomingDeadlineAlertsAction } from "@/lib/actions/pipeline";
 import { hasPermission, hasAnyPermission } from "@/lib/permissions";
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
+import { createEtagFetcher } from "@/lib/clientFetch";
 import { BrandMark, BrandLogoFull } from "@/components/brand";
 import { useToast } from "@/components/Toast";
 import NativeNotificationRegistrar from "@/components/NativeNotificationRegistrar";
@@ -212,15 +213,13 @@ export default function AppShell({
     } catch {}
   }
   const cancelledRef = useRef(false);
+  const fetchJson = useRef(createEtagFetcher()).current;
   const pollNotifs = useCallback(async () => {
     if (typeof document !== "undefined" && document.hidden) return;
-    try {
-      const res = await fetch("/api/notifications", { cache: "no-store" });
-      if (!res.ok || cancelledRef.current) return;
-      const data = (await res.json()) as { items: Notification[]; unread: number };
-      if (cancelledRef.current) return;
-      // Strict filter: unread only + not already toasted in this session/persisted
-      const fresh = data.items.filter((n: any) => isUnread(n) && !toastedIds.current.has(n.id));
+    const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications");
+    if (data === null || cancelledRef.current) return;
+    // Strict filter: unread only + not already toasted in this session/persisted
+    const fresh = data.items.filter((n: any) => isUnread(n) && !toastedIds.current.has(n.id));
       if (fresh.length > 0) {
         fresh.forEach((n) => toastedIds.current.add(n.id));
         persistToasted();
@@ -236,11 +235,13 @@ export default function AppShell({
       // keep the panel state in sync even when no fresh toast needed
       setNotifs(data.items);
       setUnread(data.unread);
-    } catch {}
+      // Let the Updates page (and other live lists) piggyback on this fetch
+      // instead of running its own full-frequency poll.
+      window.dispatchEvent(new CustomEvent("advrix:notifications-polled"));
   }, [toast]);
   useEffect(() => {
     cancelledRef.current = false;
-    const id = window.setInterval(pollNotifs, 7000);
+    const id = window.setInterval(pollNotifs, 10000);
     // also poll once shortly after mount so HR events appear within seconds
     const once = window.setTimeout(pollNotifs, 2500);
     return () => {

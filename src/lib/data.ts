@@ -379,13 +379,19 @@ export async function getProjectDeliverables(projectId: string): Promise<Project
     `SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY created_at`,
     [projectId]
   );
-  const seqs = await query<{ deliverable_id: string; id: string; name: string; role_label: string | null }>(
-    `SELECT da.deliverable_id, u.id, u.full_name AS name, r.label AS role_label
-     FROM deliverable_assignees da
-     JOIN users u ON u.id = da.user_id
-     LEFT JOIN roles r ON r.id = u.role_id
-     ORDER BY da.position ASC`
-  );
+  const deliverableIds = rows.map((d) => d.id);
+  let seqs: { deliverable_id: string; id: string; name: string; role_label: string | null }[] = [];
+  if (deliverableIds.length > 0) {
+    seqs = await query<{ deliverable_id: string; id: string; name: string; role_label: string | null }>(
+      `SELECT da.deliverable_id, u.id, u.full_name AS name, r.label AS role_label
+       FROM deliverable_assignees da
+       JOIN users u ON u.id = da.user_id
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE da.deliverable_id = ANY($1)
+       ORDER BY da.position ASC`,
+      [deliverableIds]
+    );
+  }
   const byDeliv = new Map<string, ProjectDeliverable["assignees"]>();
   for (const s of seqs) {
     if (!byDeliv.has(s.deliverable_id)) byDeliv.set(s.deliverable_id, []);
@@ -1229,7 +1235,9 @@ export const ATTENDANCE_SETTING_KEYS: (keyof AttendanceSettings)[] = [
   "allowed_break_mins",
 ];
 
+let _attendanceSettingsEnsured = false;
 export async function ensureAttendanceSettingsTable() {
+  if (_attendanceSettingsEnsured) return;
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_settings (
@@ -1249,12 +1257,12 @@ export async function ensureAttendanceSettingsTable() {
       ALTER TABLE attendance
         ADD COLUMN IF NOT EXISTS break_start_time TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS break_end_time TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS total_break_mins INT NOT NULL DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS proof_image_url TEXT
+        ADD COLUMN IF NOT EXISTS total_break_mins INT NOT NULL DEFAULT 0
     `);
     await query(`ALTER TABLE leaves ADD COLUMN IF NOT EXISTS is_paid BOOLEAN NOT NULL DEFAULT true`);
     await query(`INSERT INTO attendance_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
   } catch {}
+  _attendanceSettingsEnsured = true;
 }
 
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {
@@ -1363,7 +1371,6 @@ export interface AttendanceGridRow {
   status: string;
   hours_worked: number;
   total_break_mins: number;
-  proof_image_url: string | null;
   latitude: number | null;
   longitude: number | null;
   location_text: string | null;
@@ -1374,7 +1381,7 @@ export async function getAttendanceGrid(start: string, end: string): Promise<Att
     `SELECT a.user_id, u.full_name, r.label AS role_label,
             a.date::text AS date, a.punch_in, a.punch_out, a.status, a.hours_worked,
             COALESCE(a.total_break_mins, 0)::int AS total_break_mins,
-            a.proof_image_url, a.latitude, a.longitude, a.location_text
+            a.latitude, a.longitude, a.location_text
      FROM attendance a
      JOIN users u ON u.id = a.user_id
      JOIN roles r ON r.id = u.role_id
@@ -1399,7 +1406,6 @@ export interface EmployeeAttendanceDetail {
   total_break_mins: number;
   break_start_time: string | null;
   break_end_time: string | null;
-  proof_image_url: string | null;
 }
 
 export interface EmployeeAttendanceSummary {
@@ -1424,7 +1430,7 @@ export async function getEmployeeAttendanceDetail(
     `SELECT id, date::text AS date, punch_in, punch_out, status, hours_worked,
             latitude, longitude, location_text,
             COALESCE(total_break_mins, 0)::int AS total_break_mins,
-            break_start_time, break_end_time, proof_image_url
+            break_start_time, break_end_time
      FROM attendance
      WHERE user_id = $1 AND date BETWEEN $2 AND $3
      ORDER BY date DESC, punch_in DESC`,

@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Calendar,
   Search,
   X,
-  ImagePlus,
-  Pencil,
   CheckCircle2,
   AlertCircle,
   Clock,
@@ -17,7 +15,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
-import { updateAttendanceRecordAction, uploadAttendanceProofAction } from "@/lib/actions/attendance";
+import { updateAttendanceRecordAction } from "@/lib/actions/attendance";
 
 type GridRow = {
   user_id: string;
@@ -29,7 +27,6 @@ type GridRow = {
   status: string;
   hours_worked: number;
   total_break_mins: number;
-  proof_image_url: string | null;
   location_text: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -69,11 +66,8 @@ export default function AttendanceCalendarView({ month, year }: { month: number;
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<{ user_id: string; full_name: string; role_label: string; date: string; row?: GridRow | null } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const [editStatus, setEditStatus] = useState("present");
   const [editHours, setEditHours] = useState("");
-  const [editImage, setEditImage] = useState<string | null>(null);
-  const [editFile, setEditFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -129,21 +123,6 @@ export default function AttendanceCalendarView({ month, year }: { month: number;
     const isOnLeave = isDateOnLeaveForUser(user, dateStr);
     setEditStatus(row?.status || (isOnLeave ? "on_leave" : "present"));
     setEditHours(row?.hours_worked != null ? String(row.hours_worked) : "");
-    setEditImage(row?.proof_image_url || null);
-    setEditFile(null);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 4 * 1024 * 1024) {
-      toast("Image too large (max 4MB)", "error");
-      return;
-    }
-    setEditFile(f);
-    const reader = new FileReader();
-    reader.onload = () => setEditImage(String(reader.result));
-    reader.readAsDataURL(f);
   };
 
   const handleSave = async () => {
@@ -160,16 +139,6 @@ export default function AttendanceCalendarView({ month, year }: { month: number;
         toast((res as { error: string }).error, "error");
         setSaving(false);
         return;
-      }
-      if (editFile && editImage) {
-        const up = await uploadAttendanceProofAction({
-          user_id: editing.user_id,
-          date: editing.date,
-          proof_image_url: editImage,
-        });
-        if ((up as { error?: string }).error) {
-          toast((up as { error: string }).error, "error");
-        }
       }
       toast("Calendar entry updated", "success");
       setEditing(null);
@@ -296,14 +265,6 @@ export default function AttendanceCalendarView({ month, year }: { month: number;
                               {row?.hours_worked != null && row.hours_worked > 0 && (
                                 <span className="text-[9px] text-white/80 leading-none">{Number(row.hours_worked).toFixed(1)}h</span>
                               )}
-                              {row?.proof_image_url && (
-                                <img src={row.proof_image_url} alt="proof" className="h-6 w-6 rounded object-cover ring-1 ring-white/20" />
-                              )}
-                              {!row?.proof_image_url && status !== "absent" && status !== "" && (
-                                <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-white/5 border border-dashed border-white/15">
-                                  <ImagePlus className="h-3 w-3 text-slate-500" />
-                                </span>
-                              )}
                             </div>
                           ) : (
                             <div className="rounded-lg bg-transparent py-2">
@@ -339,7 +300,7 @@ export default function AttendanceCalendarView({ month, year }: { month: number;
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" /> Half Day</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Absent</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" /> Leave</span>
-          <span className="hidden sm:inline ml-2">· Click any day to edit status / upload proof image</span>
+          <span className="hidden sm:inline ml-2">· Click any day to edit status</span>
         </div>
       </div>
 
@@ -371,38 +332,6 @@ export default function AttendanceCalendarView({ month, year }: { month: number;
               <div>
                 <label className="label text-[11px]">Hours worked</label>
                 <input type="number" step="0.1" value={editHours} onChange={(e) => setEditHours(e.target.value)} placeholder="e.g. 8.0" className="input !py-2 text-xs" />
-              </div>
-              <div>
-                <label className="label text-[11px] flex items-center gap-1.5"><ImagePlus className="h-3 w-3" /> Proof image (upload)</label>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-                <div
-                  onClick={() => fileRef.current?.click()}
-                  className={`mt-1 rounded-xl border-2 border-dashed p-3 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
-                    editImage ? "border-brand-300/30 bg-brand-300/5" : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
-                  }`}
-                >
-                  {editImage ? (
-                    <>
-                      <img src={editImage} alt="proof preview" className="max-h-40 rounded-lg object-contain ring-1 ring-white/10" />
-                      <p className="text-[11px] text-brand-300">Click to change image</p>
-                    </>
-                  ) : (
-                    <>
-                      <ImagePlus className="h-6 w-6 text-slate-500" />
-                      <p className="text-[11px] text-slate-400">Click to upload proof image</p>
-                      <p className="text-[10px] text-slate-600">JPG/PNG, max 4MB</p>
-                    </>
-                  )}
-                </div>
-                {editImage && (
-                  <button
-                    type="button"
-                    onClick={() => { setEditImage(null); setEditFile(null); if (fileRef.current) fileRef.current.value = ""; }}
-                    className="mt-2 text-[11px] text-rose-400 hover:text-rose-300"
-                  >
-                    Remove image
-                  </button>
-                )}
               </div>
               {editing.row && (
                 <div className="rounded-lg bg-white/[0.03] px-3 py-2 text-[11px] text-slate-400 space-y-1">

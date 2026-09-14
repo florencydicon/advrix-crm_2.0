@@ -5,7 +5,9 @@ import { getUserIdsByRole, getManagingPmIdsForUser } from "@/lib/notifications";
 // Push subscriptions table
 // ---------------------------------------------------------------------------
 
+let _pushSubsEnsured = false;
 export async function ensurePushSubscriptionsTable() {
+  if (_pushSubsEnsured) return;
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -19,6 +21,7 @@ export async function ensurePushSubscriptionsTable() {
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_push_sub_user ON push_subscriptions(user_id)`);
   } catch {}
+  _pushSubsEnsured = true;
 }
 
 export interface PushSubscriptionRow {
@@ -55,7 +58,9 @@ export async function getSubscriptionsForUsers(userIds: string[]): Promise<{ use
 // Native FCM device tokens (Capacitor app)
 // ---------------------------------------------------------------------------
 
+let _fcmTokensEnsured = false;
 export async function ensureFcmTokensTable() {
+  if (_fcmTokensEnsured) return;
   try {
     await query(`
       CREATE TABLE IF NOT EXISTS fcm_tokens (
@@ -68,6 +73,7 @@ export async function ensureFcmTokensTable() {
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_fcm_token_user ON fcm_tokens(user_id)`);
   } catch {}
+  _fcmTokensEnsured = true;
 }
 
 export interface FcmTokenRow {

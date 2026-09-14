@@ -57,6 +57,13 @@ export async function generateDeliverableTasks(
     );
     if (deliverables.length === 0) return;
 
+    const existingById = new Map<string, string>();
+    const existingRows = await query<{ id: string; step_key: string }>(
+      `SELECT id, step_key FROM tasks WHERE project_id = $1`,
+      [projectId]
+    );
+    for (const r of existingRows) existingById.set(r.step_key, r.id);
+
     for (const d of deliverables) {
       const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
       for (let i = 1; i <= d.quantity; i++) {
@@ -64,18 +71,15 @@ export async function generateDeliverableTasks(
         // Use custom title if provided for this deliverable+index (for sub-task title editing UX)
         const customForKey = customTitles?.[d.category_key] || (d.is_custom && d.custom_label ? customTitles?.[`custom:${d.custom_label}`] : undefined);
         const title = customForKey?.[i - 1]?.trim() ? customForKey[i - 1].trim().slice(0, 200) : `${label} ${pad(i)}`;
-        const existing = await query<{ id: string }>(
-          `SELECT id FROM tasks WHERE project_id = $1 AND step_key = $2 LIMIT 1`,
-          [projectId, stepKey]
-        );
-        if (existing.length > 0) {
+        const existingId = existingById.get(stepKey);
+        if (existingId) {
           // If custom title provided for existing task, update it (allows editing at creation time)
           if (customForKey?.[i - 1]?.trim()) {
-            await query(`UPDATE tasks SET title = $1 WHERE id = $2`, [title, existing[0].id]);
+            await query(`UPDATE tasks SET title = $1 WHERE id = $2`, [title, existingId]);
           }
           // Sync priority when it changed at creation time
           if (priority && priority !== "medium") {
-            await query(`UPDATE tasks SET priority = $1 WHERE id = $2`, [priority, existing[0].id]);
+            await query(`UPDATE tasks SET priority = $1 WHERE id = $2`, [priority, existingId]);
           }
           continue;
         }
@@ -170,15 +174,6 @@ export async function getProjectTeamOrder(projectId: string): Promise<string[]> 
   }
 }
 
-async function roleKeyOf(userId: string): Promise<string | null> {
-  const rows = await query<{ role_key: string }>(
-    `SELECT r.key AS role_key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
-    [userId]
-  );
-  return rows[0]?.role_key ?? null;
-}
-
-/** The given member's assignment deadline on the project (for stage due-dates). */
 async function assignmentDeadlineOf(
   projectId: string,
   userId: string,
@@ -214,10 +209,16 @@ export async function getDeliverableTeam(deliverableId: string): Promise<string[
  */
 export async function setDeliverableTeam(deliverableId: string, memberIds: string[]) {
   await query(`DELETE FROM deliverable_assignees WHERE deliverable_id = $1`, [deliverableId]);
-  for (let i = 0; i < memberIds.length; i++) {
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+  memberIds.forEach((uid, i) => {
+    values.push(deliverableId, uid, i);
+    tuples.push(`($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`);
+  });
+  if (tuples.length > 0) {
     await query(
-      `INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES ($1, $2, $3)`,
-      [deliverableId, memberIds[i], i]
+      `INSERT INTO deliverable_assignees (deliverable_id, user_id, position) VALUES ${tuples.join(", ")}`,
+      values
     );
   }
   const tasks = await query<{ id: string }>(
@@ -238,18 +239,32 @@ export async function setTaskTeam(taskId: string, memberIds: string[]) {
     await query<{ project_id: string }>(`SELECT project_id FROM tasks WHERE id = $1`, [taskId])
   )[0];
   if (!task) return;
-  const roles = new Map<string, string>();
+  const uniqueIds = [...new Set(memberIds)];
+  const roles = await query<{ id: string; role_key: string }>(
+    `SELECT u.id, r.key AS role_key
+     FROM users u JOIN roles r ON r.id = u.role_id
+     WHERE u.id = ANY($1)`,
+    [uniqueIds]
+  );
+  const roleByUser = new Map(roles.map((r) => [r.id, r.role_key]));
+
   await query(`DELETE FROM task_assignees WHERE task_id = $1`, [taskId]);
-  for (let i = 0; i < memberIds.length; i++) {
-    const uid = memberIds[i];
-    roles.set(uid, (await roleKeyOf(uid)) || "");
+
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+  uniqueIds.forEach((uid, i) => {
+    values.push(taskId, uid, i);
+    tuples.push(`($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`);
+  });
+  if (tuples.length > 0) {
     await query(
-      `INSERT INTO task_assignees (task_id, user_id, position) VALUES ($1, $2, $3)`,
-      [taskId, uid, i]
+      `INSERT INTO task_assignees (task_id, user_id, position) VALUES ${tuples.join(", ")}`,
+      values
     );
   }
-  const first = memberIds[0];
-  const firstRole = roles.get(first) || null;
+
+  const first = uniqueIds[0];
+  const firstRole = roleByUser.get(first) || null;
   const deadline = await assignmentDeadlineOf(task.project_id, first, firstRole);
   await query(
     `UPDATE tasks SET assigned_to = $2, role_key = $3, current_step = 0, due_date = COALESCE($4, due_date)
@@ -423,6 +438,7 @@ export async function routeVisualTaskToProducer(projectId: string, taskId: strin
   return userId;
 }
 
+let _assignPositionEnsured = false;
 /**
  * Allocates the project team. A single member may be assigned multiple roles on
  * the same project (multi-role). Re-assigns open tasks of each role to the
@@ -433,7 +449,10 @@ export async function allocateProjectTeam(
   allocations: { role_key: string; user_id: string | null; deadline?: string | null }[]
 ) {
   // Ensure position column exists (handles production DB that hasn't run migration 015 yet)
-  try { await query(`ALTER TABLE assignments ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0`); } catch {}
+  if (!_assignPositionEnsured) {
+    try { await query(`ALTER TABLE assignments ADD COLUMN IF NOT EXISTS position INT NOT NULL DEFAULT 0`); } catch {}
+    _assignPositionEnsured = true;
+  }
   // Priority ordering: allocations array order is the priority (top = first assigned).
   // This removes fixed Writer->Designer flow — auto-chain now follows this order.
   for (let idx = 0; idx < allocations.length; idx++) {
@@ -599,26 +618,46 @@ export async function extendForLeave(
 
   if (cleanDays === 0) return;
 
-  const tasks = await query<{ id: string; assigned_to: string | null }>(
-    `SELECT id, assigned_to FROM tasks WHERE project_id = $1 AND status <> 'completed' ORDER BY created_at ASC, id ASC`,
+  const tasks = await query<{ id: string; assigned_to: string | null; due_date: string | null }>(
+    `SELECT id, assigned_to, due_date::text AS due_date FROM tasks WHERE project_id = $1 AND status <> 'completed' ORDER BY created_at ASC, id ASC`,
     [projectId]
   );
 
   const cascadeStartIdx = tasks.findIndex((t) => t.assigned_to === userId);
   if (cascadeStartIdx === -1) return;
 
+  const ownerIds: string[] = [];
+  const ownerDates: string[] = [];
+  const otherIds: string[] = [];
+  const otherDates: string[] = [];
   for (let i = cascadeStartIdx; i < tasks.length; i++) {
     const t = tasks[i];
-    const current = (
-      await query<{ due_date: string | null }>(`SELECT due_date::text AS due_date FROM tasks WHERE id = $1`, [t.id])
-    )[0];
-    const base = current?.due_date ? new Date(`${current.due_date}T12:00:00`) : new Date();
+    const base = t.due_date ? new Date(`${t.due_date}T12:00:00`) : new Date();
     base.setHours(12, 0, 0, 0);
-    const next = addWorkingDays(base, cleanDays);
-    const isOwner = t.assigned_to === userId;
+    const next = toISODate(addWorkingDays(base, cleanDays));
+    if (t.assigned_to === userId) {
+      ownerIds.push(t.id);
+      ownerDates.push(next);
+    } else {
+      otherIds.push(t.id);
+      otherDates.push(next);
+    }
+  }
+
+  if (otherIds.length > 0) {
     await query(
-      `UPDATE tasks SET due_date = $2${isOwner ? `, on_leave_note = $3` : ""} WHERE id = $1`,
-      isOwner ? [t.id, toISODate(next), reason || null] : [t.id, toISODate(next)]
+      `UPDATE tasks SET due_date = f.d
+       FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::date[]) AS d) f
+       WHERE tasks.id = f.id`,
+      [otherIds, otherDates]
+    );
+  }
+  if (ownerIds.length > 0) {
+    await query(
+      `UPDATE tasks SET due_date = f.d, on_leave_note = $3
+       FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::date[]) AS d) f
+       WHERE tasks.id = f.id`,
+      [ownerIds, ownerDates, reason || null]
     );
   }
 }
