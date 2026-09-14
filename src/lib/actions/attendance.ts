@@ -6,7 +6,7 @@ import { hasPermission } from "@/lib/permissions";
 import { query } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { notifyHrManagers } from "@/lib/notifications";
-import { formatTimeIST } from "@/lib/utils";
+import { formatTimeIST, istMinutesOfDay } from "@/lib/utils";
 import {
   getAttendanceSettings,
   ensureAttendanceSettingsTable,
@@ -79,10 +79,8 @@ export async function punchInAction(loc: { latitude: number | null; longitude: n
 
   const punchInTime = new Date();
   const [sh, sm] = settings.shift_start_time.split(":").map(Number);
-  const lateThreshold = new Date(punchInTime);
-  lateThreshold.setHours(sh || 0, sm || 0, 0, 0);
-  lateThreshold.setMinutes(lateThreshold.getMinutes() + settings.late_grace_period_mins);
-  const status = punchInTime > lateThreshold ? "late" : "present";
+  const thresholdMin = (sh || 0) * 60 + (sm || 0) + settings.late_grace_period_mins;
+  const status = istMinutesOfDay(punchInTime) > thresholdMin ? "late" : "present";
 
   if (existing[0]) {
     await query(
@@ -174,10 +172,7 @@ export async function punchOutAction(loc: { latitude: number | null; longitude: 
   // Keep / adopt "late" label when the punch-in was flagged late and they
   // stayed the full day — compare punch_in against that day's shift start + grace.
   const [sh2, sm2] = settings.shift_start_time.split(":").map(Number);
-  const punchLateThreshold = new Date(punchIn);
-  punchLateThreshold.setHours(sh2 || 0, sm2 || 0, 0, 0);
-  punchLateThreshold.setMinutes(punchLateThreshold.getMinutes() + settings.late_grace_period_mins);
-  const punchInLate = punchIn > punchLateThreshold;
+  const punchInLate = istMinutesOfDay(punchIn) > (sh2 || 0) * 60 + (sm2 || 0) + settings.late_grace_period_mins;
   if (status === "present" && punchInLate) status = "late";
 
   await query(

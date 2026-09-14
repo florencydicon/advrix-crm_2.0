@@ -14,6 +14,7 @@ import {
   Search,
   X,
   AlertTriangle,
+  FolderKanban,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
@@ -88,6 +89,11 @@ export default function ProjectPipeline({
   const [board, setBoard] = useState(initial);
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
+
+  // Active board layout: grouped by project (default) or flat list.
+  const [view, setView] = useState<"projects" | "list">("projects");
+  // Project whose subtasks are open in the modal.
+  const [openProject, setOpenProject] = useState<{ projectId: string; projectName: string } | null>(null);
 
   // Ultra-lean modal (active task)
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -259,6 +265,29 @@ export default function ProjectPipeline({
     }),
     [sortedActive, board.completed, af.matches]
   );
+
+  // Group active tasks by project for the "Projects" layout. A project key is
+  // stable per project_id (falls back to name+client so a shared-name project
+  // across two clients still groups to the right bucket).
+  const projectKey = (t: Task) => t.project_id || `${t.client_id || ""}|${t.project_name || ""}`;
+
+  const projectGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; projectId: string; projectName: string; clientName: string; tasks: Task[] }>();
+    for (const task of filteredActive) {
+      const key = projectKey(task);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          projectId: task.project_id,
+          projectName: task.project_name || "Untitled project",
+          clientName: clientName(task).trim(),
+          tasks: [],
+        });
+      }
+      groups.get(key)!.tasks.push(task);
+    }
+    return [...groups.values()].sort((a, b) => a.projectName.localeCompare(b.projectName));
+  }, [filteredActive]);
 
   const stageLabel = (task: Task) => {
     if (task.status === "completed") return "Completed";
@@ -500,6 +529,132 @@ export default function ProjectPipeline({
     </div>
   );
 
+  // ---- Projects grouped view (cards) ----
+  const projectsGrid = (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      {projectGroups.map((g) => {
+        const inQc = g.tasks.some((t) => t.status === "submitted");
+        const overdue = g.tasks.some((t) => isOverdue(t));
+        const done = board.completed.filter((t) => projectKey(t) === g.key).length;
+        return (
+          <button
+            key={g.key}
+            type="button"
+            onClick={() => setOpenProject({ projectId: g.projectId, projectName: g.projectName })}
+            className="text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 transition-colors hover:bg-white/[0.06] hover:border-white/20"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="h-9 w-9 rounded-lg bg-brand-300/10 flex items-center justify-center shrink-0">
+                <FolderKanban className="h-4 w-4 text-brand-300" />
+              </span>
+              <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-1" />
+            </div>
+            <p className="text-sm font-semibold text-white mt-2.5 truncate">{g.projectName}</p>
+            <p className="text-xs text-slate-500 truncate">{g.clientName || "—"}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                <Layers className="h-3 w-3" /> {g.tasks.length} subtask{g.tasks.length === 1 ? "" : "s"}
+              </span>
+              {g.tasks.length > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                  <Check className="h-3 w-3" /> {done} done
+                </span>
+              )}
+              {inQc && <QcPill />}
+              {overdue && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300 ml-auto">
+                  <AlertTriangle className="h-3 w-3" /> Overdue
+                </span>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  // ---- Project → subtasks modal (one row per subtask) ----
+  const openProjectGroup = openProject
+    ? projectGroups.find((g) => g.projectId === openProject.projectId) || null
+    : null;
+
+  const projectModal = openProjectGroup ? (
+    <div className="fixed inset-0 z-50 flex md:items-center md:justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => setOpenProject(null)} />
+      <div
+        className={`relative w-full bg-night-850 border-white/10 shadow-2xl flex flex-col ${
+          isMobile
+            ? "bottom-sheet h-[100dvh] max-h-[100dvh] border-t md:hidden rounded-t-2xl"
+            : "modal-pop rounded-2xl border max-w-2xl md:max-h-[85vh]"
+        }`}
+      >
+        <div className="sticky top-0 z-10 bg-night-850/95 backdrop-blur px-4 py-3 border-b border-white/10 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setOpenProject(null)}
+            className="flex items-center gap-1.5 btn-ghost !px-2.5 !py-2 text-sm shrink-0"
+            aria-label="Close"
+          >
+            <RotateCcw className="h-5 w-5 rotate-90" />
+            <span className="md:hidden font-medium">Back</span>
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-slate-400 mb-0.5">
+              {openProjectGroup.clientName}
+              {openProjectGroup.clientName ? " · " : ""}
+              {openProjectGroup.tasks.length} subtask{openProjectGroup.tasks.length === 1 ? "" : "s"}
+            </div>
+            <div className="text-base font-bold text-white leading-snug truncate">{openProjectGroup.projectName}</div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {openProjectGroup.tasks.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTask(t)}
+              className={`w-full text-left rounded-xl border p-3 transition-colors cursor-pointer ${
+                isOverdue(t)
+                  ? "border-rose-500/40 bg-rose-500/[0.08] hover:bg-rose-500/[0.13]"
+                  : t.status === "submitted"
+                    ? "border-violet-300/40 bg-violet-400/[0.08] hover:bg-violet-400/[0.12]"
+                    : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-white leading-snug line-clamp-2">{t.title}</p>
+                {t.status === "submitted" && <QcPill />}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5">
+                <span className="inline-flex items-center gap-1.5 min-w-0">
+                  <span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">
+                    {initials(stageLabel(t) === "Unassigned" ? "" : stageLabel(t))}
+                  </span>
+                  <span className="text-xs text-slate-300 truncate max-w-[120px]">{stageLabel(t)}</span>
+                </span>
+                <span className="w-px h-4 bg-white/10 shrink-0" />
+                <PriorityBadge priority={t.priority} />
+                <StatusBadge status={t.status} />
+                <span className={`ml-auto inline-flex items-center gap-1 text-xs whitespace-nowrap ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+                  {isOverdue(t) ? (
+                    <>
+                      <AlertTriangle className="h-3.5 w-3.5 text-rose-400" /> {fmtDate(t.due_date)}
+                    </>
+                  ) : (
+                    <>
+                      <CalendarDays className="h-3.5 w-3.5" /> {fmtDate(t.due_date)}
+                    </>
+                  )}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // ---- History Audit Log Modal ----
   const historyModal = historyTask ? (
     <div className="fixed inset-0 z-50 flex md:items-center md:justify-center">
@@ -634,6 +789,30 @@ export default function ProjectPipeline({
                 {completedCount}
               </span>
             </button>
+            {tab === "active" && (
+              <div className="ml-3 flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10">
+                <button
+                  type="button"
+                  onClick={() => setView("projects")}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    view === "projects" ? "bg-brand-300 text-night-950" : "text-slate-300 hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <FolderKanban className="h-3.5 w-3.5" />
+                  Projects
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("list")}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    view === "list" ? "bg-brand-300 text-night-950" : "text-slate-300 hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  List
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -666,7 +845,7 @@ export default function ProjectPipeline({
             </div>
           ) : (
             <>
-              {isManager && (
+              {isManager && view === "list" && (
                 <div className="mb-2">
                   <BulkActionBar
                     selectedCount={selected.length}
@@ -682,8 +861,19 @@ export default function ProjectPipeline({
                   />
                 </div>
               )}
-              <div className="hidden md:block">{activeTable}</div>
-              <div className="md:hidden">{activeMobile}</div>
+              {view === "projects" ? (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-slate-500">
+                    {projectGroups.length} project{projectGroups.length === 1 ? "" : "s"} — open one to see its subtasks.
+                  </p>
+                  {projectsGrid}
+                </div>
+              ) : (
+                <>
+                  <div className="hidden md:block">{activeTable}</div>
+                  <div className="md:hidden">{activeMobile}</div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -727,6 +917,7 @@ export default function ProjectPipeline({
         />
       )}
       {historyModal}
+      {projectModal}
     </div>
   );
 }

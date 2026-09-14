@@ -16,6 +16,26 @@ export function formatTimeIST(iso: string | Date, opts: Intl.DateTimeFormatOptio
 }
 
 /**
+ * Minutes-of-day (0–1439) of a given instant as seen in IST (Asia/Kolkata).
+ * Shift times like "10:00" are IST, but serverless hosts run in UTC, so
+ * comparing them with local setHours() is off by 5:30. This is the display
+ * timezone used for attendance everywhere (formatTimeIST etc.).
+ */
+export function istMinutesOfDay(iso: string | Date | number): number {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 0;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  return hour * 60 + minute;
+}
+
+/**
  * Formats a client as "Company Name (Contact Person)".
  * Falls back to just the contact name when no company is set.
  * e.g. "AK Enterprise (Sudhir Thakor)".
