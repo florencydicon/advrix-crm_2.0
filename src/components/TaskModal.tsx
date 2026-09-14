@@ -77,11 +77,11 @@ function fmtDate(v?: string | null) {
 
 function MarqueeHeading({ text }: { text: string }) {
   const words = text.split(/\s+/).filter(Boolean);
-  const needsMarquee = words.length > 6;
-  if (!needsMarquee) return <div className="marquee-static">{text}</div>;
+  const needsMarquee = words.length > 4 || text.length > 28;
+  if (!needsMarquee) return <div className="marquee-static" title={text}>{text}</div>;
   const sep = "  •  ";
   return (
-    <div className="marquee-clip">
+    <div className="marquee-clip" title={text}>
       <div className="marquee-track marquee-moving">
         <span className="pr-6">{text}{sep}{text}</span>
       </div>

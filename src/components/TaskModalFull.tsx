@@ -73,16 +73,15 @@ function fmtDate(v?: string | null) {
   return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
-/** 5ΓÇô6 word limit; longer text becomes a seamless CSS marquee. */
 function MarqueeHeading({ text }: { text: string }) {
   const words = text.split(/\s+/).filter(Boolean);
-  const needsMarquee = words.length > 6;
+  const needsMarquee = words.length > 4 || text.length > 28;
   if (!needsMarquee) {
-    return <div className="marquee-static">{text}</div>;
+    return <div className="marquee-static" title={text}>{text}</div>;
   }
-  const sep = "  ΓÇó  ";
+  const sep = "  •  ";
   return (
-    <div className="marquee-clip">
+    <div className="marquee-clip" title={text}>
       <div className="marquee-track marquee-moving">
         <span className="pr-6">{text}{sep}{text}</span>
       </div>
