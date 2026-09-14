@@ -688,7 +688,14 @@ export default function ProjectPipeline({
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setProjectTask(t)}
+                  onClick={() => {
+                    if (canBulkStage) setProjectTask(t);
+                    else {
+                      setOpenProject(null);
+                      setProjectTask(null);
+                      setActiveTask(t);
+                    }
+                  }}
                   className={`w-full text-left rounded-xl border p-3 transition-colors cursor-pointer ${
                     isOverdue(t)
                       ? "border-rose-500/40 bg-rose-500/[0.08] hover:bg-rose-500/[0.13]"

@@ -10,7 +10,7 @@ import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/compon
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { isOverdue } from "@/lib/deadlines";
 import { formatClientName } from "@/lib/utils";
-import TaskModal from "@/components/TaskModal";
+import TaskModal from "@/components/TaskModalFull";
 import BulkActionBar from "@/components/BulkActionBar";
 import { useToast } from "@/components/Toast";
 import {

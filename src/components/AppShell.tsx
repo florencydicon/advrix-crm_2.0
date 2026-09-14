@@ -97,12 +97,21 @@ function getCollapsedServerSnapshot() {
 }
 
 function timeAgo(dateStr: string) {
-  const d = new Date(dateStr);
+  let d = new Date(dateStr);
+  if (isNaN(d.getTime()) && dateStr) d = new Date(dateStr + "Z");
+  if (isNaN(d.getTime())) return dateStr;
   const diff = Math.round((Date.now() - d.getTime()) / 1000);
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+}
+function formatIST(dateStr: string) {
+  try {
+    const d = new Date(dateStr.endsWith("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z");
+    return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  } catch { return dateStr; }
 }
 
 export default function AppShell({
@@ -669,7 +678,7 @@ export default function AppShell({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
                                 <p className={`text-[13px] truncate ${n.read ? "text-slate-400" : "text-white font-semibold"}`}>{n.title}</p>
-                                <span className="text-[10px] text-slate-500 shrink-0">{timeAgo(n.created_at)}</span>
+                                <span className="text-[10px] text-slate-500 shrink-0" title={formatIST(n.created_at)}>{timeAgo(n.created_at)}</span>
                               </div>
                               {n.body && <p className="text-xs text-slate-500 truncate mt-0.5">{n.body}</p>}
                             </div>
