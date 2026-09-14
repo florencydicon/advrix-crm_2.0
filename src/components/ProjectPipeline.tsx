@@ -27,6 +27,7 @@ import {
   bulkAssignPipelineTeamAction,
   bulkDeletePipelineTasksAction,
   bulkSetPipelineStatusAction,
+  bulkSetPipelineStageAction,
 } from "@/lib/actions/pipeline";
 import type { PipelineBoardPayload } from "@/lib/actions/pipeline";
 import TaskModal from "@/components/TaskModal";
@@ -205,6 +206,10 @@ export default function ProjectPipeline({
     ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"].includes(
       (board.roleKey || "").toUpperCase()
     );
+  // Stage bulk change — only PM and Super Admin (as requested)
+  const canBulkStage = ["SUPER_ADMIN", "PROJECT_MANAGER", "PM"].includes(
+    (board.roleKey || "").toUpperCase()
+  );
 
   const bulkAssign = async (memberIds: string[]) => {
     const res = await bulkAssignPipelineTeamAction(selected, memberIds);
@@ -235,6 +240,17 @@ export default function ProjectPipeline({
       return;
     }
     notify(`Updated ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await reload();
+  };
+
+  const bulkStage = async (memberId: string) => {
+    const res = await bulkSetPipelineStageAction(selected, memberId);
+    if (!res.ok) {
+      notify(res.error || "Bulk stage change failed.");
+      return;
+    }
+    notify(`Moved ${res.count} task${res.count === 1 ? "" : "s"} to new stage.`);
     setSelected([]);
     await reload();
   };
@@ -894,11 +910,13 @@ export default function ProjectPipeline({
                     team={team}
                     canAssign
                     canDelete
+                    canStage={canBulkStage}
                     statusOptions={bulkStatusOptions}
                     statusLabel="Status"
                     onAssign={bulkAssign}
                     onDelete={bulkDelete}
                     onStatus={bulkStatus}
+                    onStage={bulkStage}
                     onClear={() => setSelected([])}
                   />
                 </div>

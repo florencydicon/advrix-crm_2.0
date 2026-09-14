@@ -109,7 +109,7 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const isBroad = dataScope.kind === "global";
   const canManage = hasPermission(perms, PERM_TASKS_MANAGE);
   const canApprove = hasPermission(perms, PERM_TASKS_MANAGE) || hasPermission(perms, PERM_TASKS_REVIEW);
-  const canReopen = perms.includes("admin:*");
+  const canReopen = session.role_key === "SUPER_ADMIN";
   const scope = boardScope(session, dataScope);
   const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
 
@@ -355,7 +355,7 @@ export async function reopenPipelineTaskAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
-  if (!(session.permissions || []).includes("admin:*")) {
+  if (session.role_key !== "SUPER_ADMIN") {
     return { ok: false, error: "Only Super Admin can re-open tasks." };
   }
   const task = await taskOf(taskId);
@@ -755,6 +755,60 @@ export async function bulkSetPipelineDeadlineAction(
 }
 
 /**
+ * Bulk: change the current stage (assignee) for multiple subtasks at once.
+ * Only PM and Super Admin may use it — updates current_step, assigned_to,
+ * role_key and applies the stage's due date. Tasks already completed are
+ * skipped.
+ */
+export async function bulkSetPipelineStageAction(
+  taskIds: string[],
+  targetUserId: string
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const role = (session.role_key || "").toUpperCase();
+  const allowed = role === "SUPER_ADMIN" || role === "PROJECT_MANAGER" || role === "PM" || (session.permissions || []).includes("admin:*");
+  if (!allowed) return { ok: false, error: "Only PM / Super Admin can change stage." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  if (!targetUserId) return { ok: false, error: "Pick a stage member." };
+  const targetRows = await query<{ role_id: string | null }>(`SELECT role_id FROM users WHERE id = $1 AND is_active = true`, [targetUserId]);
+  if (!targetRows[0]) return { ok: false, error: "Selected member not found." };
+  const roleKey = await query<{ key: string }>(`SELECT r.key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`, [targetUserId]).then((r) => r[0]?.key || null);
+  let count = 0;
+  for (const tid of ids) {
+    const trow = await query<{ project_id: string; status: string }>(`SELECT project_id, status FROM tasks WHERE id = $1`, [tid]);
+    if (!trow[0] || trow[0].status === "completed") continue;
+    const seq = await query<{ user_id: string; position: number }>(
+      `SELECT user_id, position FROM task_assignees WHERE task_id = $1 ORDER BY position ASC, added_at ASC`,
+      [tid]
+    );
+    let idx = seq.findIndex((s) => s.user_id === targetUserId);
+    if (idx === -1) {
+      const maxPos = seq.length ? Math.max(...seq.map((s) => s.position)) + 1 : 0;
+      await query(`INSERT INTO task_assignees (task_id, user_id, position) VALUES ($1, $2, $3)`, [tid, targetUserId, maxPos]);
+      idx = seq.length;
+    }
+    // Use assignment deadline if one is configured for this project/member
+    let deadline: string | null = null;
+    try {
+      const dr = await query<{ allotment_deadline: string | null }>(
+        `SELECT allotment_deadline::text AS allotment_deadline FROM assignments WHERE project_id = $1 AND user_id = $2 ORDER BY position ASC LIMIT 1`,
+        [trow[0].project_id, targetUserId]
+      );
+      deadline = dr[0]?.allotment_deadline ?? null;
+    } catch {}
+    await query(
+      `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = 'approved', due_date = COALESCE($5, due_date), reviewed_at = NULL WHERE id = $1`,
+      [tid, idx, targetUserId, roleKey, deadline]
+    );
+    count++;
+  }
+  revalidate();
+  return { ok: true, count };
+}
+
+/**
  * Bulk: set the content-lifecycle status on every selected task. Content team
  * and managers (writers included — they can change status but never delete).
  */
@@ -789,7 +843,7 @@ export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
   const isBroad = dataScope.kind === "global";
   const canManage = hasPermission(perms, PERM_TASKS_MANAGE);
   const canApprove = hasPermission(perms, PERM_TASKS_MANAGE) || hasPermission(perms, PERM_TASKS_REVIEW);
-  const canReopen = perms.includes("admin:*");
+  const canReopen = session.role_key === "SUPER_ADMIN";
   const scope = boardScope(session, dataScope);
   const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
   const where = scope
