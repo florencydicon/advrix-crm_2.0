@@ -9,6 +9,13 @@ export interface BulkStatusOption {
   label: string;
 }
 
+/** A person a selected task can be moved to/back — only assigned members. */
+export interface StageOption {
+  id: string;
+  full_name: string;
+  role_label?: string;
+}
+
 /**
  * Reusable sticky bulk-action bar. Rendered when selectedRows.length > 0.
  * Parents own selection state + server calls; this bar only collects intent:
@@ -26,11 +33,13 @@ export default function BulkActionBar({
   singleAssign = false,
   assignLabel = "Assign Team",
   canStage = false,
+  stageOptions,
   onAssign,
   onDelete,
   onStatus,
   onStage,
   onMoveBack,
+  onMoveBackTo,
   onClear,
 }: {
   selectedCount: number;
@@ -42,21 +51,33 @@ export default function BulkActionBar({
   singleAssign?: boolean;
   assignLabel?: string;
   canStage?: boolean;
+  stageOptions?: StageOption[];
   onAssign: (memberIds: string[]) => Promise<void>;
   onDelete: () => Promise<void>;
   onStatus: (status: string) => Promise<void>;
   onStage?: (memberId: string) => Promise<void>;
   onMoveBack?: () => Promise<void>;
+  onMoveBackTo?: (memberId: string) => Promise<void>;
   onClear: () => void;
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
+  const [backOpen, setBackOpen] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [pickedStage, setPickedStage] = useState<string>("");
+  const [pickedBack, setPickedBack] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
   if (selectedCount === 0) return null;
+
+  // Stage/move-back candidates: the people actually assigned to the selection
+  // (fallback to the whole team when the parent doesn't scope it).
+  const stageList: StageOption[] = stageOptions
+    ? stageOptions
+    : team
+        .filter((u) => u.is_active)
+        .map((u) => ({ id: u.id, full_name: u.full_name, role_label: u.role_label }));
 
   const togglePick = (id: string) =>
     setPicked((prev) =>
@@ -126,6 +147,18 @@ export default function BulkActionBar({
     }
   };
 
+  const runMoveBackTo = async () => {
+    if (busy || !pickedBack || !onMoveBackTo) return;
+    setBusy(true);
+    try {
+      await onMoveBackTo(pickedBack);
+      setBackOpen(false);
+      setPickedBack("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="sticky top-0 z-20 rounded-xl border border-brand-300/30 bg-night-850/95 backdrop-blur px-3 py-2 shadow-lg shadow-black/30">
       <div className="flex flex-wrap items-center gap-2">
@@ -146,7 +179,7 @@ export default function BulkActionBar({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { setAssignOpen((o) => !o); setStatusOpen(false); setStageOpen(false); }}
+                onClick={() => { setAssignOpen((o) => !o); setStatusOpen(false); setStageOpen(false); setBackOpen(false); }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
                 <Users className="h-3.5 w-3.5" /> {assignLabel}
@@ -196,7 +229,7 @@ export default function BulkActionBar({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { setStatusOpen((o) => !o); setAssignOpen(false); setStageOpen(false); }}
+                onClick={() => { setStatusOpen((o) => !o); setAssignOpen(false); setStageOpen(false); setBackOpen(false); }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
                 <Tag className="h-3.5 w-3.5" /> {statusLabel}
@@ -227,7 +260,7 @@ export default function BulkActionBar({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { setStageOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); }}
+                onClick={() => { setStageOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); setBackOpen(false); }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
                 <ArrowRight className="h-3.5 w-3.5" /> Stage
@@ -237,7 +270,7 @@ export default function BulkActionBar({
                   <div className="fixed inset-0 z-10" onClick={() => setStageOpen(false)} />
                   <div className="absolute z-20 right-0 mt-2 w-60 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden">
                     <div className="max-h-56 overflow-y-auto p-1.5">
-                      {team.filter((u) => u.is_active).map((u) => (
+                      {stageList.map((u) => (
                         <label
                           key={u.id}
                           className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs cursor-pointer ${pickedStage === u.id ? "bg-brand-300/10 text-brand-300" : "text-slate-300 hover:bg-white/[0.06]"}`}
@@ -253,8 +286,8 @@ export default function BulkActionBar({
                           <span className="text-[10px] text-slate-500 truncate max-w-[80px]">{u.role_label}</span>
                         </label>
                       ))}
-                      {team.filter((u) => u.is_active).length === 0 && (
-                        <p className="px-2 py-3 text-xs text-slate-500">No active team members.</p>
+                      {stageList.length === 0 && (
+                        <p className="px-2 py-3 text-xs text-slate-500">Selected tasks have no assigned members.</p>
                       )}
                     </div>
                     <div className="border-t border-white/10 p-2">
@@ -265,6 +298,58 @@ export default function BulkActionBar({
                         className="btn-primary w-full !py-1.5 text-xs disabled:opacity-50"
                       >
                         <ArrowRight className="h-3.5 w-3.5" /> Move {selectedCount} to stage
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {canStage && onStage && (
+            <div className="relative">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => { setBackOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); setStageOpen(false); }}
+                className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
+                title="Pick the stage back for the selected tasks (from completed they reopen there)"
+              >
+                <Undo2 className="h-3.5 w-3.5" /> Move Back…
+              </button>
+              {backOpen && onMoveBackTo && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setBackOpen(false)} />
+                  <div className="absolute z-20 right-0 mt-2 w-60 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden">
+                    <div className="max-h-56 overflow-y-auto p-1.5">
+                      {stageList.map((u) => (
+                        <label
+                          key={u.id}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs cursor-pointer ${pickedBack === u.id ? "bg-brand-300/10 text-brand-300" : "text-slate-300 hover:bg-white/[0.06]"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="bulk-back"
+                            checked={pickedBack === u.id}
+                            onChange={() => setPickedBack(u.id)}
+                            className="h-3.5 w-3.5 accent-emerald-400"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{u.full_name}</span>
+                          <span className="text-[10px] text-slate-500 truncate max-w-[80px]">{u.role_label}</span>
+                        </label>
+                      ))}
+                      {stageList.length === 0 && (
+                        <p className="px-2 py-3 text-xs text-slate-500">Selected tasks have no assigned members.</p>
+                      )}
+                    </div>
+                    <div className="border-t border-white/10 p-2">
+                      <button
+                        type="button"
+                        disabled={busy || !pickedBack}
+                        onClick={runMoveBackTo}
+                        className="btn-primary w-full !py-1.5 text-xs disabled:opacity-50"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" /> Move {selectedCount} back to stage
                       </button>
                     </div>
                   </div>

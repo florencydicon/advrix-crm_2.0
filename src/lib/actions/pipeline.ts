@@ -851,19 +851,82 @@ export async function bulkSetPipelineStageAction(
       await query(`INSERT INTO task_assignees (task_id, user_id, position) VALUES ($1, $2, $3)`, [tid, targetUserId, maxPos]);
       idx = seq.length;
     }
-    // Use assignment deadline if one is configured for this project/member
-    let deadline: string | null = null;
-    try {
-      const dr = await query<{ allotment_deadline: string | null }>(
-        `SELECT allotment_deadline::text AS allotment_deadline FROM assignments WHERE project_id = $1 AND user_id = $2 ORDER BY position ASC LIMIT 1`,
-        [trow[0].project_id, targetUserId]
+    // The FINAL assigned member is the last stage — moving a task there means
+    // the whole sequence is done, so it completes instead of lingering as an
+    // active row (this was the reported "shows in the middle but completed" bug).
+    const isLastMember = idx >= 0 && idx === seq.length - 1 && seq.length > 0;
+    if (isLastMember) {
+      await query(
+        `UPDATE tasks SET status = 'completed', completed_at = now(), assigned_to = $2, role_key = $3, current_step = $4 WHERE id = $1`,
+        [tid, targetUserId, roleKey, idx]
       );
-      deadline = dr[0]?.allotment_deadline ?? null;
-    } catch {}
-    await query(
-      `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = 'approved', due_date = COALESCE($5, due_date), reviewed_at = NULL WHERE id = $1`,
-      [tid, idx, targetUserId, roleKey, deadline]
+      // Final stage reached — also runs the project-completion check.
+      await markTaskComplete(tid);
+    } else {
+      // Use assignment deadline if one is configured for this project/member
+      let deadline: string | null = null;
+      try {
+        const dr = await query<{ allotment_deadline: string | null }>(
+          `SELECT allotment_deadline::text AS allotment_deadline FROM assignments WHERE project_id = $1 AND user_id = $2 ORDER BY position ASC LIMIT 1`,
+          [trow[0].project_id, targetUserId]
+        );
+        deadline = dr[0]?.allotment_deadline ?? null;
+      } catch {}
+      await query(
+        `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = 'approved', due_date = COALESCE($5, due_date), reviewed_at = NULL WHERE id = $1`,
+        [tid, idx, targetUserId, roleKey, deadline]
+      );
+    }
+    count++;
+  }
+  revalidate();
+  return { ok: true, count };
+}
+
+/**
+ * Bulk: move selected subtasks back to a chosen assigned member's stage.
+ * PM and Super Admin only. For completed tasks the task reopens on the picked
+ * stage (completed_at cleared); tasks already sitting at/before that stage are
+ * skipped. Picking the FIRST assigned member parks it at stage one.
+ */
+export async function bulkMoveBackToStageAction(
+  taskIds: string[],
+  targetUserId: string
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const role = (session.role_key || "").toUpperCase();
+  const allowed = role === "SUPER_ADMIN" || role === "PROJECT_MANAGER" || role === "PM" || (session.permissions || []).includes("admin:*");
+  if (!allowed) return { ok: false, error: "Only PM / Super Admin can change stage." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  if (!targetUserId) return { ok: false, error: "Pick a stage member." };
+  const targetRows = await query<{ role_id: string | null }>(`SELECT role_id FROM users WHERE id = $1 AND is_active = true`, [targetUserId]);
+  if (!targetRows[0]) return { ok: false, error: "Selected member not found." };
+  const roleKey = await query<{ key: string }>(`SELECT r.key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`, [targetUserId]).then((r) => r[0]?.key || null);
+  let count = 0;
+  for (const tid of ids) {
+    const trow = await query<{ project_id: string; status: string; current_step: number }>(
+      `SELECT project_id, status, current_step FROM tasks WHERE id = $1`,
+      [tid]
     );
+    if (!trow[0]) continue;
+    const task = trow[0];
+    const seq = await query<{ user_id: string; position: number }>(
+      `SELECT user_id, position FROM task_assignees WHERE task_id = $1 ORDER BY position ASC, added_at ASC`,
+      [tid]
+    );
+    if (seq.length === 0) continue;
+    const idx = seq.findIndex((s) => s.user_id === targetUserId);
+    if (idx === -1) continue;
+    const isCompleted = task.status === "completed";
+    // For active rows, only allow moving to a stage before the current one.
+    if (!isCompleted && idx >= (task.current_step ?? 0)) continue;
+    await query(
+      `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = $5, completed_at = NULL, reviewed_at = NULL WHERE id = $1`,
+      [tid, idx, targetUserId, roleKey, isCompleted ? "needs_improvement" : "in_progress"]
+    );
+    await query(`UPDATE projects SET status = 'in_progress' WHERE id = $1`, [task.project_id]);
     count++;
   }
   revalidate();

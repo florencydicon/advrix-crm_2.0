@@ -29,6 +29,7 @@ import {
   bulkSetPipelineStatusAction,
   bulkSetPipelineStageAction,
   bulkMoveBackPipelineTasksAction,
+  bulkMoveBackToStageAction,
   moveBackPipelineTaskAction,
 } from "@/lib/actions/pipeline";
 import type { PipelineBoardPayload } from "@/lib/actions/pipeline";
@@ -36,7 +37,7 @@ import dynamic from "next/dynamic";
 // Lazy: both editing modals are only needed once a user opens them.
 const TaskModal = dynamic(() => import("@/components/TaskModal"), { ssr: false });
 const TaskModalFull = dynamic(() => import("@/components/TaskModalFull"), { ssr: false });
-import BulkActionBar from "@/components/BulkActionBar";
+import BulkActionBar, { type StageOption } from "@/components/BulkActionBar";
 
 function initials(name?: string | null) {
   return (name || "?")
@@ -567,6 +568,31 @@ export default function ProjectPipeline({
     setSelected([]);
     await reload();
   };
+
+  const bulkMoveBackTo = async (memberId: string) => {
+    const res = await bulkMoveBackToStageAction(selected, memberId);
+    if (!res.ok) {
+      notify(res.error || "Bulk move back failed.");
+      return;
+    }
+    notify(`Moved back ${res.count} task${res.count === 1 ? "" : "s"} to the chosen stage.`);
+    setSelected([]);
+    await reload();
+  };
+
+  // Only the members actually assigned to the selected tasks are offered as
+  // move targets (stage forward AND move back) — never the whole team.
+  const stageCandidates = useMemo(() => {
+    const seen = new Map<string, StageOption>();
+    for (const sid of selected) {
+      const t = allTaskRows.find((row) => row.id === sid);
+      if (!t) continue;
+      for (const a of t.assignees || []) {
+        if (!seen.has(a.id)) seen.set(a.id, { id: a.id, full_name: a.name, role_label: a.role_label ?? "" });
+      }
+    }
+    return [...seen.values()];
+  }, [selected, allTaskRows]);
 
   const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
     value: s,
@@ -1138,7 +1164,9 @@ export default function ProjectPipeline({
                     onDelete={bulkDelete}
                     onStatus={bulkStatus}
                     onStage={bulkStage}
+                    stageOptions={stageCandidates}
                     onMoveBack={canBulkStage ? bulkMoveBack : undefined}
+                    onMoveBackTo={canBulkStage ? bulkMoveBackTo : undefined}
                     onClear={() => setSelected([])}
                   />
                 </div>
