@@ -101,6 +101,8 @@ export default function TaskModal({
   onClose,
   refresh,
   siblingTasks,
+  embedded,
+  onBack,
 }: {
   task: Task;
   team: UserRow[];
@@ -111,6 +113,8 @@ export default function TaskModal({
   onClose: () => void;
   refresh: () => Promise<void>;
   siblingTasks?: Task[];
+  embedded?: boolean;
+  onBack?: () => void;
 }) {
   const { toast } = useToast();
   const [task, setTask] = useState<Task>(initialTask);
@@ -371,6 +375,98 @@ export default function TaskModal({
       <Icon className="h-4 w-4" />
     </button>
   );
+
+  if (embedded) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0">
+        {/* Header with Back */}
+        <div className="sticky top-0 z-10 bg-night-850/95 backdrop-blur px-4 py-3 border-b border-white/10 flex items-center gap-3">
+          {onBack && (
+            <button type="button" onClick={onBack} className="h-8 w-8 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 flex items-center justify-center shrink-0" aria-label="Back">
+              <ChevronRight className="h-4 w-4 text-slate-300 rotate-180" />
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-slate-400 truncate">{task.client_name} / {task.project_name}</div>
+            <div className="text-base font-bold text-white leading-snug"><MarqueeHeading text={heading} /></div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0"><StatusBadge status={task.status} /><PriorityBadge priority={task.priority} /></div>
+          <button type="button" onClick={onClose} className="h-8 w-8 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 flex items-center justify-center shrink-0" aria-label="Close"><X className="h-4 w-4 text-slate-300" /></button>
+        </div>
+        {/* Icon bar */}
+        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-white/10 bg-white/[0.02] overflow-x-auto scrollbar-thin">
+          {iconBtn(openSection === "deadline", () => toggleSection("deadline"), CalendarDays, "Deadline")}
+          {iconBtn(openSection === "title", () => toggleSection("title"), FileText, "Task Title")}
+          {iconBtn(openSection === "priority", () => toggleSection("priority"), Flag, "Priority")}
+          {iconBtn(openSection === "content", () => toggleSection("content"), Layers, "Content / Copy")}
+          {iconBtn(openSection === "remarks", () => toggleSection("remarks"), MessageSquare, "Remarks / Feedback")}
+          {iconBtn(openSection === "team", () => toggleSection("team"), Users, "Team Assignment")}
+          <div className="ml-auto flex items-center gap-1.5 pl-2 border-l border-white/10">
+            {isGatekeeper ? (
+              <button type="button" disabled={isPending} onClick={approveWork} title={isLastStage ? "Complete (last stage)" : "Complete & advance"} className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${isLastStage ? "bg-emerald-500 text-white" : "bg-brand-300 text-night-950"}`}><Check className="h-4 w-4" /></button>
+            ) : isSubmitted ? (
+              <span className="h-9 w-9 rounded-lg bg-violet-400/10 border border-violet-300/30 flex items-center justify-center shrink-0"><Clock className="h-4 w-4 text-violet-300" /></span>
+            ) : (
+              <button type="button" disabled={isPending} onClick={submitWork} className="h-9 w-9 rounded-lg bg-brand-300 text-night-950 flex items-center justify-center shrink-0"><Check className="h-4 w-4" /></button>
+            )}
+            {(canManageTeam || isManagerRole(roleKey)) && (
+              <button type="button" disabled={isPending} onClick={deleteTask} className="h-9 w-9 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center shrink-0"><Trash2 className="h-4 w-4" /></button>
+            )}
+          </div>
+        </div>
+        {/* Stage stepper */}
+        <div className="px-4 py-2 border-b border-white/10 bg-white/[0.02]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {seq.length === 0 ? <span className="text-xs text-slate-500">No stages — unassigned</span> : seq.map((a,i)=>{const done=i<step;const isActive=i===activeIdx;return <span key={a.id} className="flex items-center gap-1.5">{i>0 && <ArrowRight className="h-3 w-3 text-slate-600" />}<span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold border ${isActive ? "border-brand-300 bg-brand-300 text-night-950" : done ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-300" : "border-white/10 bg-white/[0.03] text-slate-500"}`}><span className="text-[10px] opacity-70">{i+1}.</span><span className="max-w-[90px] truncate">{a.name}</span>{done && <Check className="h-3 w-3" />}{isActive && !done && !isLastStage && <ArrowRight className="h-3 w-3" />}{isActive && isLastStage && <Check className="h-3 w-3" />}</span></span>})}
+          </div>
+          {activeMember && <p className="text-[11px] text-slate-500 mt-1">Current stage: <span className="text-brand-300 font-medium">{activeMember}</span> {isLastStage ? "· last stage" : `· stage ${activeIdx+1} of ${seq.length}`}</p>}
+        </div>
+        <div className="p-3 space-y-3 overflow-y-auto flex-1">
+          {openSection === "deadline" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-brand-300" /> Deadline</p>
+              {canEditDeadline ? (<><DatePicker value={deadlineDraft} onChange={persistDeadline} placeholder="Set a deadline…" />{siblingCount>1 && <label className="flex items-center gap-2 mt-2 text-xs text-slate-400 cursor-pointer"><input type="checkbox" checked={bulkDeadline} onChange={e=>setBulkDeadline(e.target.checked)} className="h-3.5 w-3.5 accent-brand-300" />Apply to all {siblingCount} subtasks in this project</label>}<button type="button" disabled={isPending} onClick={saveBulkDeadline} className="btn-primary w-full mt-2 !py-2 text-sm"><Save className="h-4 w-4" /> Save Deadline {bulkDeadline && siblingCount>1 ? `for ${siblingCount} tasks` : ""}</button></>) : <p className="text-sm text-slate-200 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">{fmtDate(task.due_date)}</p>}
+              {isOverdue(task) && <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2"><AlertTriangle className="h-4 w-4 text-rose-300" /><p className="text-xs text-rose-200">Overdue — auto-flagged as <span className="font-semibold">Urgent</span>.</p></div>}
+            </section>
+          )}
+          {openSection === "title" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-brand-300" /> Task Title</p>
+              {canEditTitle ? (<><input value={titleDraft} onChange={e=>setTitleDraft(e.target.value)} placeholder="Task title…" className="input !py-2.5 text-sm w-full" /><button type="button" disabled={isPending} onClick={()=>persistTitle(false)} className="btn-primary w-full mt-2 !py-2 text-sm"><Save className="h-4 w-4" /> Save Title</button></>) : <p className="text-sm text-slate-200 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 break-words">{titleDraft || "Untitled task"}</p>}
+            </section>
+          )}
+          {openSection === "priority" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5"><Flag className="h-3.5 w-3.5 text-brand-300" /> Priority</p>
+              {canEditDeadline ? <div className="flex gap-2">{(["low","medium","high","urgent"]).map(p=><button key={p} type="button" disabled={isPending} onClick={()=>persistPriority(p)} className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold border ${priorityDraft===p ? (p==="urgent" ? "border-rose-500/60 bg-rose-500/15 text-rose-300" : p==="high" ? "border-rose-400/50 bg-rose-400/10 text-rose-300" : p==="medium" ? "border-sky-400/50 bg-sky-400/10 text-sky-300" : "border-white/20 bg-white/[0.06] text-slate-200") : "border-white/10 bg-white/[0.02] text-slate-500"}`}>{p}</button>)}</div> : <PriorityBadge priority={priorityDraft} />}
+            </section>
+          )}
+          {openSection === "content" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Content / Copy</p>
+              {canEditContent ? (<><textarea value={contentDraft} onChange={e=>setContentDraft(e.target.value)} rows={4} placeholder="Draft the content / copy…" className="input !py-2.5 text-sm resize-none" /><button type="button" disabled={isPending} onClick={()=>persistContent(false)} className="btn-primary w-full mt-2 !py-2 text-sm"><Save className="h-4 w-4" /> Save Content</button></>) : contentDraft ? <p className="text-sm text-slate-300 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 whitespace-pre-wrap break-words">{contentDraft}</p> : <p className="text-xs text-slate-500">No content written yet.</p>}
+            </section>
+          )}
+          {openSection === "remarks" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Remarks / Feedback</p>
+              <textarea value={remarks} onChange={e=>setRemarks(e.target.value)} rows={3} placeholder="Notes, feedback…" className="input !py-2.5 text-sm resize-none" />
+              <button type="button" disabled={isPending} onClick={()=>persistRemarks(false)} className="btn-primary w-full mt-2 !py-2 text-sm"><Save className="h-4 w-4" /> Save Remarks</button>
+              <p className="text-xs text-slate-400 truncate mt-1.5">{editedBy ? <>Last updated by: <span className="text-slate-200 font-medium">{editedBy.name.split(" ")[0]}</span> ({editedBy.role}) at <span className="text-slate-300">{fmtTimeOnly(editedBy.at)}</span></> : <>Auto-saves as you type</>}</p>
+            </section>
+          )}
+          {openSection === "team" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-brand-300" /> Team Assignment</p>
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand-300/40 bg-brand-300/10 px-3 py-2"><Users className="h-4 w-4 text-brand-300" /><span className="text-sm text-slate-200">Current Stage: <span className="font-semibold text-brand-300">{activeMember || "Unassigned"}</span></span></div>
+              {canManageTeam && (<><div className="flex flex-wrap gap-1.5 mb-2">{teamDraft.length===0 && <span className="text-xs text-slate-500">No members assigned.</span>}{teamDraft.map(id=>{const m=team.find(u=>u.id===id); if(seq.some(s=>s.id===id)) return null; return <span key={id} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 pl-0.5 pr-1.5 py-0.5"><span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300">{initials(m?.full_name)}</span><span className="text-xs text-slate-200 max-w-[90px] truncate">{m?.full_name || "?"}</span><button type="button" onClick={()=>toggleMember(id)} className="text-slate-400 hover:text-rose-300 ml-0.5"><X className="h-3.5 w-3.5" /></button></span>})}</div><button type="button" onClick={()=>setTeamOpen(v=>!v)} className="w-full flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-slate-300"><span className="flex items-center gap-2"><Plus className="h-4 w-4 text-brand-300" /> Add member</span>{teamOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>{teamOpen && <div className="mt-1.5 rounded-lg border border-white/10 bg-night-900 max-h-44 overflow-y-auto">{team.filter(u=>u.is_active).map(u=>{const on=teamDraft.includes(u.id); return <button key={u.id} type="button" onClick={()=>toggleMember(u.id)} className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm ${on ? "bg-brand-300/10 text-brand-200" : "text-slate-300"}`}><span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300">{initials(u.full_name)}</span><span className="flex-1 text-left truncate">{u.full_name}</span>{on && <Check className="h-4 w-4 text-brand-300" />}</button>})}</div>}<button type="button" disabled={isPending} onClick={saveTeam} className="btn-primary w-full mt-2 !py-2.5 text-sm">Save Team</button></>)}
+            </section>
+          )}
+          {isGatekeeper && isSubmitted && <div className="flex justify-end"><button type="button" disabled={isPending} onClick={sendBack} className="btn-ghost text-sm !px-3 !py-2"><Undo2 className="h-4 w-4" /> Send Back</button></div>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex md:items-center md:justify-center">

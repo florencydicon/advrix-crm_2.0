@@ -30,6 +30,7 @@ import {
 } from "@/lib/actions/pipeline";
 import type { PipelineBoardPayload } from "@/lib/actions/pipeline";
 import TaskModal from "@/components/TaskModal";
+import TaskModalFull from "@/components/TaskModalFull";
 import BulkActionBar from "@/components/BulkActionBar";
 
 function initials(name?: string | null) {
@@ -94,8 +95,10 @@ export default function ProjectPipeline({
   const [view, setView] = useState<"projects" | "list">("projects");
   // Project whose subtasks are open in the modal.
   const [openProject, setOpenProject] = useState<{ projectId: string; projectName: string } | null>(null);
+  // Selected task inside the Projects unified modal (navigation within single modal)
+  const [projectTask, setProjectTask] = useState<Task | null>(null);
 
-  // Ultra-lean modal (active task)
+  // Ultra-lean modal (active task) — used only for List tab (old full modal)
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   // Audit log modal (completed task in History)
@@ -168,6 +171,11 @@ export default function ProjectPipeline({
     // Prune bulk selection to rows that still exist.
     setSelected((prev) => prev.filter((id) => next.active.some((t) => t.id === id)));
   }, []);
+
+  // Reset inner task when switching projects — keeps single-modal navigation clean
+  useEffect(() => {
+    setProjectTask(null);
+  }, [openProject?.projectId]);
 
   // Silent 12s background sync of the board arrays (+ instant refetch on tab
   // refocus/visibility). Fetches via the same Server Action the manual reload
@@ -578,88 +586,113 @@ export default function ProjectPipeline({
     </div>
   );
 
-  // ---- Project → subtasks modal (one row per subtask) ----
+  // ---- Unified Projects modal: single modal with navigation (list ↔ detail) ----
   const openProjectGroup = openProject
     ? projectGroups.find((g) => g.projectId === openProject.projectId) || null
     : null;
 
-  // Hide project modal when a task modal is open — avoids double backdrop / stacked modals
-  const projectModal = openProjectGroup && !activeTask && !historyTask ? (
+  const unifiedProjectModal = openProjectGroup ? (
     <div className="fixed inset-0 z-50 flex md:items-center md:justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => setOpenProject(null)} />
       <div
-        className={`relative w-full bg-night-850 border-white/10 shadow-2xl flex flex-col ${
+        className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+        onClick={() => {
+          setOpenProject(null);
+          setProjectTask(null);
+        }}
+      />
+      <div
+        className={`relative w-full bg-night-850 border-white/10 shadow-2xl flex flex-col overflow-hidden ${
           isMobile
             ? "bottom-sheet h-[100dvh] max-h-[100dvh] border-t md:hidden rounded-t-2xl"
             : "modal-pop rounded-2xl border max-w-2xl md:max-h-[85vh]"
         }`}
       >
-        <div className="sticky top-0 z-10 bg-night-850/95 backdrop-blur px-4 py-3 border-b border-white/10 flex items-center gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-slate-400 mb-0.5">
-              {openProjectGroup.clientName}
-              {openProjectGroup.clientName ? " · " : ""}
-              {openProjectGroup.tasks.length} subtask{openProjectGroup.tasks.length === 1 ? "" : "s"}
+        {!projectTask ? (
+          <>
+            <div className="sticky top-0 z-10 bg-night-850/95 backdrop-blur px-4 py-3 border-b border-white/10 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-slate-400 mb-0.5">
+                  {openProjectGroup.clientName}
+                  {openProjectGroup.clientName ? " · " : ""}
+                  {openProjectGroup.tasks.length} subtask{openProjectGroup.tasks.length === 1 ? "" : "s"}
+                </div>
+                <div className="text-base font-bold text-white leading-snug truncate">{openProjectGroup.projectName}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenProject(null);
+                  setProjectTask(null);
+                }}
+                className="h-8 w-8 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 flex items-center justify-center shrink-0"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4 text-slate-300" />
+              </button>
             </div>
-            <div className="text-base font-bold text-white leading-snug truncate">{openProjectGroup.projectName}</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpenProject(null)}
-            className="h-8 w-8 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 flex items-center justify-center shrink-0"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4 text-slate-300" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {openProjectGroup.tasks.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                const next = t;
-                setOpenProject(null);
-                setActiveTask(next);
-              }}
-              className={`w-full text-left rounded-xl border p-3 transition-colors cursor-pointer ${
-                isOverdue(t)
-                  ? "border-rose-500/40 bg-rose-500/[0.08] hover:bg-rose-500/[0.13]"
-                  : t.status === "submitted"
-                    ? "border-violet-300/40 bg-violet-400/[0.08] hover:bg-violet-400/[0.12]"
-                    : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium text-white leading-snug line-clamp-2">{t.title}</p>
-                {t.status === "submitted" && <QcPill />}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5">
-                <span className="inline-flex items-center gap-1.5 min-w-0">
-                  <span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">
-                    {initials(stageLabel(t) === "Unassigned" ? "" : stageLabel(t))}
-                  </span>
-                  <span className="text-xs text-slate-300 truncate max-w-[120px]">{stageLabel(t)}</span>
-                </span>
-                <span className="w-px h-4 bg-white/10 shrink-0" />
-                <PriorityBadge priority={t.priority} />
-                <StatusBadge status={t.status} />
-                <span className={`ml-auto inline-flex items-center gap-1 text-xs whitespace-nowrap ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
-                  {isOverdue(t) ? (
-                    <>
-                      <AlertTriangle className="h-3.5 w-3.5 text-rose-400" /> {fmtDate(t.due_date)}
-                    </>
-                  ) : (
-                    <>
-                      <CalendarDays className="h-3.5 w-3.5" /> {fmtDate(t.due_date)}
-                    </>
-                  )}
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {openProjectGroup.tasks.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setProjectTask(t)}
+                  className={`w-full text-left rounded-xl border p-3 transition-colors cursor-pointer ${
+                    isOverdue(t)
+                      ? "border-rose-500/40 bg-rose-500/[0.08] hover:bg-rose-500/[0.13]"
+                      : t.status === "submitted"
+                        ? "border-violet-300/40 bg-violet-400/[0.08] hover:bg-violet-400/[0.12]"
+                        : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-white leading-snug line-clamp-2">{t.title}</p>
+                    {t.status === "submitted" && <QcPill />}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5">
+                    <span className="inline-flex items-center gap-1.5 min-w-0">
+                      <span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300 shrink-0">
+                        {initials(stageLabel(t) === "Unassigned" ? "" : stageLabel(t))}
+                      </span>
+                      <span className="text-xs text-slate-300 truncate max-w-[120px]">{stageLabel(t)}</span>
+                    </span>
+                    <span className="w-px h-4 bg-white/10 shrink-0" />
+                    <PriorityBadge priority={t.priority} />
+                    <StatusBadge status={t.status} />
+                    <span className={`ml-auto inline-flex items-center gap-1 text-xs whitespace-nowrap ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
+                      {isOverdue(t) ? (
+                        <>
+                          <AlertTriangle className="h-3.5 w-3.5 text-rose-400" /> {fmtDate(t.due_date)}
+                        </>
+                      ) : (
+                        <>
+                          <CalendarDays className="h-3.5 w-3.5" /> {fmtDate(t.due_date)}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <TaskModal
+            key={projectTask.id}
+            task={projectTask}
+            team={team}
+            isMobile={isMobile}
+            canManageTeam={board.canManage}
+            canApprove={board.canApprove}
+            roleKey={board.roleKey}
+            onClose={() => {
+              setProjectTask(null);
+              setOpenProject(null);
+            }}
+            onBack={() => setProjectTask(null)}
+            embedded
+            refresh={reload}
+            siblingTasks={openProjectGroup.tasks}
+          />
+        )}
       </div>
     </div>
   ) : null;
@@ -912,8 +945,9 @@ export default function ProjectPipeline({
         </div>
       )}
 
+      {/* Old full modal — only for List tab */}
       {activeTask && (
-        <TaskModal
+        <TaskModalFull
           key={activeTask.id}
           task={activeTask}
           team={team}
@@ -923,11 +957,10 @@ export default function ProjectPipeline({
           roleKey={board.roleKey}
           onClose={() => setActiveTask(null)}
           refresh={reload}
-          siblingTasks={board.active.filter((t) => t.project_id === activeTask.project_id)}
         />
       )}
       {historyModal}
-      {projectModal}
+      {unifiedProjectModal}
     </div>
   );
 }
