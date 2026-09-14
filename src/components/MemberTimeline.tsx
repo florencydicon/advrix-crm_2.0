@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { History, Loader2, Briefcase, CheckCircle2, Clock } from "lucide-react";
+import { History, Briefcase, CheckCircle2, Clock } from "lucide-react";
 import { getMemberTimelineAction, type MemberTimelinePayload } from "@/lib/actions/team";
 import { Modal, StatusBadge } from "@/components/ui";
+import { SkeletonCard, SkeletonBar } from "@/components/Skeleton";
 import ActivityLogCard from "@/components/ActivityLogCard";
 import type { UserRow, Task } from "@/lib/types";
 import { formatClientName } from "@/lib/utils";
@@ -89,9 +90,24 @@ export default function MemberTimeline({ user, onClose }: { user: UserRow; onClo
   return (
     <Modal open onClose={onClose} title={`Timeline — ${user.full_name}`}>
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-slate-400 text-xs gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading history…
-        </div>
+        <SkeletonCard className="animate-fade-in">
+          <SkeletonBar className="h-3 w-1/2" />
+          <SkeletonBar className="h-3 w-1/3" />
+          <div className="pt-2 space-y-2">
+            <SkeletonCard className="space-y-2">
+              <SkeletonBar className="h-4 w-2/3" />
+              <SkeletonBar className="h-3 w-1/3" />
+            </SkeletonCard>
+            <SkeletonCard className="space-y-2">
+              <SkeletonBar className="h-4 w-1/2" />
+              <SkeletonBar className="h-3 w-1/3" />
+            </SkeletonCard>
+            <SkeletonCard className="space-y-2">
+              <SkeletonBar className="h-4 w-3/4" />
+              <SkeletonBar className="h-3 w-1/3" />
+            </SkeletonCard>
+          </div>
+        </SkeletonCard>
       ) : error ? (
         <p className="py-8 text-center text-xs text-rose-300">{error}</p>
       ) : (

@@ -29,7 +29,7 @@ import { hasPermission, hasAnyPermission } from "@/lib/permissions";
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
 import { createEtagFetcher } from "@/lib/clientFetch";
-import { BrandMark, BrandLogoFull } from "@/components/brand";
+import { BrandMark, BrandLogoFull, BrandWordmark } from "@/components/brand";
 import { useToast } from "@/components/Toast";
 import NativeNotificationRegistrar from "@/components/NativeNotificationRegistrar";
 
@@ -427,9 +427,15 @@ export default function AppShell({
             </Link>
           ) : (
             <>
-              <Link href="/dashboard" className="min-w-0 flex-1" aria-label="Advrix Media PVT LTD">
-                <BrandLogoFull className="h-10 w-auto max-w-full" />
-              </Link>
+              {mobile ? (
+                <Link href="/dashboard" className="min-w-0 flex-1" aria-label="Advrix Media PVT LTD">
+                  <BrandWordmark />
+                </Link>
+              ) : (
+                <Link href="/dashboard" className="min-w-0 flex-1" aria-label="Advrix Media PVT LTD">
+                  <BrandLogoFull className="h-10 w-auto max-w-full" />
+                </Link>
+              )}
               {!mobile && (
                 <button
                   onClick={toggleCollapsed}
@@ -612,7 +618,7 @@ export default function AppShell({
       >
         {/* ── Mobile header ── */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-night-950/80 backdrop-blur-xl border-b border-white/[0.06] px-4 py-3 md:px-6">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               className="lg:hidden -ml-1.5 p-1.5 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
               onClick={() => setMobileOpen(true)}
@@ -620,9 +626,18 @@ export default function AppShell({
             >
               <Menu className="h-5 w-5" />
             </button>
-            <p className="text-[15px] font-semibold text-white tracking-tight truncate">
+            <span
+              aria-hidden
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-xl bg-brand-300 font-brand text-[13px] font-bold text-night-950 shadow-sm shadow-brand-300/25"
+            >
+              A
+            </span>
+            <span className="shrink-0 font-brand text-[14px] font-semibold tracking-tight text-white">
+              Advrix
+            </span>
+            <span className="min-w-0 truncate text-[13px] font-medium text-slate-400">
               {items.find((n) => pathname.startsWith(n.href))?.label || "Dashboard"}
-            </p>
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -646,7 +661,7 @@ export default function AppShell({
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)} />
-                  <div className="absolute right-0 z-40 mt-2 w-80 sm:w-96 rounded-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden">
+                  <div className="absolute right-0 z-40 mt-2 w-80 sm:w-96 origin-top-right rounded-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden animate-pop">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
                       <p className="text-sm font-semibold text-white">Updates</p>
                       <div className="flex items-center gap-2">

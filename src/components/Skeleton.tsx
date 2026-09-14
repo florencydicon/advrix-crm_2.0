@@ -9,7 +9,7 @@ export function SkeletonBar({ className, style }: SkeletonProps) {
   return (
     <div
       className={cn(
-        "rounded-lg bg-white/[0.06] animate-pulse",
+        "skeleton rounded-lg",
         className
       )}
       style={style}
@@ -21,7 +21,7 @@ export function SkeletonCircle({ className, style }: SkeletonProps) {
   return (
     <div
       className={cn(
-        "rounded-full bg-white/[0.06] animate-pulse",
+        "skeleton rounded-full",
         className
       )}
       style={style}
