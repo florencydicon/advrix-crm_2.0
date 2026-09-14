@@ -529,47 +529,52 @@ export default function ProjectPipeline({
     </div>
   );
 
-  // ---- Projects grouped view (cards) ----
+  // ---- Projects grouped view: single-column table — one row per project,
+  // first line = Company, second line = Project (same column), like a table.
   const projectsGrid = (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      {projectGroups.map((g) => {
-        const inQc = g.tasks.some((t) => t.status === "submitted");
-        const overdue = g.tasks.some((t) => isOverdue(t));
-        const done = board.completed.filter((t) => projectKey(t) === g.key).length;
-        return (
-          <button
-            key={g.key}
-            type="button"
-            onClick={() => setOpenProject({ projectId: g.projectId, projectName: g.projectName })}
-            className="text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 transition-colors hover:bg-white/[0.06] hover:border-white/20"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <span className="h-9 w-9 rounded-lg bg-brand-300/10 flex items-center justify-center shrink-0">
+    <div className="card overflow-hidden">
+      <div className="divide-y divide-white/[0.06]">
+        {projectGroups.map((g) => {
+          const inQc = g.tasks.some((t) => t.status === "submitted");
+          const overdue = g.tasks.some((t) => isOverdue(t));
+          const done = board.completed.filter((t) => projectKey(t) === g.key).length;
+          return (
+            <button
+              key={g.key}
+              type="button"
+              onClick={() => setOpenProject({ projectId: g.projectId, projectName: g.projectName })}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/[0.04] transition-colors"
+            >
+              <span className="hidden sm:flex h-9 w-9 rounded-lg bg-brand-300/10 items-center justify-center shrink-0">
                 <FolderKanban className="h-4 w-4 text-brand-300" />
               </span>
-              <ChevronRight className="h-4 w-4 text-slate-500 shrink-0 mt-1" />
-            </div>
-            <p className="text-sm font-semibold text-white mt-2.5 truncate">{g.projectName}</p>
-            <p className="text-xs text-slate-500 truncate">{g.clientName || "—"}</p>
-            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-slate-300">
-                <Layers className="h-3 w-3" /> {g.tasks.length} subtask{g.tasks.length === 1 ? "" : "s"}
-              </span>
-              {g.tasks.length > 0 && (
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-slate-400 truncate leading-tight">{g.clientName || "—"}</div>
+                <div className="text-sm font-semibold text-white truncate leading-tight mt-0.5">{g.projectName}</div>
+              </div>
+              <div className="hidden sm:flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                  <Layers className="h-3 w-3" /> {g.tasks.length}
+                </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
                   <Check className="h-3 w-3" /> {done} done
                 </span>
-              )}
-              {inQc && <QcPill />}
-              {overdue && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300 ml-auto">
-                  <AlertTriangle className="h-3 w-3" /> Overdue
-                </span>
-              )}
-            </div>
-          </button>
-        );
-      })}
+                {inQc && <QcPill />}
+                {overdue && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
+                    <AlertTriangle className="h-3 w-3" /> Overdue
+                  </span>
+                )}
+              </div>
+              {/* mobile: compact counts */}
+              <span className="sm:hidden inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-slate-300 shrink-0">
+                {g.tasks.length}
+              </span>
+              <ChevronRight className="h-4 w-4 text-slate-500 shrink-0" />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -578,7 +583,8 @@ export default function ProjectPipeline({
     ? projectGroups.find((g) => g.projectId === openProject.projectId) || null
     : null;
 
-  const projectModal = openProjectGroup ? (
+  // Hide project modal when a task modal is open — avoids double backdrop / stacked modals
+  const projectModal = openProjectGroup && !activeTask && !historyTask ? (
     <div className="fixed inset-0 z-50 flex md:items-center md:justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={() => setOpenProject(null)} />
       <div
@@ -613,7 +619,11 @@ export default function ProjectPipeline({
             <button
               key={t.id}
               type="button"
-              onClick={() => setActiveTask(t)}
+              onClick={() => {
+                const next = t;
+                setOpenProject(null);
+                setActiveTask(next);
+              }}
               className={`w-full text-left rounded-xl border p-3 transition-colors cursor-pointer ${
                 isOverdue(t)
                   ? "border-rose-500/40 bg-rose-500/[0.08] hover:bg-rose-500/[0.13]"
