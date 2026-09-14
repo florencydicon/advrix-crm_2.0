@@ -8,6 +8,7 @@ import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
 import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
 import { useSilentPoll } from "@/lib/useSilentPoll";
+import { createEtagFetcher } from "@/lib/clientFetch";
 import { isOverdue } from "@/lib/deadlines";
 import { formatClientName } from "@/lib/utils";
 import TaskModal from "@/components/TaskModalFull";
@@ -54,12 +55,13 @@ export default function StaffDashboard({
   // table & cards (refocus/visibility re-polls instantly). Pages are never
   // reloaded and modal/textarea state survives.
   // Cache-busted for mobile where fetch cache is aggressive.
+  const etagFetch = useRef(createEtagFetcher()).current;
   const live = useSilentPoll(
     { tasks, team },
     async () => {
-      const res = await fetch(`/api/poll/data?t=${Date.now()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("poll failed");
-      return (await res.json()) as { tasks: Task[]; team: UserRow[] };
+      const data = await etagFetch<{ tasks: Task[]; team: UserRow[] }>("/api/poll/data");
+      if (data === null) throw new Error("unchanged"); // 304 → keep current arrays
+      return data;
     },
     12000
   );

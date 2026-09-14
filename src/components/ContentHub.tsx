@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, CheckCircle2, Plus } from "lucide-react";
 import type { Client, ContentItem, Project, UserRow, StandaloneContentStatus } from "@/lib/types";
 import { STATUS_META } from "@/components/ui";
 import { useAdvancedFilters, AdvancedFilterBar } from "@/components/AdvancedFilterBar";
 import { useSilentPoll } from "@/lib/useSilentPoll";
+import { createEtagFetcher } from "@/lib/clientFetch";
 import ContentModal from "@/components/ContentModal";
 import BulkActionBar from "@/components/BulkActionBar";
 import { useToast } from "@/components/Toast";
@@ -81,13 +82,13 @@ export default function ContentHub({
   // table & cards (refocus/visibility re-polls instantly). The open
   // ContentModal's local state (typed content/remarks) is untouched, and the
   // page is never reloaded.
+  const etagFetch = useRef(createEtagFetcher()).current;
   const pollItems = useSilentPoll(
     items,
     async () => {
-      const res = await fetch("/api/poll/content", { cache: "no-store" });
-      if (!res.ok) throw new Error("poll failed");
-      const json = (await res.json()) as { items: ContentItem[] };
-      return json.items;
+      const data = await etagFetch<{ items: ContentItem[] }>("/api/poll/content");
+      if (data === null) throw new Error("unchanged"); // 304 → keep current rows
+      return data.items;
     },
     12000
   );

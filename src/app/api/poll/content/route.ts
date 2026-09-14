@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { resolveDataScope } from "@/lib/scope";
 import { query } from "@/lib/db";
+import { etagJsonResponse } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +25,10 @@ const CONTENT_SELECT = `
  * caller's RBAC-scoped content rows only — the ContentModal editing state is
  * never touched by this refresh.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
   }
 
   const scope = resolveDataScope(session);
@@ -46,8 +47,5 @@ export async function GET() {
     rows = await query(`${CONTENT_SELECT} ORDER BY c.created_at DESC`);
   }
 
-  return NextResponse.json(
-    { items: rows },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+  return etagJsonResponse(req, { items: rows });
 }

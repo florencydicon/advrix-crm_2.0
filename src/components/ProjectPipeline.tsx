@@ -189,7 +189,7 @@ export default function ProjectPipeline({
     const id = window.setInterval(() => {
       if (document.hidden) return;
       reload().catch(() => {});
-    }, 12000);
+    }, 20000);
     const onVisible = () => {
       if (!document.hidden) reload().catch(() => {});
     };

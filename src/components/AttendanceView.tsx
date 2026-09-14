@@ -28,6 +28,7 @@ import AttendanceReports, { type LeaveReportRowLite } from "@/components/Attenda
 import ActivityLogCard from "@/components/ActivityLogCard";
 import type { AttendanceReportRow, AttendanceSettings } from "@/lib/data";
 import { useToast } from "@/components/Toast";
+import { LiveClock, LiveElapsed } from "@/components/LiveClock";
 
 function formatTime(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -119,9 +120,6 @@ export default function AttendanceView({
   const router = useRouter();
   const [pending, start] = useTransition();
   const { toast } = useToast();
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => { setNow(new Date()); }, []);
-  const currentTime = now || new Date("2000-01-01T00:00:00");
   const [activeTab, setActiveTab] = useState("attendance");
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [leaveSearch, setLeaveSearch] = useState("");
@@ -149,11 +147,6 @@ export default function AttendanceView({
       return true;
     });
   }, [isAdmin, allLeaves, myLeaves, leaveSearch, leaveName, leaveRole, leaveStatus]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const hasPunchedIn = !!todayRecord?.punch_in;
   const hasPunchedOut = !!todayRecord?.punch_out;
@@ -278,10 +271,8 @@ export default function AttendanceView({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold">Attendance & Leave</h1>
-          <p className="text-xs text-slate-400">
-            {now ? now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : ""}
-            {now ? " · " : ""}
-            {now ? now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}
+          <p className="text-xs text-slate-400" suppressHydrationWarning>
+            <LiveClock />
           </p>
         </div>
         <div className="flex gap-1 bg-white/5 rounded-xl p-1 ring-1 ring-white/10">
@@ -411,7 +402,7 @@ export default function AttendanceView({
               {onBreak && todayRecord?.break_start_time ? (
                 <>
                   <p className="text-lg md:text-xl font-bold text-amber-300 font-mono">
-                    {Math.max(0, Math.floor((currentTime.getTime() - new Date(todayRecord.break_start_time).getTime()) / 60000))}m
+                    <LiveElapsed since={todayRecord.break_start_time} />
                   </p>
                   <p className="text-[10px] text-amber-300/80">Currently on lunch break</p>
                 </>
