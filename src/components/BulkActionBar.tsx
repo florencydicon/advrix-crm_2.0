@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Users, Trash2, Tag, X, Check, ArrowRight } from "lucide-react";
+import { Users, Trash2, Tag, X, Check, ArrowRight, Undo2 } from "lucide-react";
 import type { UserRow } from "@/lib/types";
 
 export interface BulkStatusOption {
@@ -30,6 +30,7 @@ export default function BulkActionBar({
   onDelete,
   onStatus,
   onStage,
+  onMoveBack,
   onClear,
 }: {
   selectedCount: number;
@@ -45,6 +46,7 @@ export default function BulkActionBar({
   onDelete: () => Promise<void>;
   onStatus: (status: string) => Promise<void>;
   onStage?: (memberId: string) => Promise<void>;
+  onMoveBack?: () => Promise<void>;
   onClear: () => void;
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
@@ -108,6 +110,17 @@ export default function BulkActionBar({
       await onStage(pickedStage);
       setStageOpen(false);
       setPickedStage("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runMoveBack = async () => {
+    if (busy || !onMoveBack) return;
+    if (!window.confirm(`Move ${selectedCount} selected task${selectedCount === 1 ? "" : "s"} one stage back?`)) return;
+    setBusy(true);
+    try {
+      await onMoveBack();
     } finally {
       setBusy(false);
     }
@@ -258,6 +271,18 @@ export default function BulkActionBar({
                 </>
               )}
             </div>
+          )}
+
+          {canStage && onMoveBack && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={runMoveBack}
+              className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
+              title="Move selected tasks one stage back (for mistaken completions)"
+            >
+              <Undo2 className="h-3.5 w-3.5" /> Move Back
+            </button>
           )}
 
           {canDelete && (

@@ -28,6 +28,8 @@ import {
   bulkDeletePipelineTasksAction,
   bulkSetPipelineStatusAction,
   bulkSetPipelineStageAction,
+  bulkMoveBackPipelineTasksAction,
+  moveBackPipelineTaskAction,
 } from "@/lib/actions/pipeline";
 import type { PipelineBoardPayload } from "@/lib/actions/pipeline";
 import TaskModal from "@/components/TaskModal";
@@ -255,6 +257,17 @@ export default function ProjectPipeline({
     await reload();
   };
 
+  const bulkMoveBack = async () => {
+    const res = await bulkMoveBackPipelineTasksAction(selected);
+    if (!res.ok) {
+      notify(res.error || "Bulk move back failed.");
+      return;
+    }
+    notify(`Moved back ${res.count} task${res.count === 1 ? "" : "s"} one stage.`);
+    setSelected([]);
+    await reload();
+  };
+
   const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
     value: s,
     label: STATUS_META[s]?.label || s,
@@ -422,6 +435,9 @@ export default function ProjectPipeline({
               {board.canReopen && (
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Re-open</th>
               )}
+              {canBulkStage && (
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Move Back</th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.06]">
@@ -464,6 +480,27 @@ export default function ProjectPipeline({
                       className="btn-ghost !px-2.5 !py-1.5 text-xs"
                     >
                       <RotateCcw className="h-3.5 w-3.5" /> Re-open
+                    </button>
+                  </td>
+                )}
+                {canBulkStage && (
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startTransition(async () => {
+                          const res = await moveBackPipelineTaskAction(t.id);
+                          if (!res.ok) return notify(res.error || "Could not move back.");
+                          await reload();
+                          notify("Moved back one stage.");
+                          setHistoryTask(null);
+                        });
+                      }}
+                      className="btn-ghost !px-2.5 !py-1.5 text-xs"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" /> Move Back
                     </button>
                   </td>
                 )}
@@ -800,6 +837,24 @@ export default function ProjectPipeline({
               <RotateCcw className="h-4 w-4" /> Re-open to Active Board
             </button>
           )}
+          {canBulkStage && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() =>
+                startTransition(async () => {
+                  const res = await moveBackPipelineTaskAction(historyTask.id);
+                  if (!res.ok) return notify(res.error || "Could not move back.");
+                  await reload();
+                  notify("Moved back one stage.");
+                  setHistoryTask(null);
+                })
+              }
+              className="btn-ghost w-full !py-2.5 text-sm"
+            >
+              <Undo2 className="h-4 w-4" /> Move Back one stage
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -917,6 +972,7 @@ export default function ProjectPipeline({
                     onDelete={bulkDelete}
                     onStatus={bulkStatus}
                     onStage={bulkStage}
+                    onMoveBack={canBulkStage ? bulkMoveBack : undefined}
                     onClear={() => setSelected([])}
                   />
                 </div>

@@ -366,6 +366,68 @@ export async function reopenPipelineTaskAction(
   return { ok: true };
 }
 
+/**
+ * Move Back — retreats a task one stage backward (for mistaken completions or
+ * advances). PM and Super Admin only. Works for both active and completed
+ * tasks; for completed it reopens at the previous stage.
+ */
+export async function moveBackPipelineTaskAction(
+  taskId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const role = (session.role_key || "").toUpperCase();
+  const allowed = role === "SUPER_ADMIN" || role === "PROJECT_MANAGER" || role === "PM" || (session.permissions || []).includes("admin:*");
+  if (!allowed) return { ok: false, error: "Only PM / Super Admin can move back." };
+  const trow = await query<{ project_id: string; current_step: number; status: string }>(
+    `SELECT project_id, current_step, status FROM tasks WHERE id = $1`,
+    [taskId]
+  );
+  if (!trow[0]) return { ok: false, error: "Task not found." };
+  const seq = await query<{ user_id: string; position: number }>(
+    `SELECT user_id, position FROM task_assignees WHERE task_id = $1 ORDER BY position ASC, added_at ASC`,
+    [taskId]
+  );
+  if (seq.length === 0) return { ok: false, error: "No stages configured." };
+  let newIdx: number;
+  if (trow[0].status === "completed") {
+    // From completed, go to last stage with needs_improvement so it reappears on Active Board
+    newIdx = Math.max(0, seq.length - 1);
+  } else {
+    newIdx = (trow[0].current_step ?? 0) - 1;
+    if (newIdx < 0) return { ok: false, error: "Already at first stage." };
+  }
+  const target = seq[newIdx];
+  if (!target?.user_id) return { ok: false, error: "Stage not found." };
+  const roleKey = await query<{ key: string }>(`SELECT r.key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`, [target.user_id]).then((r) => r[0]?.key || null);
+  const newStatus = trow[0].status === "completed" ? "needs_improvement" : "in_progress";
+  await query(
+    `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = $5, completed_at = NULL WHERE id = $1`,
+    [taskId, newIdx, target.user_id, roleKey, newStatus]
+  );
+  await query(`UPDATE projects SET status = 'in_progress' WHERE id = $1`, [trow[0].project_id]);
+  revalidate();
+  return { ok: true };
+}
+
+export async function bulkMoveBackPipelineTasksAction(
+  taskIds: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const role = (session.role_key || "").toUpperCase();
+  const allowed = role === "SUPER_ADMIN" || role === "PROJECT_MANAGER" || role === "PM" || (session.permissions || []).includes("admin:*");
+  if (!allowed) return { ok: false, error: "Only PM / Super Admin can move back." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  let count = 0;
+  for (const tid of ids) {
+    const res = await moveBackPipelineTaskAction(tid);
+    if (res.ok) count++;
+  }
+  return { ok: true, count };
+}
+
 /** Directly moves an active task to a target column (drag & drop on the board). */
 export async function movePipelineTaskAction(
   taskId: string,
