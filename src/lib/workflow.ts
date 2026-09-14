@@ -14,6 +14,117 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
+/**
+ * Batch-equivalent of `setTaskTeam` for many tasks at once. Assigns the
+ * sequential team (and the primary assignee + role + deadline) to every task
+ * in roughly 4-6 round-trips regardless of how many tasks are listed, instead
+ * of ~6 sequential HTTP round-trips per task.
+ */
+async function applyTaskTeamBatched(
+  entries: { taskId: string; team: string[] }[],
+  projectId?: string
+) {
+  const valid = entries
+    .filter((e) => Array.isArray(e.team) && e.team.length > 0)
+    .map((e) => ({ taskId: e.taskId, team: [...new Set(e.team)] }));
+  if (valid.length === 0) return;
+
+  const taskIds = valid.map((e) => e.taskId);
+  const tasksMap = new Map<string, string>();
+  if (projectId) {
+    for (const tid of taskIds) tasksMap.set(tid, projectId);
+  } else {
+    const projRows = await query<{ id: string; project_id: string }>(
+      `SELECT id, project_id FROM tasks WHERE id = ANY($1::uuid[])`,
+      [taskIds]
+    );
+    for (const r of projRows) tasksMap.set(r.id, r.project_id);
+  }
+
+  await query(`DELETE FROM task_assignees WHERE task_id = ANY($1::uuid[])`, [taskIds]);
+
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+  let i = 0;
+  for (const e of valid) {
+    let pos = 0;
+    for (const uid of e.team) {
+      values.push(e.taskId, uid, pos++);
+      tuples.push(`($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`);
+      i++;
+    }
+  }
+  if (tuples.length > 0) {
+    await query(
+      `INSERT INTO task_assignees (task_id, user_id, position) VALUES ${tuples.join(", ")}`,
+      values
+    );
+  }
+
+  const heads = [...new Set(valid.map((e) => e.team[0]))];
+  if (heads.length === 0) return;
+  const roleRows = await query<{ id: string; role_key: string }>(
+    `SELECT u.id, r.key AS role_key
+     FROM users u JOIN roles r ON r.id = u.role_id
+     WHERE u.id = ANY($1)`,
+    [heads]
+  );
+  const roleByUser = new Map(roleRows.map((r) => [r.id, r.role_key]));
+
+  const projIds = projectId
+    ? [projectId]
+    : [...new Set(valid.map((e) => tasksMap.get(e.taskId)!).filter(Boolean))];
+  const deadlineCache = new Map<string, string | null>();
+  for (const pid of projIds) {
+    if (!pid) continue;
+    const projHeads = [
+      ...new Set(valid.filter((e) => tasksMap.get(e.taskId) === pid).map((e) => e.team[0])),
+    ];
+    if (projHeads.length === 0) continue;
+    const aRows = await query<{ user_id: string; role_key: string | null; allotment_deadline: string | null }>(
+      `SELECT user_id, role_key, allotment_deadline::text AS allotment_deadline
+       FROM assignments
+       WHERE project_id = $1 AND user_id = ANY($2)
+       ORDER BY position ASC, created_at ASC`,
+      [pid, projHeads]
+    );
+    for (const r of aRows) {
+      const key = `${pid}|${r.user_id}|${r.role_key || ""}`;
+      if (!deadlineCache.has(key)) deadlineCache.set(key, r.allotment_deadline ?? null);
+    }
+  }
+  const deadlineOf = (pid: string, uid: string, role: string | null): string | null => {
+    if (role) return deadlineCache.get(`${pid}|${uid}|${role}`) ?? null;
+    return deadlineCache.get(`${pid}|${uid}|`) ?? null;
+  };
+
+  const tids: string[] = [];
+  const asg: string[] = [];
+  const roleArr: (string | null)[] = [];
+  const dueArr: (string | null)[] = [];
+  for (const e of valid) {
+    const pid = tasksMap.get(e.taskId);
+    if (!pid) continue;
+    const first = e.team[0];
+    const role = roleByUser.get(first) || null;
+    tids.push(e.taskId);
+    asg.push(first);
+    roleArr.push(role);
+    dueArr.push(deadlineOf(pid, first, role));
+  }
+  if (tids.length === 0) return;
+  await query(
+    `UPDATE tasks
+     SET assigned_to = f.a, role_key = f.r, current_step = 0, due_date = COALESCE(f.d, due_date)
+     FROM (
+       SELECT unnest($1::uuid[]) AS id, unnest($2::uuid[]) AS a,
+              unnest($3::text[]) AS r, unnest($4::date[]) AS d
+     ) f
+     WHERE tasks.id = f.id`,
+    [tids, asg, roleArr, dueArr]
+  );
+}
+
 async function allocateTasksForRole(projectId: string, roleKey: string, userId: string | null) {
   if (!userId) return;
   // Multi-assignee: every open task of this role gains this member
@@ -64,6 +175,13 @@ export async function generateDeliverableTasks(
     );
     for (const r of existingRows) existingById.set(r.step_key, r.id);
 
+    // Collect every new task first, then insert them in ONE statement.
+    const toInsert: {
+      stepKey: string;
+      groupKey: string;
+      title: string;
+      description: string;
+    }[] = [];
     for (const d of deliverables) {
       const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
       for (let i = 1; i <= d.quantity; i++) {
@@ -83,35 +201,33 @@ export async function generateDeliverableTasks(
           }
           continue;
         }
-        const rows = await query<{ id: string }>(
-          `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by, brief_approved_at)
-           VALUES ($1, $2, $3, NULL, $4, 1, $5, $6, NULL, 'approved', $7, NULL, NULL, now())
-           RETURNING id`,
-          [
-            projectId,
-            stepKey,
-            d.category_key,
-            d.id,
-            title,
-            `Unified deliverable "${title}". This task flows sequentially through the assigned team — each member starts, submits, and is approved before the next hand-off.`,
-            priority,
-          ]
-        );
-        // Saving the task instantly pushes it to the first employee (no brief gate).
-        if (rows[0]) {
-          const tid = rows[0].id;
-          const deliverableTeam = await getDeliverableTeam(d.id);
-          if (deliverableTeam.length > 0) {
-            await setTaskTeam(tid, deliverableTeam);
-          } else {
-            const projectMembers = await getProjectTeamOrder(projectId);
-            if (projectMembers.length > 0) await setTaskTeam(tid, projectMembers);
-          }
-        }
+        toInsert.push({
+          stepKey,
+          groupKey: d.category_key,
+          title,
+          description: `Unified deliverable "${title}". This task flows sequentially through the assigned team — each member starts, submits, and is approved before the next hand-off.`,
+        });
       }
     }
 
-    // Any task already past brief approval picks up the current team order.
+    if (toInsert.length > 0) {
+      const values: unknown[] = [];
+      const tuples: string[] = [];
+      toInsert.forEach((t, i) => {
+        const base = i * 6;
+        values.push(projectId, t.stepKey, t.groupKey, t.title, t.description, priority);
+        tuples.push(
+          `($${base + 1}, $${base + 2}, $${base + 3}, NULL, NULL, 1, $${base + 4}, $${base + 5}, NULL, 'approved', $${base + 6}, NULL, NULL, now())`
+        );
+      });
+      await query(
+        `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by, brief_approved_at)
+         VALUES ${tuples.join(", ")}`,
+        values
+      );
+    }
+
+    // Teams are allocated in one batched pass below (single-query assignment).
     await syncApprovedTaskSequences(projectId);
     await maybeCompleteProject(projectId);
   } catch (err) {
@@ -225,7 +341,8 @@ export async function setDeliverableTeam(deliverableId: string, memberIds: strin
     `SELECT id FROM tasks WHERE deliverable_id = $1 AND status = 'approved'`,
     [deliverableId]
   );
-  for (const t of tasks) await setTaskTeam(t.id, memberIds);
+  // Batched assignment — the per-task setTaskTeam loop was ~6 round-trips each.
+  await applyTaskTeamBatched(tasks.map((t) => ({ taskId: t.id, team: memberIds })));
 }
 
 /**
@@ -308,18 +425,33 @@ export async function syncApprovedTaskSequences(projectId: string) {
     `SELECT id, deliverable_id FROM tasks WHERE project_id = $1 AND status = 'approved'`,
     [projectId]
   );
-  const delivCache = new Map<string, string[]>();
-  for (const t of tasks) {
-    if (t.deliverable_id) {
-      if (!delivCache.has(t.deliverable_id)) delivCache.set(t.deliverable_id, await getDeliverableTeam(t.deliverable_id));
-      const dt = delivCache.get(t.deliverable_id)!;
-      if (dt.length > 0) {
-        await setTaskTeam(t.id, dt);
-        continue;
-      }
+  if (tasks.length === 0) return;
+  // Fetch every deliverable team in a single statement (was one round-trip per deliverable).
+  const delivIds = [...new Set(tasks.map((t) => t.deliverable_id).filter(Boolean) as string[])];
+  const delivTeams = new Map<string, string[]>();
+  if (delivIds.length > 0) {
+    const rows = await query<{ deliverable_id: string; user_id: string }>(
+      `SELECT deliverable_id, user_id
+       FROM deliverable_assignees
+       WHERE deliverable_id = ANY($1)
+       ORDER BY deliverable_id, position ASC, added_at ASC`,
+      [delivIds]
+    );
+    for (const r of rows) {
+      const arr = delivTeams.get(r.deliverable_id) || [];
+      arr.push(r.user_id);
+      delivTeams.set(r.deliverable_id, arr);
     }
-    if (projectMembers.length > 0) await setTaskTeam(t.id, projectMembers);
   }
+  const entries = tasks.map((t) => {
+    const team = t.deliverable_id ? delivTeams.get(t.deliverable_id) || [] : [];
+    return {
+      taskId: t.id,
+      team: team.length > 0 ? team : projectMembers,
+    };
+  });
+  // Assigns every task's team in a handful of batched statements (was ~6 per task).
+  await applyTaskTeamBatched(entries, projectId);
 }
 
 /**
@@ -573,9 +705,15 @@ export async function computeSequentialDeadlines(projectId: string, opts?: { pro
       cursor = addWorkingDays(cursor, 2);
       return new Date(cursor.getTime());
     });
-    for (let i = 0; i < missing.length; i++) {
-      await query(`UPDATE tasks SET due_date = $2 WHERE id = $1`, [missing[i].id, toISODate(dates[i])]);
-    }
+    // One batched UPDATE (was a separate round-trip per task).
+    await query(
+      `UPDATE tasks SET due_date = f.d
+       FROM (
+         SELECT unnest($1::uuid[]) AS id, unnest($2::date[]) AS d
+       ) f
+       WHERE tasks.id = f.id`,
+      [missing.map((m) => m.id), missing.map((_, i) => toISODate(dates[i]))]
+    );
   } catch (err) {
     console.error("computeSequentialDeadlines failed for project", projectId, ":", err);
   }
