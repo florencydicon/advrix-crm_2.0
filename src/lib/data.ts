@@ -753,6 +753,136 @@ export async function getAnalytics(pmScopeUserId: string | null = null): Promise
   };
 }
 
+export interface DetailedAnalytics {
+  totalClients: number;
+  totalProjects: number;
+  totalTasks: number;
+  tasksByStatus: { status: string; count: number }[];
+  clientsHierarchy: {
+    id: string;
+    name: string;
+    company: string | null;
+    projectCount: number;
+    projects: {
+      id: string;
+      name: string;
+      status: string;
+      totalTasks: number;
+      tasksByStatus: { status: string; count: number }[];
+      tasks: { id: string; title: string; status: string; priority: string; assignee_name: string | null; due_date: string | null }[];
+    }[];
+  }[];
+  employeeLoad: {
+    user_id: string;
+    full_name: string;
+    role_label: string;
+    activeTasks: number;
+    totalAssigned: number;
+    completedTasks: number;
+    overdueTasks: number;
+  }[];
+}
+
+export async function getDetailedAnalytics(pmScopeUserId: string | null = null): Promise<DetailedAnalytics> {
+  const params: unknown[] = [];
+  const pmWhereClient = pmScopeUserId ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`) : "";
+  // Need separate params for different queries because pmWhere reuse would shift indices; rebuild per query
+  const clientParams: unknown[] = pmScopeUserId ? [pmScopeUserId] : [];
+  const clientWhere = pmScopeUserId ? "WHERE c.assigned_pm_id = $1" : "";
+  const taskWhere = pmScopeUserId ? "WHERE c.assigned_pm_id = $1" : "";
+  const projectWhere = pmScopeUserId ? "WHERE c.assigned_pm_id = $1" : "";
+
+  const [clientRows, projectRows, taskRows, tasksByStatusRows, employeeLoadRows] = await Promise.all([
+    query<{ id: string; name: string; company: string | null }>(
+      `SELECT c.id, c.name, c.company FROM clients c ${clientWhere} ORDER BY c.name ASC`,
+      clientParams
+    ),
+    query<{ id: string; name: string; status: string; client_id: string }>(
+      `SELECT p.id, p.name, p.status, p.client_id FROM projects p JOIN clients c ON c.id = p.client_id ${projectWhere} ORDER BY p.name ASC`,
+      clientParams
+    ),
+    query<{ id: string; title: string; status: string; priority: string; project_id: string; due_date: string | null; assignee_name: string | null }>(
+      `SELECT t.id, t.title, t.status, t.priority, t.project_id, t.due_date::text AS due_date, u.full_name AS assignee_name
+       FROM tasks t JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id
+       LEFT JOIN users u ON u.id = t.assigned_to
+       ${taskWhere} ORDER BY t.title ASC`,
+      clientParams
+    ),
+    query<{ status: string; count: string }>(
+      `SELECT t.status, COUNT(*)::text AS count FROM tasks t JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id ${taskWhere} GROUP BY t.status ORDER BY count DESC`,
+      clientParams
+    ),
+    query<{ user_id: string; full_name: string; role_label: string; active_tasks: string; total_assigned: string; completed_tasks: string; overdue_tasks: string }>(
+      `SELECT u.id AS user_id, u.full_name, r.label AS role_label,
+              COUNT(t.id) FILTER (WHERE t.status <> 'completed')::text AS active_tasks,
+              COUNT(t.id)::text AS total_assigned,
+              COUNT(t.id) FILTER (WHERE t.status = 'completed')::text AS completed_tasks,
+              COUNT(t.id) FILTER (WHERE t.due_date IS NOT NULL AND t.due_date < (now() AT TIME ZONE 'UTC')::date AND t.status <> 'completed')::text AS overdue_tasks
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       LEFT JOIN tasks t ON t.assigned_to = u.id
+       ${pmScopeUserId ? `AND t.id IN (SELECT t2.id FROM tasks t2 JOIN projects p2 ON p2.id = t2.project_id JOIN clients c2 ON c2.id = p2.client_id WHERE c2.assigned_pm_id = $1)` : ""}
+       WHERE u.is_active = true
+       GROUP BY u.id, r.label
+       HAVING COUNT(t.id) > 0
+       ORDER BY COUNT(t.id) FILTER (WHERE t.status <> 'completed') DESC, u.full_name ASC`,
+      clientParams
+    ),
+  ]);
+
+  // Build hierarchy
+  const tasksByProject = new Map<string, typeof taskRows>();
+  for (const tr of taskRows) {
+    if (!tasksByProject.has(tr.project_id)) tasksByProject.set(tr.project_id, []);
+    tasksByProject.get(tr.project_id)!.push(tr);
+  }
+  const projectsByClient = new Map<string, typeof projectRows>();
+  for (const pr of projectRows) {
+    if (!projectsByClient.has(pr.client_id)) projectsByClient.set(pr.client_id, []);
+    projectsByClient.get(pr.client_id)!.push(pr);
+  }
+
+  const clientsHierarchy = clientRows.map((c) => {
+    const projs = projectsByClient.get(c.id) || [];
+    return {
+      id: c.id,
+      name: c.name,
+      company: c.company,
+      projectCount: projs.length,
+      projects: projs.map((p) => {
+        const tlist = tasksByProject.get(p.id) || [];
+        const byStatusMap = new Map<string, number>();
+        for (const t of tlist) byStatusMap.set(t.status, (byStatusMap.get(t.status) || 0) + 1);
+        return {
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          totalTasks: tlist.length,
+          tasksByStatus: [...byStatusMap.entries()].map(([status, count]) => ({ status, count })),
+          tasks: tlist.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, assignee_name: t.assignee_name, due_date: t.due_date })),
+        };
+      }),
+    };
+  });
+
+  return {
+    totalClients: clientRows.length,
+    totalProjects: projectRows.length,
+    totalTasks: taskRows.length,
+    tasksByStatus: tasksByStatusRows.map((r) => ({ status: r.status, count: Number(r.count) })),
+    clientsHierarchy,
+    employeeLoad: employeeLoadRows.map((r) => ({
+      user_id: r.user_id,
+      full_name: r.full_name,
+      role_label: r.role_label,
+      activeTasks: Number(r.active_tasks || 0),
+      totalAssigned: Number(r.total_assigned || 0),
+      completedTasks: Number(r.completed_tasks || 0),
+      overdueTasks: Number(r.overdue_tasks || 0),
+    })),
+  };
+}
+
 // ---------- Attendance ----------
 
 export async function getTodayAttendance(userId: string): Promise<Attendance | null> {

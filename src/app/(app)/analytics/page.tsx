@@ -3,8 +3,9 @@ import { ArrowRight } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
-import { getAnalytics, getBottlenecks } from "@/lib/data";
+import { getAnalytics, getBottlenecks, getDetailedAnalytics } from "@/lib/data";
 import { Stat, ProjectStatusBadge } from "@/components/ui";
+import AnalyticsDetailed from "@/components/AnalyticsDetailed";
 
 export const metadata = { title: "Analytics — Advrix CRM" };
 
@@ -14,8 +15,9 @@ export default async function AnalyticsPage() {
   if (!hasPermission(session.permissions, "reports:view")) redirect("/dashboard");
 
   const pmScope = session.role_key === "PROJECT_MANAGER" ? session.sub : null;
-  const [analytics, bottlenecks] = await Promise.all([getAnalytics(pmScope), getBottlenecks(pmScope)]);
+  const [analytics, bottlenecks, detailed] = await Promise.all([getAnalytics(pmScope), getBottlenecks(pmScope), getDetailedAnalytics(pmScope)]);
   const completionRate = analytics.totalTasks ? Math.round((analytics.completedTasks / analytics.totalTasks) * 100) : 0;
+  const isPrivileged = session.role_key === "SUPER_ADMIN" || session.role_key === "PROJECT_MANAGER" || (session.permissions || []).includes("admin:*");
 
   return (
     <div className="space-y-6">
@@ -96,6 +98,13 @@ export default async function AnalyticsPage() {
           ))}
         </div>
       </div>
+
+      {isPrivileged && (
+        <div className="pt-2">
+          <h2 className="text-lg font-bold mb-3">Detailed Report — PM / Super Admin</h2>
+          <AnalyticsDetailed data={detailed} />
+        </div>
+      )}
     </div>
   );
 }
