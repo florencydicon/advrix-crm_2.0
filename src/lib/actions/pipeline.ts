@@ -734,6 +734,27 @@ export async function bulkSetPipelineStatusAction(
 }
 
 /**
+ * Bulk: set the same deadline (or clear) on every selected task. Managers only;
+ * mirrors the single-task deadline semantics (overdue re-flag runs once at the end).
+ */
+export async function bulkSetPipelineDeadlineAction(
+  taskIds: string[],
+  date: string | null | undefined
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isManager(session)) return { ok: false, error: "Only Admins / PMs can change deadlines." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  const v = String(date ?? "").trim();
+  const clean = v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+  for (const id of ids) await setTaskDeadline(id, clean);
+  await flagOverdueTasks();
+  revalidate();
+  return { ok: true, count: ids.length };
+}
+
+/**
  * Bulk: set the content-lifecycle status on every selected task. Content team
  * and managers (writers included — they can change status but never delete).
  */

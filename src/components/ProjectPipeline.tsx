@@ -595,15 +595,6 @@ export default function ProjectPipeline({
         }`}
       >
         <div className="sticky top-0 z-10 bg-night-850/95 backdrop-blur px-4 py-3 border-b border-white/10 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setOpenProject(null)}
-            className="flex items-center gap-1.5 btn-ghost !px-2.5 !py-2 text-sm shrink-0"
-            aria-label="Close"
-          >
-            <RotateCcw className="h-5 w-5 rotate-90" />
-            <span className="md:hidden font-medium">Back</span>
-          </button>
           <div className="flex-1 min-w-0">
             <div className="text-xs text-slate-400 mb-0.5">
               {openProjectGroup.clientName}
@@ -612,6 +603,14 @@ export default function ProjectPipeline({
             </div>
             <div className="text-base font-bold text-white leading-snug truncate">{openProjectGroup.projectName}</div>
           </div>
+          <button
+            type="button"
+            onClick={() => setOpenProject(null)}
+            className="h-8 w-8 rounded-lg bg-white/[0.06] hover:bg-white/10 border border-white/10 flex items-center justify-center shrink-0"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4 text-slate-300" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -924,6 +923,7 @@ export default function ProjectPipeline({
           roleKey={board.roleKey}
           onClose={() => setActiveTask(null)}
           refresh={reload}
+          siblingTasks={board.active.filter((t) => t.project_id === activeTask.project_id)}
         />
       )}
       {historyModal}
