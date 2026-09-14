@@ -769,7 +769,7 @@ export interface DetailedAnalytics {
       status: string;
       totalTasks: number;
       tasksByStatus: { status: string; count: number }[];
-      tasks: { id: string; title: string; status: string; priority: string; assignee_name: string | null; due_date: string | null }[];
+      tasks: { id: string; title: string; status: string; priority: string; assignee_name: string | null; assignee_id: string | null; due_date: string | null }[];
     }[];
   }[];
   employeeLoad: {
@@ -801,8 +801,8 @@ export async function getDetailedAnalytics(pmScopeUserId: string | null = null):
       `SELECT p.id, p.name, p.status, p.client_id FROM projects p JOIN clients c ON c.id = p.client_id ${projectWhere} ORDER BY p.name ASC`,
       clientParams
     ),
-    query<{ id: string; title: string; status: string; priority: string; project_id: string; due_date: string | null; assignee_name: string | null }>(
-      `SELECT t.id, t.title, t.status, t.priority, t.project_id, t.due_date::text AS due_date, u.full_name AS assignee_name
+    query<{ id: string; title: string; status: string; priority: string; project_id: string; due_date: string | null; assignee_name: string | null; assignee_id: string | null }>(
+      `SELECT t.id, t.title, t.status, t.priority, t.project_id, t.due_date::text AS due_date, u.full_name AS assignee_name, t.assigned_to AS assignee_id
        FROM tasks t JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id
        LEFT JOIN users u ON u.id = t.assigned_to
        ${taskWhere} ORDER BY t.title ASC`,
@@ -859,7 +859,7 @@ export async function getDetailedAnalytics(pmScopeUserId: string | null = null):
           status: p.status,
           totalTasks: tlist.length,
           tasksByStatus: [...byStatusMap.entries()].map(([status, count]) => ({ status, count })),
-          tasks: tlist.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, assignee_name: t.assignee_name, due_date: t.due_date })),
+          tasks: tlist.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, assignee_name: t.assignee_name, assignee_id: t.assignee_id, due_date: t.due_date })),
         };
       }),
     };
