@@ -49,7 +49,7 @@ const NAV: NavItem[] = [
   { href: "/content", label: "Content Management", icon: FileText, anyPermission: ["tasks:execute", "tasks:manage", "tasks:review"] },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
-  { href: "/analytics", label: "Analytics", icon: BarChart3, permission: "reports:view" },
+  { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
   {
     href: "/settings",
     label: "Settings",

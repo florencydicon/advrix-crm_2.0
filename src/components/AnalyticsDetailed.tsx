@@ -24,10 +24,28 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       const autoTable = (await import("jspdf-autotable")).default;
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-      // Try to load logo
+      // Load Noto Sans Gujarati for proper Gujarati rendering
+      let useGujaratiFont = false;
+      try {
+        const fontRes = await fetch("/fonts/NotoSansGujarati-Regular.ttf");
+        if (fontRes.ok) {
+          const buf = await fontRes.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          const b64 = btoa(binary);
+          (doc as any).addFileToVFS("NotoSansGujarati-Regular.ttf", b64);
+          (doc as any).addFont("NotoSansGujarati-Regular.ttf", "NotoGujarati", "normal");
+          (doc as any).addFont("NotoSansGujarati-Regular.ttf", "NotoGujarati", "bold");
+          useGujaratiFont = true;
+        }
+      } catch {}
+      const fontName = useGujaratiFont ? "NotoGujarati" : "helvetica";
+
+      // Try to load black logo for white PDF background
       let logoBase64: string | null = null;
       try {
-        const res = await fetch("/logo-full.png");
+        const res = await fetch("/logo-mark.png");
         const blob = await res.blob();
         logoBase64 = await new Promise<string>((resolve, reject) => {
           const fr = new FileReader();
@@ -43,13 +61,13 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
           try { doc.addImage(logoBase64, "PNG", 10, 8, 28, 10); } catch {}
         }
         doc.setFontSize(13);
-        doc.setFont("helvetica", "bold");
+        doc.setFont(fontName, "bold");
         doc.setTextColor(15, 23, 42);
         doc.text("Advrix Media Pvt. Ltd.", logoBase64 ? 42 : 10, 14);
         doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
+        doc.setFont(fontName, "normal");
         doc.setTextColor(100, 116, 139);
-        doc.text("Agency Analytics Report  •  " + new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }), logoBase64 ? 42 : 10, 19);
+        doc.text("Reports  •  " + new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }), logoBase64 ? 42 : 10, 19);
         doc.setDrawColor(226, 232, 240);
         doc.line(10, 22, pageW - 10, 22);
       };
@@ -64,12 +82,12 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       addLetterhead();
       let y = 28;
       doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
+      doc.setFont(fontName, "bold");
       doc.setTextColor(15, 23, 42);
-      doc.text("Analytics Overview", 10, y);
+      doc.text("Reports Overview", 10, y);
       y += 4;
       doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
+      doc.setFont(fontName, "normal");
       doc.setTextColor(71, 85, 105);
       doc.text(`Total Clients: ${data.totalClients}  •  Total Projects: ${data.totalProjects}  •  Total Subtasks: ${data.totalTasks}`, 10, y);
       y += 8;
@@ -78,7 +96,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
 
       if (sel.status) {
         doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
+        doc.setFont(fontName, "bold");
         doc.setTextColor(15, 23, 42);
         doc.text("Tasks by Status", 10, y);
         y += 2;
@@ -87,10 +105,10 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
           head: [["Status", "Count"]],
           body: data.tasksByStatus.map((r) => [statusLabel(r.status), String(r.count)]),
           theme: "grid",
-          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
-          bodyStyles: { fontSize: 8 },
+          headStyles: {font: fontName, fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
+          bodyStyles: {font: fontName, fontSize: 8 },
           margin: { left: 10, right: 10 },
-          styles: { cellPadding: 2 },
+          styles: {font: fontName, cellPadding: 2 },
         });
         y = (doc as any).lastAutoTable.finalY + 8;
         if (y > 270) { doc.addPage(); addLetterhead(); addFooter(); y = 28; }
@@ -98,7 +116,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
 
       if (sel.hierarchy) {
         doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
+        doc.setFont(fontName, "bold");
         doc.setTextColor(15, 23, 42);
         doc.text("Clients  →  Projects  →  Subtasks", 10, y);
         y += 2;
@@ -124,11 +142,11 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
           head: [["Client", "Project", "Subtasks", "Status Breakdown"]],
           body,
           theme: "grid",
-          headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 8 },
-          bodyStyles: { fontSize: 7 },
+          headStyles: {font: fontName, fillColor: [15, 23, 42], textColor: 255, fontSize: 8 },
+          bodyStyles: {font: fontName, fontSize: 7 },
           columnStyles: { 3: { cellWidth: 55 } },
           margin: { left: 10, right: 10 },
-          styles: { cellPadding: 2, overflow: "linebreak" },
+          styles: {font: fontName, cellPadding: 2, overflow: "linebreak" },
           didDrawPage: () => {},
         });
         y = (doc as any).lastAutoTable.finalY + 8;
@@ -154,7 +172,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
         if (detailBody.length > 0) {
           if (y > 250) { doc.addPage(); addLetterhead(); y = 28; }
           doc.setFontSize(10);
-          doc.setFont("helvetica", "bold");
+          doc.setFont(fontName, "bold");
           doc.text("Subtask Details", 10, y);
           y += 2;
           (autoTable as any)(doc, {
@@ -162,10 +180,10 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
             head: [["Client", "Project", "Subtask", "Status", "Priority", "Assignee", "Due"]],
             body: detailBody,
             theme: "grid",
-            headStyles: { fillColor: [51, 65, 85], textColor: 255, fontSize: 7 },
-            bodyStyles: { fontSize: 6 },
+            headStyles: {font: fontName, fillColor: [51, 65, 85], textColor: 255, fontSize: 7 },
+            bodyStyles: {font: fontName, fontSize: 6 },
             margin: { left: 10, right: 10 },
-            styles: { cellPadding: 1.5, overflow: "linebreak" },
+            styles: {font: fontName, cellPadding: 1.5, overflow: "linebreak" },
           });
           y = (doc as any).lastAutoTable.finalY + 8;
         }
@@ -174,7 +192,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       if (sel.employee) {
         if (y > 250) { doc.addPage(); addLetterhead(); y = 28; }
         doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
+        doc.setFont(fontName, "bold");
         doc.setTextColor(15, 23, 42);
         doc.text("Employee Load", 10, y);
         y += 2;
@@ -190,10 +208,10 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
             String(e.overdueTasks),
           ]),
           theme: "grid",
-          headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 8 },
-          bodyStyles: { fontSize: 7 },
+          headStyles: {font: fontName, fillColor: [59, 130, 246], textColor: 255, fontSize: 8 },
+          bodyStyles: {font: fontName, fontSize: 7 },
           margin: { left: 10, right: 10 },
-          styles: { cellPadding: 2 },
+          styles: {font: fontName, cellPadding: 2 },
         });
       }
 
@@ -206,7 +224,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
         if (i !== pages) addFooter();
       }
 
-      doc.save(`Advrix_Analytics_${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`Advrix_Reports_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (e) {
       console.error(e);
       alert("PDF export failed.");
@@ -253,7 +271,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       }
       // Overview sheet
       const overview = XLSX.utils.aoa_to_sheet([
-        ["Advrix Media Pvt. Ltd. — Analytics Report"],
+        ["Advrix Media Pvt. Ltd. — Reports"],
         ["Date", new Date().toLocaleDateString("en-IN")],
         [],
         ["Total Clients", data.totalClients],
@@ -262,7 +280,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       ]);
       XLSX.utils.book_append_sheet(wb, overview, "Overview");
 
-      XLSX.writeFile(wb, `Advrix_Analytics_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      XLSX.writeFile(wb, `Advrix_Reports_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) {
       console.error(e);
       alert("Excel export failed.");
