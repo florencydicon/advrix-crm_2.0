@@ -245,36 +245,89 @@ export default function BulkActionBar({
               {stageOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setStageOpen(false)} />
-                  <div className="absolute z-20 right-0 mt-2 w-60 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden">
-                    <div className="max-h-56 overflow-y-auto p-1.5">
-                      {stageList.map((u) => (
-                        <label
-                          key={u.id}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs cursor-pointer ${pickedStage === u.id ? "bg-brand-300/10 text-brand-300" : "text-slate-300 hover:bg-white/[0.06]"}`}
-                        >
-                          <input
-                            type="radio"
-                            name="bulk-stage"
-                            checked={pickedStage === u.id}
-                            onChange={() => setPickedStage(u.id)}
-                            className="h-3.5 w-3.5 accent-emerald-400"
-                          />
-                          <span className="min-w-0 flex-1 truncate">{u.full_name}</span>
-                          <span className="text-[10px] text-slate-500 truncate max-w-[80px]">{u.role_label}</span>
-                        </label>
-                      ))}
-                      {stageList.length === 0 && (
-                        <p className="px-2 py-3 text-xs text-slate-500">Selected tasks have no assigned members.</p>
-                      )}
-                    </div>
-                    <div className="border-t border-white/10 p-2">
+                  <div className="absolute z-20 right-0 mt-2 w-[340px] rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden">
+                    {stageList.length === 0 ? (
+                      <p className="px-4 py-6 text-xs text-slate-500 text-center">Selected tasks have no assigned members.</p>
+                    ) : (
+                      <>
+                        {/* Hiring-stages style progress bar */}
+                        <div className="px-4 pt-4 pb-2">
+                          <div className="relative flex items-center justify-between">
+                            {/* track */}
+                            <div className="absolute left-4 right-4 top-[14px] h-0.5 bg-white/10 rounded-full" />
+                            {/* progress fill - animated */}
+                            <div
+                              className="absolute left-4 top-[14px] h-0.5 bg-gradient-to-r from-brand-300 to-emerald-400 rounded-full transition-all duration-500 ease-out"
+                              style={{
+                                width: pickedStage
+                                  ? `${(stageList.findIndex((s) => s.id === pickedStage) / Math.max(1, stageList.length - 1)) * (100 - (32 / 3.4))}%`
+                                  : "0%",
+                                maxWidth: "calc(100% - 32px)",
+                              }}
+                            />
+                            {stageList.map((u, idx) => {
+                              const isPicked = pickedStage === u.id;
+                              const isPast = pickedStage ? idx < stageList.findIndex((s) => s.id === pickedStage) : false;
+                              return (
+                                <button
+                                  key={u.id}
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => setPickedStage(u.id)}
+                                  className="relative z-10 flex flex-col items-center gap-1.5 group"
+                                >
+                                  <span
+                                    className={`h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 transition-all duration-300 ease-out cursor-pointer
+                                      ${isPicked
+                                        ? "bg-brand-300 border-brand-300 text-night-950 scale-110 shadow-lg shadow-brand-300/20"
+                                        : isPast
+                                          ? "bg-emerald-500 border-emerald-500 text-white"
+                                          : "bg-night-850 border-white/20 text-slate-400 group-hover:border-brand-300/50 group-hover:text-slate-200 group-hover:scale-105"}`}
+                                  >
+                                    {isPast ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+                                  </span>
+                                  <span className={`text-[10px] font-medium leading-none max-w-[70px] truncate transition-colors duration-200 ${isPicked ? "text-brand-300" : "text-slate-400 group-hover:text-slate-200"}`}>
+                                    {u.full_name.split(" ")[0]}
+                                  </span>
+                                  <span className="text-[8px] text-slate-500 max-w-[70px] truncate">{u.role_label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {/* Clickable list fallback - also animated */}
+                        <div className="max-h-40 overflow-y-auto px-1.5 pb-1">
+                          {stageList.map((u) => {
+                            const isPicked = pickedStage === u.id;
+                            return (
+                              <button
+                                key={u.id}
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setPickedStage(u.id)}
+                                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-all duration-200 cursor-pointer
+                                  ${isPicked ? "bg-brand-300 text-night-950 shadow-md scale-[0.98]" : "text-slate-300 hover:bg-white/[0.06] hover:translate-x-0.5"}`}
+                              >
+                                <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors ${isPicked ? "bg-night-950 text-brand-300" : "bg-white/10 text-slate-400"}`}>
+                                  {stageList.findIndex((s) => s.id === u.id) + 1}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate font-medium">{u.full_name}</span>
+                                <span className={`text-[10px] truncate max-w-[90px] ${isPicked ? "text-night-950/70" : "text-slate-500"}`}>{u.role_label}</span>
+                                {isPicked && <Check className="h-3.5 w-3.5 shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                    <div className="border-t border-white/10 p-2 bg-white/[0.02]">
                       <button
                         type="button"
                         disabled={busy || !pickedStage}
                         onClick={runStage}
-                        className="btn-primary w-full !py-1.5 text-xs disabled:opacity-50"
+                        className="btn-primary w-full !py-2 text-xs disabled:opacity-50 shadow-lg transition-all duration-200 hover:shadow-brand-300/20 hover:scale-[0.99] active:scale-[0.97]"
                       >
-                        <ArrowRight className="h-3.5 w-3.5" /> Move {selectedCount} to stage
+                        <ArrowRight className="h-3.5 w-3.5" /> Move {selectedCount} to stage {pickedStage ? `· ${stageList.find((s) => s.id === pickedStage)?.full_name.split(" ")[0]}` : ""}
                       </button>
                     </div>
                   </div>
