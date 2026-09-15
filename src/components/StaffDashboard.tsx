@@ -313,9 +313,9 @@ export default function StaffDashboard({
 
   const activeStatuses = ["in_progress", "submitted", "needs_improvement", "client_review", "client_feedback", "uploading", "approved"];
 
-  // Active = tasks currently held by this user; History = everything else (moved past or completed).
-  const activeTasks = useMemo(() => tasks.filter((t) => t.assigned_to === userId), [tasks, userId]);
-  const historyTasks = useMemo(() => tasks.filter((t) => t.assigned_to !== userId), [tasks, userId]);
+  // Active = tasks currently held by this user AND not completed; History = completed (even if still assigned) OR moved past.
+  const activeTasks = useMemo(() => tasks.filter((t) => t.assigned_to === userId && t.status !== "completed"), [tasks, userId]);
+  const historyTasks = useMemo(() => tasks.filter((t) => t.assigned_to !== userId || t.status === "completed"), [tasks, userId]);
   const [tab, setTab] = useState<"active" | "history">("active");
 
   const af = useAdvancedFilters(activeTasks, {
