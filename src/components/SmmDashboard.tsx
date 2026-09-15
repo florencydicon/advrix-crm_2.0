@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Users, Upload, CheckCircle2, MoreVertical, AlertTriangle } from "lucide-react";
+import { Users, Upload, CheckCircle2, MoreVertical, AlertTriangle, PlayCircle, History } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
@@ -190,6 +190,78 @@ const ActiveMobileCard = memo(function ActiveMobileCard({
 
 const COMPLETED_KEYS = ["completed", "upload_done"];
 
+const HistoryDesktopRow = memo(function HistoryDesktopRow({
+  t,
+  onOpen,
+}: {
+  t: Task;
+  onOpen: (t: Task) => void;
+}) {
+  return (
+    <tr
+      onClick={() => onOpen(t)}
+      className="hover:bg-white/[0.03] transition-colors cursor-pointer"
+    >
+      <td className="px-4 py-2.5 sticky left-0 bg-night-850 z-[5]">
+        <span className="text-xs font-medium text-brand-300/90 block truncate max-w-[180px]">
+          {formatClientName(t.client_company, t.client_name)}
+        </span>
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
+      </td>
+      <td className="px-3 py-2.5">
+        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
+          {taskTypeLabel(t.group_key)}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <StatusBadge status={t.status} />
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <PriorityBadge priority={t.priority} />
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="text-xs tabular-nums text-slate-400">
+          {t.due_date ? t.due_date.slice(0, 10) : "—"}
+        </span>
+      </td>
+    </tr>
+  );
+});
+
+const HistoryMobileCard = memo(function HistoryMobileCard({
+  t,
+  onOpen,
+}: {
+  t: Task;
+  onOpen: (t: Task) => void;
+}) {
+  return (
+    <button
+      onClick={() => onOpen(t)}
+      className="w-full text-left px-4 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{t.title}</p>
+        <StatusBadge status={t.status} />
+      </div>
+      <p className="text-xs text-slate-400 mt-0.5 truncate">
+        {formatClientName(t.client_company, t.client_name)} · {t.project_name}
+      </p>
+      <div className="flex items-center gap-2 mt-2">
+        <PriorityBadge priority={t.priority} />
+        <span className="ml-auto text-[11px] text-slate-500">
+          Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
+        </span>
+      </div>
+    </button>
+  );
+});
+
 export default function SmmDashboard({
   tasks,
   team,
@@ -245,7 +317,12 @@ export default function SmmDashboard({
 
   const completed = (t: Task) => COMPLETED_KEYS.includes(t.status);
 
-  const af = useAdvancedFilters(tasks, {
+  // Split into Active (current stage holder) and History (completed / handed-off)
+  const activeTasks = useMemo(() => tasks.filter((t) => t.assigned_to === userId && t.status !== "completed"), [tasks, userId]);
+  const historyTasks = useMemo(() => tasks.filter((t) => t.assigned_to !== userId || t.status === "completed"), [tasks, userId]);
+  const [tab, setTab] = useState<"active" | "history">("active");
+
+  const af = useAdvancedFilters(tab === "history" ? historyTasks : activeTasks, {
     client: {
       id: (t) => t.client_id,
       label: (t) => formatClientName(t.client_company, t.client_name),
@@ -273,13 +350,14 @@ export default function SmmDashboard({
   });
 
   const metrics = [
-    { label: "Ready to Start", value: tasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
-    { label: "Client Review", value: tasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
-    { label: "Uploading", value: tasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-amber-300 bg-amber-400/10" },
-    { label: "Completed", value: tasks.filter((t) => completed(t)).length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+    { label: "Ready to Start", value: activeTasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
+    { label: "Client Review", value: activeTasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
+    { label: "Uploading", value: activeTasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-amber-300 bg-amber-400/10" },
+    { label: "Completed", value: historyTasks.filter((t) => completed(t)).length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
   ];
 
-  const filtered = useMemo(() => tasks.filter((t) => af.matches(t)), [tasks, af.matches]);
+  const filteredActive = useMemo(() => activeTasks.filter((t) => af.matches(t)), [activeTasks, af]);
+  const filteredHistory = useMemo(() => historyTasks.filter((t) => af.matches(t)), [historyTasks, af]);
 
   const refresh = async () => {
     router.refresh();
@@ -312,21 +390,7 @@ export default function SmmDashboard({
     await refresh();
   };
 
-  const bulkStatus = async (status: string) => {
-    const res = await bulkSetPipelineStatusAction(selected, status as Task["status"]);
-    if (!res.ok) {
-      toast(res.error || "Bulk status update failed.", "error");
-      return;
-    }
-    toast(`Updated ${res.count} task${res.count === 1 ? "" : "s"}.`);
-    setSelected([]);
-    await refresh();
-  };
-
-  const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
-    value: s,
-    label: STATUS_META[s]?.label || s,
-  }));
+  // bulkStatus removed - status is flow-driven, not manual (see 7th image requirement)
 
   // Stable callbacks so memoized rows skip re-rendering when only the array
   // identity changes (selection/filter interactions).
@@ -351,95 +415,159 @@ export default function SmmDashboard({
         ))}
       </div>
 
-      <AdvancedFilterBar api={af} />
+      <div className="flex items-center gap-1.5">
+        {(
+          [
+            { key: "active", label: "Active", count: activeTasks.length },
+            { key: "history", label: "History", count: historyTasks.length },
+          ] as const
+        ).map((tb) => (
+          <button
+            key={tb.key}
+            type="button"
+            onClick={() => setTab(tb.key)}
+            aria-pressed={tab === tb.key}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              tab === tb.key
+                ? "bg-brand-300 text-night-950"
+                : "bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] border border-white/10"
+            }`}
+          >
+            {tb.key === "active" ? <PlayCircle className="h-4 w-4" /> : <History className="h-4 w-4" />}
+            {tb.label}
+            <span className={`text-[11px] font-bold ${tab === tb.key ? "text-night-900/70" : "text-slate-500"}`}>{tb.count}</span>
+          </button>
+        ))}
+      </div>
 
-      {filtered.length === 0 ? (
-        <div className="card py-8 text-center">
-          <p className="text-sm font-medium text-slate-300">
-            {tasks.length === 0 ? "No SMM tasks yet" : "No tasks match your filters."}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">SMM tasks will appear here once projects are approved.</p>
-        </div>
-      ) : (
-        <>
-          {isManager && (
-            <BulkActionBar
-              selectedCount={selected.length}
-              team={team}
-              canAssign
-              canDelete
-              statusOptions={bulkStatusOptions}
-              statusLabel="Status"
-              onAssign={bulkAssign}
-              onDelete={bulkDelete}
-              onStatus={bulkStatus}
-              onClear={() => setSelected([])}
-            />
-          )}
-          {/* Desktop: unified clickable data table */}
-          <div className="hidden md:block card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[880px]">
+      {tab === "history" ? (
+        historyTasks.length === 0 ? (
+          <div className="card py-8 text-center">
+            <p className="text-sm font-medium text-slate-300">No completed tasks yet</p>
+            <p className="text-xs text-slate-500 mt-1">Tasks you finish will be archived here.</p>
+          </div>
+        ) : filteredHistory.length === 0 ? (
+          <div className="card py-8 text-center">
+            <p className="text-sm font-medium text-slate-300">No tasks match your filters.</p>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <AdvancedFilterBar api={af} />
+            <div className="hidden md:block overflow-x-auto mt-2">
+              <table className="w-full border-collapse min-w-[760px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
-                    {isManager && (
-                      <th className="px-3 py-2.5 w-10">
-                        <input
-                          type="checkbox"
-                          aria-label="Select all tasks"
-                          checked={filtered.length > 0 && selected.length === filtered.length}
-                          ref={(el) => {
-                            if (el) el.indeterminate = selected.length > 0 && selected.length < filtered.length;
-                          }}
-                          onChange={() =>
-                            setSelected((prev) =>
-                              prev.length === filtered.length ? [] : filtered.map((t) => t.id)
-                            )
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-4 w-4 accent-emerald-400 cursor-pointer"
-                        />
-                      </th>
-                    )}
                     <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
                     <th className="px-3 py-2.5 min-w-[160px]">Project</th>
                     <th className="px-3 py-2.5 min-w-[200px]">Task</th>
-                    <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Task Type</th>
+                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
                     <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
                     <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
                     <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
-                    <th className="px-3 py-2.5 w-16">Stage</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
-                  {filtered.map((t) => (
-                    <ActiveDesktopRow
-                      key={t.id}
-                      t={t}
-                      isManager={isManager}
-                      isSelected={selected.includes(t.id)}
-                      onOpen={openTaskById}
-                      onToggleSelect={toggleSelectId}
-                    />
+                  {filteredHistory.map((t) => (
+                    <HistoryDesktopRow key={t.id} t={t} onOpen={openTaskById} />
                   ))}
                 </tbody>
               </table>
             </div>
+            <div className="md:hidden divide-y divide-white/[0.04] mt-2">
+              {filteredHistory.map((t) => (
+                <HistoryMobileCard key={t.id} t={t} onOpen={openTaskById} />
+              ))}
+            </div>
           </div>
-
-          {/* Mobile: touch-friendly stacked cards */}
-          <div className="md:hidden space-y-2.5">
-            {filtered.map((t) => (
-              <ActiveMobileCard
-                key={t.id}
-                t={t}
-                isManager={isManager}
-                isSelected={selected.includes(t.id)}
-                onOpen={openTaskById}
-                onToggleSelect={toggleSelectId}
-              />
-            ))}
-          </div>
+        )
+      ) : (
+        <>
+          <AdvancedFilterBar api={af} />
+          {filteredActive.length === 0 ? (
+            <div className="card py-8 text-center">
+              <p className="text-sm font-medium text-slate-300">
+                {activeTasks.length === 0 ? "No assignments yet" : "No tasks match your filters."}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">New tasks will appear here automatically.</p>
+            </div>
+          ) : (
+            <>
+              {isManager && (
+                <BulkActionBar
+                  selectedCount={selected.length}
+                  team={team}
+                  canAssign
+                  canDelete
+                  statusOptions={[]}
+                  onAssign={bulkAssign}
+                  onDelete={bulkDelete}
+                  onStatus={async () => {}}
+                  onClear={() => setSelected([])}
+                />
+              )}
+              <div className="hidden md:block card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse min-w-[880px]">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
+                        {isManager && (
+                          <th className="px-3 py-2.5 w-10">
+                            <input
+                              type="checkbox"
+                              aria-label="Select all tasks"
+                              checked={filteredActive.length > 0 && selected.length === filteredActive.length}
+                              ref={(el) => {
+                                if (el) el.indeterminate = selected.length > 0 && selected.length < filteredActive.length;
+                              }}
+                              onChange={() =>
+                                setSelected((prev) =>
+                                  prev.length === filteredActive.length ? [] : filteredActive.map((t) => t.id)
+                                )
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                              className="h-4 w-4 accent-emerald-400 cursor-pointer"
+                            />
+                          </th>
+                        )}
+                        <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
+                        <th className="px-3 py-2.5 min-w-[160px]">Project</th>
+                        <th className="px-3 py-2.5 min-w-[200px]">Task</th>
+                        <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Task Type</th>
+                        <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
+                        <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
+                        <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
+                        <th className="px-3 py-2.5 w-16">Stage</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.04]">
+                      {filteredActive.map((t) => (
+                        <ActiveDesktopRow
+                          key={t.id}
+                          t={t}
+                          isManager={isManager}
+                          isSelected={selected.includes(t.id)}
+                          onOpen={openTaskById}
+                          onToggleSelect={toggleSelectId}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="md:hidden space-y-2.5">
+                {filteredActive.map((t) => (
+                  <ActiveMobileCard
+                    key={t.id}
+                    t={t}
+                    isManager={isManager}
+                    isSelected={selected.includes(t.id)}
+                    onOpen={openTaskById}
+                    onToggleSelect={toggleSelectId}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 

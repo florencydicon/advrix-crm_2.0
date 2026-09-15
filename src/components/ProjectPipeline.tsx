@@ -536,17 +536,7 @@ export default function ProjectPipeline({
     await reload();
   };
 
-  const bulkStatus = async (status: string) => {
-    const res = await bulkSetPipelineStatusAction(selected, status as Task["status"]);
-    if (!res.ok) {
-      notify(res.error || "Bulk status update failed.");
-      return;
-    }
-    notify(`Updated ${res.count} task${res.count === 1 ? "" : "s"}.`);
-    setSelected([]);
-    await reload();
-  };
-
+  // bulkStatus removed - status is now dynamic/flow-based only (7th image requirement)
   const bulkStage = async (memberId: string) => {
     const res = await bulkSetPipelineStageAction(selected, memberId);
     if (!res.ok) {
@@ -554,28 +544,6 @@ export default function ProjectPipeline({
       return;
     }
     notify(`Moved ${res.count} task${res.count === 1 ? "" : "s"} to new stage.`);
-    setSelected([]);
-    await reload();
-  };
-
-  const bulkMoveBack = async () => {
-    const res = await bulkMoveBackPipelineTasksAction(selected);
-    if (!res.ok) {
-      notify(res.error || "Bulk move back failed.");
-      return;
-    }
-    notify(`Moved back ${res.count} task${res.count === 1 ? "" : "s"} one stage.`);
-    setSelected([]);
-    await reload();
-  };
-
-  const bulkMoveBackTo = async (memberId: string) => {
-    const res = await bulkMoveBackToStageAction(selected, memberId);
-    if (!res.ok) {
-      notify(res.error || "Bulk move back failed.");
-      return;
-    }
-    notify(`Moved back ${res.count} task${res.count === 1 ? "" : "s"} to the chosen stage.`);
     setSelected([]);
     await reload();
   };
@@ -1158,15 +1126,12 @@ export default function ProjectPipeline({
                     canAssign
                     canDelete
                     canStage={canBulkStage}
-                    statusOptions={bulkStatusOptions}
-                    statusLabel="Status"
+                    statusOptions={[]}
                     onAssign={bulkAssign}
                     onDelete={bulkDelete}
-                    onStatus={bulkStatus}
+                    onStatus={async () => {}}
                     onStage={bulkStage}
                     stageOptions={stageCandidates}
-                    onMoveBack={canBulkStage ? bulkMoveBack : undefined}
-                    onMoveBackTo={canBulkStage ? bulkMoveBackTo : undefined}
                     onClear={() => setSelected([])}
                   />
                 </div>

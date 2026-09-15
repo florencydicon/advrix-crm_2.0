@@ -63,10 +63,8 @@ export default function BulkActionBar({
   const [assignOpen, setAssignOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
-  const [backOpen, setBackOpen] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [pickedStage, setPickedStage] = useState<string>("");
-  const [pickedBack, setPickedBack] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
   if (selectedCount === 0) return null;
@@ -136,28 +134,7 @@ export default function BulkActionBar({
     }
   };
 
-  const runMoveBack = async () => {
-    if (busy || !onMoveBack) return;
-    if (!window.confirm(`Move ${selectedCount} selected task${selectedCount === 1 ? "" : "s"} one stage back?`)) return;
-    setBusy(true);
-    try {
-      await onMoveBack();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runMoveBackTo = async () => {
-    if (busy || !pickedBack || !onMoveBackTo) return;
-    setBusy(true);
-    try {
-      await onMoveBackTo(pickedBack);
-      setBackOpen(false);
-      setPickedBack("");
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Move Back handlers removed - only single Stage remains
 
   return (
     <div className="sticky top-0 z-20 rounded-xl border border-brand-300/30 bg-night-850/95 backdrop-blur px-3 py-2 shadow-lg shadow-black/30">
@@ -179,7 +156,7 @@ export default function BulkActionBar({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { setAssignOpen((o) => !o); setStatusOpen(false); setStageOpen(false); setBackOpen(false); }}
+                onClick={() => { setAssignOpen((o) => !o); setStatusOpen(false); setStageOpen(false); }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
                 <Users className="h-3.5 w-3.5" /> {assignLabel}
@@ -229,7 +206,7 @@ export default function BulkActionBar({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { setStatusOpen((o) => !o); setAssignOpen(false); setStageOpen(false); setBackOpen(false); }}
+                onClick={() => { setStatusOpen((o) => !o); setAssignOpen(false); setStageOpen(false); }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
                 <Tag className="h-3.5 w-3.5" /> {statusLabel}
@@ -260,7 +237,7 @@ export default function BulkActionBar({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { setStageOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); setBackOpen(false); }}
+                onClick={() => { setStageOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
                 <ArrowRight className="h-3.5 w-3.5" /> Stage
@@ -306,69 +283,7 @@ export default function BulkActionBar({
             </div>
           )}
 
-          {canStage && onStage && (
-            <div className="relative">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => { setBackOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); setStageOpen(false); }}
-                className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
-                title="Pick the stage back for the selected tasks (from completed they reopen there)"
-              >
-                <Undo2 className="h-3.5 w-3.5" /> Move Back…
-              </button>
-              {backOpen && onMoveBackTo && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setBackOpen(false)} />
-                  <div className="absolute z-20 right-0 mt-2 w-60 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden">
-                    <div className="max-h-56 overflow-y-auto p-1.5">
-                      {stageList.map((u) => (
-                        <label
-                          key={u.id}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs cursor-pointer ${pickedBack === u.id ? "bg-brand-300/10 text-brand-300" : "text-slate-300 hover:bg-white/[0.06]"}`}
-                        >
-                          <input
-                            type="radio"
-                            name="bulk-back"
-                            checked={pickedBack === u.id}
-                            onChange={() => setPickedBack(u.id)}
-                            className="h-3.5 w-3.5 accent-emerald-400"
-                          />
-                          <span className="min-w-0 flex-1 truncate">{u.full_name}</span>
-                          <span className="text-[10px] text-slate-500 truncate max-w-[80px]">{u.role_label}</span>
-                        </label>
-                      ))}
-                      {stageList.length === 0 && (
-                        <p className="px-2 py-3 text-xs text-slate-500">Selected tasks have no assigned members.</p>
-                      )}
-                    </div>
-                    <div className="border-t border-white/10 p-2">
-                      <button
-                        type="button"
-                        disabled={busy || !pickedBack}
-                        onClick={runMoveBackTo}
-                        className="btn-primary w-full !py-1.5 text-xs disabled:opacity-50"
-                      >
-                        <Undo2 className="h-3.5 w-3.5" /> Move {selectedCount} back to stage
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {canStage && onMoveBack && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={runMoveBack}
-              className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
-              title="Move selected tasks one stage back (for mistaken completions)"
-            >
-              <Undo2 className="h-3.5 w-3.5" /> Move Back
-            </button>
-          )}
+          {/* Move Back options removed - only single Stage option remains per requirement */}
 
           {canDelete && (
             <button

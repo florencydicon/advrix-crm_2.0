@@ -34,6 +34,9 @@ import {
   updatePipelineTaskTeamAction,
   deletePipelineTaskAction,
   getPipelineBoardAction,
+  bulkSetPipelineStageAction,
+  bulkMoveBackToStageAction,
+  reopenPipelineTaskAction,
 } from "@/lib/actions/pipeline";
 
 function initials(name?: string | null) {
@@ -45,7 +48,7 @@ function initials(name?: string | null) {
     .toUpperCase();
 }
 
-/** Admin/PM/Super-Admin-like roles act as gatekeepers and Approve & Advance. */
+/** Admin/PM/Super-Admin-like roles act as gatekeepers and Complete this task. */
 function isManagerRole(roleKey?: string | null): boolean {
   if (!roleKey) return false;
   const r = roleKey.toUpperCase();
@@ -60,9 +63,9 @@ function isContentEditor(roleKey?: string | null): boolean {
 }
 
 function fmtTimeOnly(v?: string | null) {
-  if (!v) return "ΓÇö";
+  if (!v) return "-";
   const d = new Date(v);
-  if (isNaN(d.getTime())) return "ΓÇö";
+  if (isNaN(d.getTime())) return "-";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -92,12 +95,12 @@ function MarqueeHeading({ text }: { text: string }) {
 /**
  * Ultra-lean unified Task Modal. Shared by the Project Pipeline, the Employee
  * Dashboard and the SMM Dashboard:
- *  - Task Title input ΓÇö renames the sub-task live (Content editors only).
- *  - Content / Copy textarea ΓÇö the draft work body (Content editors only).
- *  - Remarks / Feedback textarea ΓÇö free-form notes for every role (auto-saves).
+ *  - Task Title input - renames the sub-task live (Content editors only).
+ *  - Content / Copy textarea - the draft work body (Content editors only).
+ *  - Remarks / Feedback textarea - free-form notes for every role (auto-saves).
  * Actions are role-gated:
- *  - Employees can only "Submit for Review" (status ΓåÆ submitted, no advance).
- *  - Admin/PM gatekeepers can "Approve & Advance" (next team member) or
+ *  - Employees can only "Submit for Review" (status -> submitted, no advance).
+ *  - Admin/PM gatekeepers can "Complete this task" (next team member) or
  *    "Send Back" (keep assignee, needs_improvement).
  */
 export default function TaskModal({
@@ -319,7 +322,7 @@ export default function TaskModal({
     });
   };
 
-  // Send Back (Admin/PM): reject the submitted work ΓÇö keeps the current assignee,
+  // Send Back (Admin/PM): reject the submitted work - keeps the current assignee,
   // flags `needs_improvement`, and prepends the signed feedback to the remarks.
   // Then re-sync the fresh task and refresh the parent board.
   const sendBack = () => {
@@ -342,7 +345,7 @@ export default function TaskModal({
   };
 
   // Submit for Review (Employee): persist remarks, then flag the task as
-  // `submitted` for the QC gatekeeper. The stageIndex does NOT advance ΓÇö the
+  // `submitted` for the QC gatekeeper. The stageIndex does NOT advance - the
   // assignee keeps the task until an Admin/PM approves or rejects it.
   const submitWork = () => {
     startTransition(async () => {
@@ -361,8 +364,8 @@ export default function TaskModal({
     });
   };
 
-  // Approve & Advance (Admin/PM gatekeeper): the only action that pushes the
-  // task down its sequence (AΓåÆBΓåÆC) ΓÇö auto-assigning the next member, or
+  // Complete this task (Admin/PM gatekeeper): the only action that pushes the
+  // task down its sequence (A->B->C) - auto-assigning the next member, or
   // completing the task after the final stage.
   const approveWork = () => {
     startTransition(async () => {
@@ -378,7 +381,7 @@ export default function TaskModal({
     });
   };
 
-  // Delete this sub-task (manager gatekeepers only). Destructive ΓÇö confirms first.
+  // Delete this sub-task (manager gatekeepers only). Destructive - confirms first.
   const deleteTask = () => {
     if (!window.confirm(`Delete "${titleDraft.trim() || task.title || "this task"}"? This cannot be undone.`)) return;
     startTransition(async () => {
@@ -396,10 +399,59 @@ export default function TaskModal({
   const heading = titleDraft.trim() || task.title || "Untitled task";
   const isGatekeeper = canApprove || isManagerRole(roleKey);
   const isSubmitted = task.status === "submitted";
+  const isCompleted = task.status === "completed";
   const step = task.current_step ?? 0;
   const seq = task.assignees || [];
   const activeIdx = seq.length === 0 ? 0 : Math.min(step, seq.length - 1);
   const activeMember = seq[activeIdx]?.name || null;
+  const canChangeStage = isManagerRole(roleKey) || canManageTeam;
+
+  const changeStage = (targetUserId: string) => {
+    if (!canChangeStage || isPending) return;
+    if (seq[activeIdx]?.id === targetUserId) return;
+    startTransition(async () => {
+      let res: { ok: boolean; error?: string };
+      if (isCompleted) {
+        // Reopen completed task to chosen stage
+        res = await bulkMoveBackToStageAction([task.id], targetUserId);
+        if (res.ok) {
+          // also handle reopen if bulkMoveBack didn't cover (fallback)
+          const r2 = await reopenPipelineTaskAction(task.id);
+          if (!r2.ok && (res as any).count === 0) {
+            toast(res.error || r2.error || "Could not reopen.", "error");
+            return;
+          }
+        }
+      } else {
+        res = await bulkSetPipelineStageAction([task.id], targetUserId);
+      }
+      if (!res.ok) {
+        toast(res.error || "Could not change stage.", "error");
+        return;
+      }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id)
+        || (await getPipelineBoardAction()).completed.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      else onClose();
+      toast(isCompleted ? "Task reopened to selected stage." : "Stage changed.");
+    });
+  };
+
+  const reopenTask = () => {
+    if (!canChangeStage) return;
+    startTransition(async () => {
+      const res = await reopenPipelineTaskAction(task.id);
+      if (!res.ok) {
+        toast(res.error || "Could not reopen.", "error");
+        return;
+      }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      toast("Task reopened.");
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex md:items-center md:justify-center">
@@ -448,7 +500,7 @@ export default function TaskModal({
               <DatePicker
                 value={deadlineDraft}
                 onChange={persistDeadline}
-                placeholder="Set a deadlineΓÇª"
+                placeholder="Set a deadline..."
               />
             ) : (
               <p className="text-sm text-slate-200 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
@@ -459,7 +511,7 @@ export default function TaskModal({
               <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2">
                 <AlertTriangle className="h-4 w-4 text-rose-300 shrink-0" />
                 <p className="text-xs text-rose-200 leading-snug">
-                  This task is overdue ΓÇö it has been auto-flagged as <span className="font-semibold text-rose-300">Urgent</span>.
+                  This task is overdue - it has been auto-flagged as <span className="font-semibold text-rose-300">Urgent</span>.
                 </p>
               </div>
             ) : isDueSoon(task) ? (
@@ -482,7 +534,7 @@ export default function TaskModal({
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value)}
                 onBlur={() => persistTitle(true)}
-                placeholder="Task titleΓÇª"
+                placeholder="Task title..."
                 className="input !py-2.5 text-sm w-full"
               />
             ) : (
@@ -539,7 +591,7 @@ export default function TaskModal({
                 onChange={(e) => setContentDraft(e.target.value)}
                 onBlur={() => persistContent(true)}
                 rows={4}
-                placeholder="Draft the content / copy for this taskΓÇª"
+                placeholder="Draft the content / copy for this task..."
                 className="input !py-2.5 text-sm resize-none"
               />
             ) : contentDraft ? (
@@ -561,7 +613,7 @@ export default function TaskModal({
               onChange={(e) => setRemarks(e.target.value)}
               onBlur={() => persistRemarks(true)}
               rows={3}
-              placeholder="Notes, feedback or handoff contextΓÇª auto-saves as you type."
+              placeholder="Notes, feedback or handoff context... auto-saves as you type."
               className="input !py-2.5 text-sm resize-none"
             />
             <p className="text-xs text-slate-400 truncate mt-1.5">
@@ -580,10 +632,11 @@ export default function TaskModal({
             </p>
           </section>
 
-          {/* ---- Team Assignment + Current Stage ---- */}
+          {/* ---- Stages (single UI like hiring stages) ---- */}
           <section>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-              <Layers className="h-3.5 w-3.5 text-brand-300" /> Team Assignment
+              <Layers className="h-3.5 w-3.5 text-brand-300" /> Stages
+              {canChangeStage && seq.length > 0 && <span className="normal-case tracking-normal text-slate-500 text-[10px]">(tap to change stage)</span>}
             </p>
 
             {/* Current stage banner */}
@@ -592,40 +645,52 @@ export default function TaskModal({
               <span className="text-sm text-slate-200">
                 Current Stage:{" "}
                 <span className="font-semibold text-brand-300">
-                  {activeMember || "Unassigned"}
+                  {isCompleted ? "Completed" : (activeMember || "Unassigned")}
                 </span>
               </span>
+              {isCompleted && canChangeStage && (
+                <button type="button" disabled={isPending} onClick={reopenTask} className="ml-auto btn-ghost !px-2 !py-1 text-xs">
+                  Re-open
+                </button>
+              )}
             </div>
 
-            {/* Ordered stage chips */}
+            {/* Single stages stepper - shows all allotted persons */}
             {seq.length === 0 ? (
               <p className="text-xs text-slate-500 mb-2">No members assigned.</p>
             ) : (
-              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1 scrollbar-thin">
                 {seq.map((a, i) => {
-                  const done = i < step;
-                  const isActive = i === activeIdx && !done;
+                  const done = isCompleted ? true : i < step;
+                  const isActive = !isCompleted && i === activeIdx;
+                  const clickable = canChangeStage && !isPending;
                   return (
-                    <span
+                    <button
                       key={a.id}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold border transition-colors ${
+                      type="button"
+                      disabled={!clickable}
+                      onClick={() => clickable && changeStage(a.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold border transition-colors shrink-0 ${
                         isActive
-                          ? "border-brand-300 bg-brand-300 text-night-950"
+                          ? "border-brand-300 bg-brand-300 text-night-950 shadow"
                           : done
-                            ? "border-white/10 bg-white/[0.03] text-slate-500 line-through decoration-slate-600"
-                            : "border-white/10 bg-white/[0.03] text-slate-500"
-                      }`}
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : "border-white/10 bg-white/[0.03] text-slate-500 hover:bg-white/[0.06] hover:text-slate-300"
+                      } ${clickable ? "cursor-pointer" : "cursor-default"}`}
+                      title={clickable ? `Move to ${a.name}` : a.name}
                     >
-                      {done ? (
-                        <Check className={`h-3 w-3 ${isActive ? "text-night-950" : "text-emerald-400"}`} />
-                      ) : (
-                        <span className="w-3 text-center">{i + 1}</span>
-                      )}
+                      <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${isActive ? "bg-night-950 text-brand-300" : done ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-400"}`}>
+                        {done && !isActive ? <Check className="h-3 w-3" /> : i + 1}
+                      </span>
                       <span className="max-w-[90px] truncate">{a.name}</span>
-                    </span>
+                      {a.role_label && <span className="hidden sm:inline text-[9px] opacity-60 truncate max-w-[60px]">{a.role_label}</span>}
+                    </button>
                   );
                 })}
               </div>
+            )}
+            {canChangeStage && seq.length > 0 && (
+              <p className="text-[10px] text-slate-500 mb-2">Admin / PM can tap any stage to move the task there. Completed tasks will reopen.</p>
             )}
 
             {/* Editable team management (manager only) with persisted order */}
@@ -712,18 +777,32 @@ export default function TaskModal({
 
           {/* ---- Actions: Gatekeeper vs Employee ---- */}
           <section className="space-y-2.5">
-            {isGatekeeper ? (
+            {isCompleted ? (
+              <div className="rounded-xl border border-emerald-300/30 bg-emerald-400/[0.07] p-3">
+                <p className="text-sm font-medium text-white flex items-center gap-1.5">
+                  <Check className="h-4 w-4 text-emerald-300" /> Completed
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  This task is completed. {canChangeStage ? "Use Stages above to reopen to any stage." : "Contact Admin/PM to reopen."}
+                </p>
+                {canChangeStage && (
+                  <button type="button" disabled={isPending} onClick={reopenTask} className="btn-primary !py-2 text-sm mt-2">
+                    <Check className="h-4 w-4" /> Re-open Task
+                  </button>
+                )}
+              </div>
+            ) : isGatekeeper ? (
               <>
                 <div className="rounded-xl border border-violet-300/30 bg-violet-400/[0.07] p-3 flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium text-white flex items-center gap-1.5">
                       <Check className="h-4 w-4 text-violet-300" />{" "}
-                      {isSubmitted ? "Approve & Advance" : "Complete"}
+                      Complete this task
                     </p>
                     <p className="text-xs text-slate-500">
                       {isSubmitted
-                        ? "Approves the submitted work ΓÇö auto-assigns the next member (AΓåÆBΓåÆC)."
-                        : "Completes this stage ΓÇö auto-assigns the next member (AΓåÆBΓåÆC)."}
+                        ? "Approves the submitted work - auto-assigns the next member (A->B->C)."
+                        : "Completes this stage - auto-assigns the next member (A->B->C)."}
                     </p>
                   </div>
                   <button
@@ -732,7 +811,7 @@ export default function TaskModal({
                     onClick={approveWork}
                     className="btn-primary !py-2 text-sm shrink-0"
                   >
-                    <Check className="h-4 w-4" /> {isSubmitted ? "Approve & Advance" : "Complete"}
+                    <Check className="h-4 w-4" /> Complete this task
                   </button>
                 </div>
                 <div className="flex justify-end">
@@ -749,7 +828,7 @@ export default function TaskModal({
             ) : isSubmitted ? (
               <div className="rounded-xl border border-violet-300/30 bg-violet-400/[0.07] p-3">
                 <p className="text-sm font-medium text-white flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-violet-300" /> Submitted ΓÇö Awaiting Review
+                  <Clock className="h-4 w-4 text-violet-300" /> Submitted - Awaiting Review
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Your work is with the QC team. It advances only after Admin/PM approval.
@@ -805,7 +884,7 @@ export default function TaskModal({
         </div>
       </div>
 
-      {/* Mobile FAB ΓÇö bottom-right close on small screens, desktop uses the header ├ù */}
+      {/* Mobile FAB - bottom-right close on small screens, desktop uses the header X */}
       <button
         type="button"
         onClick={onClose}

@@ -394,21 +394,7 @@ export default function StaffDashboard({
     await refresh();
   };
 
-  const bulkStatus = async (status: string) => {
-    const res = await bulkSetPipelineStatusAction(selected, status as Task["status"]);
-    if (!res.ok) {
-      toast(res.error || "Bulk status update failed.", "error");
-      return;
-    }
-    toast(`Updated ${res.count} task${res.count === 1 ? "" : "s"}.`);
-    setSelected([]);
-    await refresh();
-  };
-
-  const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
-    value: s,
-    label: STATUS_META[s]?.label || s,
-  }));
+  // bulkStatus removed - status is now dynamic/flow-based only
 
   // Stable callbacks so memoized rows skip re-rendering when only the array
   // identity changes (selection/filter/tab interactions).
@@ -514,11 +500,10 @@ export default function StaffDashboard({
               team={team}
               canAssign
               canDelete
-              statusOptions={bulkStatusOptions}
-              statusLabel="Status"
+              statusOptions={[]}
               onAssign={bulkAssign}
               onDelete={bulkDelete}
-              onStatus={bulkStatus}
+              onStatus={async () => {}}
               onClear={() => setSelected([])}
             />
           )}

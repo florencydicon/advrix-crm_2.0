@@ -466,13 +466,19 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
 }
 
 export async function getMyTasks(userId: string): Promise<Task[]> {
-  // Strict Sequential Visibility:
-  // - Active tasks: ONLY current holder (assigned_to) sees it — future members hidden
-  // - Completed/upload_done/approved/client_approved: all participants see it in Done/history (via task_assignees)
+  // Strict Sequential Visibility (as per requirement):
+  // - Active tasks: ONLY current holder (assigned_to) sees it — next/future stage members hidden until advanced
+  // - Past members see handed-off tasks in History (position < current_step)
+  // - Completed tasks: all participants see it in History/Done (via task_assignees)
+  // - PM/Super Admin see all via getPipelineBoardAction (global scope), not this function
   return query<Task>(
     `${TASK_SELECT}
      WHERE t.assigned_to = $1
-        OR (t.status IN ('completed','upload_done','approved','client_approved') AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))
+        OR (t.status = 'completed' AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))
+        OR EXISTS (
+          SELECT 1 FROM task_assignees ta
+          WHERE ta.task_id = t.id AND ta.user_id = $1 AND ta.position < t.current_step
+        )
      ORDER BY t.created_at ASC`,
     [userId]
   );
