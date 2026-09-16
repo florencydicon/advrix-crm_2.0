@@ -94,19 +94,7 @@ const ActiveDesktopRow = memo(function ActiveDesktopRow({
         <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
       </td>
       <td className="px-3 py-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <p className="text-sm text-white font-medium leading-tight truncate">{t.title}</p>
-          {t.status === "approved" && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
-              className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2 py-0.5 text-[10px] font-bold hover:bg-brand-200 transition-colors shrink-0"
-              title="Start Task"
-            >
-              <Layers className="h-3 w-3" /> Start
-            </button>
-          )}
-        </div>
+        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
         {overdue && (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 mt-0.5">
             <AlertTriangle className="h-3 w-3" /> Overdue
@@ -131,6 +119,19 @@ const ActiveDesktopRow = memo(function ActiveDesktopRow({
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">
         {(t.assignees || [])[(t.current_step ?? 0) % Math.max((t.assignees?.length || 1), 1)]?.name || "—"}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        {t.status === "approved" ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
+            className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2.5 py-1 text-[11px] font-bold hover:bg-brand-200 transition-colors whitespace-nowrap"
+          >
+            <Layers className="h-3 w-3" /> Start
+          </button>
+        ) : (
+          <span className="text-xs text-slate-600">—</span>
+        )}
       </td>
     </tr>
   );
@@ -162,7 +163,7 @@ const ActiveMobileCard = memo(function ActiveMobileCard({
           onOpen(t);
         }
       }}
-      className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3.5 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
+      className="w-full text-left relative rounded-xl border border-white/10 bg-white/[0.03] p-3.5 pb-12 hover:bg-white/[0.05] transition-colors active:scale-[0.99] cursor-pointer"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -200,17 +201,17 @@ const ActiveMobileCard = memo(function ActiveMobileCard({
           )}
           Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
         </span>
-        {t.status === "approved" && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
-            className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2.5 py-1 text-[11px] font-bold hover:bg-brand-200 transition-colors ml-auto"
-            aria-label={`Start ${t.title}`}
-          >
-            <Layers className="h-3 w-3" /> Start
-          </button>
-        )}
       </div>
+      {t.status === "approved" && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
+          className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-3.5 py-1.5 text-xs font-bold hover:bg-brand-200 transition-colors shadow-lg"
+          aria-label={`Start ${t.title}`}
+        >
+          <Layers className="h-3.5 w-3.5" /> Start
+        </button>
+      )}
     </div>
   );
 });
@@ -575,6 +576,7 @@ export default function SmmDashboard({
                         <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
                         <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
                         <th className="px-3 py-2.5 w-16">Stage</th>
+                        <th className="px-3 py-2.5 w-24 whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.04]">
