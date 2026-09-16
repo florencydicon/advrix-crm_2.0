@@ -23,8 +23,13 @@ const TYPE_COLORS: Record<string, string> = {
   system: "text-slate-300",
 };
 
-function parseDate(dateStr: string): Date | null {
+function parseDate(dateStr: string | Date | null | undefined): Date | null {
   if (!dateStr) return null;
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
+  if (typeof dateStr !== "string") {
+    try { const d = new Date(dateStr as any); if (!isNaN(d.getTime())) return d; } catch {}
+    return null;
+  }
   let s = dateStr.trim();
   if (s.includes(" ") && !s.includes("T")) s = s.replace(" ", "T");
   if (!s.endsWith("Z") && !s.match(/[+-]\d{2}:?\d{2}$/) && !s.match(/[+-]\d{4}$/)) {
@@ -36,9 +41,9 @@ function parseDate(dateStr: string): Date | null {
   if (!isNaN(d2.getTime())) return d2;
   return null;
 }
-function timeAgo(dateStr: string) {
-  const d = parseDate(dateStr);
-  if (!d) return dateStr;
+function timeAgo(dateStr: string | Date | null | undefined) {
+  const d = parseDate(dateStr as any);
+  if (!d) return String(dateStr ?? "");
   const diff = Math.round((Date.now() - d.getTime()) / 1000);
   if (diff < 0) return "just now";
   if (diff < 60) return "just now";
@@ -47,12 +52,12 @@ function timeAgo(dateStr: string) {
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 }
-function formatIST(dateStr: string) {
-  const d = parseDate(dateStr);
-  if (!d) return dateStr;
+function formatIST(dateStr: string | Date | null | undefined) {
+  const d = parseDate(dateStr as any);
+  if (!d) return String(dateStr ?? "");
   try {
     return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-  } catch { return dateStr; }
+  } catch { return String(dateStr ?? ""); }
 }
 
 export default function UpdatesView({ notifications }: { notifications: Notification[] }) {

@@ -96,27 +96,27 @@ function getCollapsedServerSnapshot() {
   return false; // Always expanded on server — matches useState(false)
 }
 
-function parseDate(dateStr: string): Date | null {
+function parseDate(dateStr: string | Date | null | undefined): Date | null {
   if (!dateStr) return null;
-  // Postgres timestamptz comes as ISO string; handle both "2026-09-16 09:41:00" and "2026-09-16T09:41:00.000Z"
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
+  if (typeof dateStr !== "string") {
+    try { const d = new Date(dateStr as any); if (!isNaN(d.getTime())) return d; } catch {}
+    return null;
+  }
   let s = dateStr.trim();
-  // If it contains space but no T, replace first space with T for ISO
   if (s.includes(" ") && !s.includes("T")) s = s.replace(" ", "T");
-  // If no timezone info, assume UTC
   if (!s.endsWith("Z") && !s.match(/[+-]\d{2}:?\d{2}$/) && !s.match(/[+-]\d{4}$/)) {
-    // If string already has Z, don't add again
     if (!s.includes("Z")) s = s + "Z";
   }
   const d = new Date(s);
   if (!isNaN(d.getTime())) return d;
-  // Fallback: try original
   const d2 = new Date(dateStr);
   if (!isNaN(d2.getTime())) return d2;
   return null;
 }
-function timeAgo(dateStr: string) {
-  const d = parseDate(dateStr);
-  if (!d) return dateStr;
+function timeAgo(dateStr: string | Date | null | undefined) {
+  const d = parseDate(dateStr as any);
+  if (!d) return String(dateStr ?? "");
   const diff = Math.round((Date.now() - d.getTime()) / 1000);
   if (diff < 0) return "just now";
   if (diff < 60) return "just now";
@@ -125,12 +125,12 @@ function timeAgo(dateStr: string) {
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 }
-function formatIST(dateStr: string) {
-  const d = parseDate(dateStr);
-  if (!d) return dateStr;
+function formatIST(dateStr: string | Date | null | undefined) {
+  const d = parseDate(dateStr as any);
+  if (!d) return String(dateStr ?? "");
   try {
     return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-  } catch { return dateStr; }
+  } catch { return String(dateStr ?? ""); }
 }
 
 export default function AppShell({
