@@ -32,6 +32,7 @@ import {
   bulkMoveBackPipelineTasksAction,
   bulkMoveBackToStageAction,
   moveBackPipelineTaskAction,
+  startPipelineTaskAction,
 } from "@/lib/actions/pipeline";
 import type { PipelineBoardPayload } from "@/lib/actions/pipeline";
 import dynamic from "next/dynamic";
@@ -114,12 +115,14 @@ const PipelineActiveRow = memo(function PipelineActiveRow({
   isSelected,
   onOpen,
   onToggleSelect,
+  onStart,
 }: {
   t: Task;
   isManager: boolean;
   isSelected: boolean;
   onOpen: (t: Task) => void;
   onToggleSelect: (id: string) => void;
+  onStart: (id: string) => void;
 }) {
   const overdue = isOverdue(t);
   const sub = t.status === "submitted";
@@ -153,6 +156,16 @@ const PipelineActiveRow = memo(function PipelineActiveRow({
           <div className="max-w-[260px] truncate text-sm font-medium text-white">{t.title}</div>
           {t.status === "submitted" && <QcPill />}
           {t.status === "client_feedback" && <ClientFeedbackPill />}
+          {t.status === "approved" && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
+              className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2 py-0.5 text-[10px] font-bold hover:bg-brand-200 transition-colors shrink-0"
+              title="Start Task"
+            >
+              <Layers className="h-3 w-3" /> Start
+            </button>
+          )}
           {overdue && (
             <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" aria-label="Overdue" />
           )}
@@ -246,12 +259,14 @@ const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
   isSelected,
   onOpen,
   onToggleSelect,
+  onStart,
 }: {
   t: Task;
   isManager: boolean;
   isSelected: boolean;
   onOpen: (t: Task) => void;
   onToggleSelect: (id: string) => void;
+  onStart: (id: string) => void;
 }) {
   const overdue = isOverdue(t);
   return (
@@ -293,6 +308,9 @@ const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
         {t.status === "submitted" && <QcPill />}
         {t.status === "client_feedback" && <ClientFeedbackPill />}
+        {t.status === "approved" && (
+          <button type="button" onClick={(e)=>{e.stopPropagation(); onStart(t.id);}} className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2 py-0.5 text-[10px] font-bold hover:bg-brand-200"><Layers className="h-3 w-3" /> Start</button>
+        )}
         <StatusBadge status={t.status} />
         <DeadlineBadge task={t} />
         <PriorityBadge priority={t.priority} />
@@ -611,6 +629,13 @@ export default function ProjectPipeline({
     await reload();
   };
 
+  const handleStart = useCallback(async (id: string) => {
+    const res = await startPipelineTaskAction(id);
+    if (!res.ok) { notify(res.error || "Could not start task."); return; }
+    notify("Task started — now in progress.");
+    await reload();
+  }, [reload, notify]);
+
   // Only the members actually assigned to the selected tasks are offered as
   // move targets (stage forward AND move back) — never the whole team.
   const stageCandidates = useMemo(() => {
@@ -736,6 +761,7 @@ export default function ProjectPipeline({
                 isSelected={selected.includes(t.id)}
                 onOpen={openActive}
                 onToggleSelect={toggleSelectId}
+                onStart={handleStart}
               />
             ))}
           </tbody>
@@ -793,6 +819,7 @@ export default function ProjectPipeline({
           isSelected={selected.includes(t.id)}
           onOpen={openActive}
           onToggleSelect={toggleSelectId}
+          onStart={handleStart}
         />
       ))}
     </div>

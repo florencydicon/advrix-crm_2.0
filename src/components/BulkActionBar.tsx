@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Users, Trash2, Tag, X, Check, ArrowRight, Undo2, CalendarDays } from "lucide-react";
-import { DatePicker } from "@/components/DatePicker";
+import { Users, Trash2, Tag, X, Check, ArrowRight, Undo2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import type { UserRow } from "@/lib/types";
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const WEEKDAYS = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+function pad(n:number){ return String(n).padStart(2,"0"); }
+function toIso(d:Date){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function todayKey(){ return toIso(new Date()); }
 
 export interface BulkStatusOption {
   value: string;
@@ -78,6 +83,7 @@ export default function BulkActionBar({
   const [stageOpen, setStageOpen] = useState(false);
   const [deadlineOpen, setDeadlineOpen] = useState(false);
   const [deadlineVal, setDeadlineVal] = useState<string>("");
+  const [deadlineView, setDeadlineView] = useState<{y:number,m:number}>(()=>{ const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; });
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkTitles, setBulkTitles] = useState("");
   const [bulkContents, setBulkContents] = useState("");
@@ -253,7 +259,13 @@ export default function BulkActionBar({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { setDeadlineOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); setStageOpen(false); setBulkOpen(false); }}
+                onClick={() => {
+                  if(!deadlineOpen){
+                    const base = deadlineVal ? new Date(`${deadlineVal}T00:00:00`) : new Date();
+                    setDeadlineView({y: base.getFullYear(), m: base.getMonth()});
+                  }
+                  setDeadlineOpen((o) => !o); setAssignOpen(false); setStatusOpen(false); setStageOpen(false); setBulkOpen(false);
+                }}
                 className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-50"
               >
                 <CalendarDays className="h-3.5 w-3.5" /> Deadline
@@ -261,26 +273,36 @@ export default function BulkActionBar({
               {deadlineOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setDeadlineOpen(false)} />
-                  <div className="absolute z-20 right-0 mt-2 w-72 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden p-3">
-                    <p className="text-xs font-semibold text-white mb-2">Set deadline for {selectedCount} task{selectedCount === 1 ? "" : "s"}</p>
-                    <DatePicker value={deadlineVal} onChange={setDeadlineVal} placeholder="Select deadline…" />
+                  <div className="absolute z-20 right-0 mt-2 w-80 rounded-xl border border-white/10 bg-night-850 shadow-xl shadow-black/40 overflow-hidden p-3">
+                    <p className="text-xs font-semibold text-white mb-2">Set deadline for {selectedCount} task{selectedCount === 1 ? "" : "s"} — single click calendar</p>
+                    {/* Whole calendar inline - no second click */}
+                    <div className="flex items-center gap-1 mb-2">
+                      <button type="button" onClick={()=>setDeadlineView(v=> v.m===0?{y:v.y-1,m:11}:{y:v.y,m:v.m-1})} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"><ChevronLeft className="h-4 w-4" /></button>
+                      <select value={deadlineView.m} onChange={e=>setDeadlineView(v=>({...v,m:Number(e.target.value)}))} className="flex-1 rounded-lg border border-white/10 bg-night-900 px-2 py-1 text-xs font-semibold text-white">
+                        {MONTHS.map((lb,idx)=><option key={lb} value={idx}>{lb}</option>)}
+                      </select>
+                      <select value={deadlineView.y} onChange={e=>setDeadlineView(v=>({...v,y:Number(e.target.value)}))} className="w-[84px] rounded-lg border border-white/10 bg-night-900 px-2 py-1 text-xs font-semibold text-white">
+                        {Array.from({length:16},(_,i)=>2020+i).map(yr=><option key={yr} value={yr}>{yr}</option>)}
+                      </select>
+                      <button type="button" onClick={()=>setDeadlineView(v=> v.m===11?{y:v.y+1,m:0}:{y:v.y,m:v.m+1})} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"><ChevronRight className="h-4 w-4" /></button>
+                    </div>
+                    <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
+                      {WEEKDAYS.map(d=><span key={d} className="text-[9px] font-medium text-slate-500 py-1">{d}</span>)}
+                    </div>
+                    <div className="grid grid-cols-7 gap-0.5">
+                      {Array.from({length:new Date(deadlineView.y, deadlineView.m,1).getDay()}).map((_,i)=><span key={`b${i}`} />)}
+                      {Array.from({length:new Date(deadlineView.y, deadlineView.m+1,0).getDate()}).map((_,i)=>{
+                        const day=i+1; const iso=toIso(new Date(deadlineView.y, deadlineView.m, day)); const isToday=iso===todayKey(); const isSelected=iso===deadlineVal;
+                        return <button key={day} type="button" onClick={()=>setDeadlineVal(iso)} className={`h-7 w-7 mx-auto rounded-lg text-[11px] font-medium transition-colors ${isSelected?"bg-brand-300 text-night-950":isToday?"bg-brand-300/10 text-brand-300":"text-slate-200 hover:bg-white/10"}`}>{day}</button>;
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <button type="button" onClick={()=>{const t=new Date(); const iso=toIso(t); setDeadlineVal(iso); setDeadlineView({y:t.getFullYear(),m:t.getMonth()});}} className="text-[11px] font-semibold text-white bg-white/10 hover:bg-white/15 px-2 py-1 rounded-lg">Today</button>
+                      <span className="text-[10px] text-slate-500 truncate">{deadlineVal?`Selected: ${new Date(deadlineVal+"T00:00:00").toLocaleDateString([],{month:"short",day:"numeric"})} `:"Pick a date"}</span>
+                    </div>
                     <div className="flex gap-2 mt-3">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => { setDeadlineVal(""); setDeadlineOpen(false); if (onDeadline) onDeadline(null); }}
-                        className="btn-ghost flex-1 !py-1.5 text-xs"
-                      >
-                        Clear
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy || !deadlineVal}
-                        onClick={runDeadline}
-                        className="btn-primary flex-1 !py-1.5 text-xs disabled:opacity-50"
-                      >
-                        <Check className="h-3.5 w-3.5" /> Apply
-                      </button>
+                      <button type="button" disabled={busy} onClick={() => { setDeadlineVal(""); setDeadlineOpen(false); if (onDeadline) onDeadline(null); }} className="btn-ghost flex-1 !py-1.5 text-xs">Clear</button>
+                      <button type="button" disabled={busy || !deadlineVal} onClick={runDeadline} className="btn-primary flex-1 !py-1.5 text-xs disabled:opacity-50"><Check className="h-3.5 w-3.5" /> Apply</button>
                     </div>
                   </div>
                 </>

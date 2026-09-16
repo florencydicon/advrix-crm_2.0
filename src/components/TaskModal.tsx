@@ -569,10 +569,41 @@ export default function TaskModal({
               {canManageTeam && (<><div className="flex flex-wrap gap-1.5 mb-2">{teamDraft.length===0 && <span className="text-xs text-slate-500">No members assigned.</span>}{teamDraft.map(id=>{const m=team.find(u=>u.id===id); if(seq.some(s=>s.id===id)) return null; return <span key={id} className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 pl-0.5 pr-1.5 py-0.5"><span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300">{initials(m?.full_name)}</span><span className="text-xs text-slate-200 max-w-[90px] truncate">{m?.full_name || "?"}</span><button type="button" onClick={()=>toggleMember(id)} className="text-slate-400 hover:text-rose-300 ml-0.5"><X className="h-3.5 w-3.5" /></button></span>})}</div><button type="button" onClick={()=>setTeamOpen(v=>!v)} className="w-full flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-slate-300"><span className="flex items-center gap-2"><Plus className="h-4 w-4 text-brand-300" /> Add member</span>{teamOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>{teamOpen && <div className="mt-1.5 rounded-lg border border-white/10 bg-night-900 max-h-44 overflow-y-auto">{team.filter(u=>u.is_active).map(u=>{const on=teamDraft.includes(u.id); return <button key={u.id} type="button" onClick={()=>toggleMember(u.id)} className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm ${on ? "bg-brand-300/10 text-brand-200" : "text-slate-300"}`}><span className="h-5 w-5 rounded-full bg-brand-300/15 flex items-center justify-center text-[8px] font-bold text-brand-300">{initials(u.full_name)}</span><span className="flex-1 text-left truncate">{u.full_name}</span>{on && <Check className="h-4 w-4 text-brand-300" />}</button>})}</div>}<button type="button" disabled={isPending} onClick={saveTeam} className="btn-primary w-full mt-2 !py-2.5 text-sm">Save Team</button></>)}
             </section>
           )}
-          {isGatekeeper && isSubmitted && <div className="flex justify-end"><button type="button" disabled={isPending} onClick={sendBack} className="btn-ghost text-sm !px-3 !py-2"><Undo2 className="h-4 w-4" /> Send Back</button></div>}
-          {task.status === "approved" && (
-            <div className="flex justify-center">
-              <button type="button" disabled={isPending} onClick={startTask} className="btn-primary !py-2 text-sm w-full"><Layers className="h-4 w-4" /> Start Task</button>
+          {mustStart && (
+            <div className="rounded-xl border border-brand-300/40 bg-brand-300/10 p-3">
+              <button type="button" disabled={isPending} onClick={startTask} className="btn-primary w-full !py-2.5 text-sm">
+                <Layers className="h-4 w-4" /> Start Task
+              </button>
+              <p className="text-[11px] text-slate-500 mt-1.5 text-center">Tap Start to begin work (approved → in_progress) — mandatory</p>
+            </div>
+          )}
+          {isGatekeeper && task.status !== "completed" && (
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={sendBack}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-2 py-2.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/15 transition-colors disabled:opacity-50"
+              >
+                <Undo2 className="h-3.5 w-3.5" /> Send Back
+              </button>
+              <button
+                type="button"
+                disabled={isPending || isLastStage}
+                onClick={approveWork}
+                title={isLastStage ? "Last stage — use Complete" : "Move to next stage (A→B→C)"}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-400/10 px-2 py-2.5 text-xs font-semibold text-sky-300 hover:bg-sky-400/15 transition-colors disabled:opacity-30"
+              >
+                <ArrowRight className="h-3.5 w-3.5" /> Move Forward
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={approveWork}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500 text-night-950 px-2 py-2.5 text-xs font-bold hover:bg-emerald-400 transition-colors disabled:opacity-50 shadow-sm"
+              >
+                <Check className="h-3.5 w-3.5" /> Complete
+              </button>
             </div>
           )}
           {task.status === "client_feedback" && <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-center"><span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-1 text-xs font-semibold text-amber-300">Client Feedback</span><p className="text-xs text-amber-200 mt-1">{(task as any).client_feedback || task.remarks}</p></div>}
@@ -937,14 +968,46 @@ export default function TaskModal({
             </section>
           )}
 
-          {/* Send Back - always visible for gatekeeper when submitted */}
-          {isGatekeeper && isSubmitted && (
-            <div className="flex justify-end">
-              <button type="button" disabled={isPending} onClick={sendBack} className="btn-ghost text-sm !px-3 !py-2">
-                <Undo2 className="h-4 w-4" /> Send Back
+          {/* Mandatory Start Task - visible for assignee when approved */}
+          {mustStart && (
+            <div className="rounded-xl border border-brand-300/40 bg-brand-300/10 p-3">
+              <button type="button" disabled={isPending} onClick={startTask} className="btn-primary w-full !py-2.5 text-sm">
+                <Layers className="h-4 w-4" /> Start Task
+              </button>
+              <p className="text-[11px] text-slate-500 mt-1.5 text-center">Tap Start to begin work (approved → in_progress) — mandatory</p>
+            </div>
+          )}
+          {/* Super Admin / PM action row: 3 buttons in one row - Send Back | Move Forward | Complete */}
+          {isGatekeeper && task.status !== "completed" && (
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={sendBack}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-2 py-2.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/15 transition-colors disabled:opacity-50"
+              >
+                <Undo2 className="h-3.5 w-3.5" /> Send Back
+              </button>
+              <button
+                type="button"
+                disabled={isPending || isLastStage}
+                onClick={approveWork}
+                title={isLastStage ? "Last stage — use Complete" : "Move to next stage (A→B→C)"}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-400/10 px-2 py-2.5 text-xs font-semibold text-sky-300 hover:bg-sky-400/15 transition-colors disabled:opacity-30"
+              >
+                <ArrowRight className="h-3.5 w-3.5" /> Move Forward
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={approveWork}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500 text-night-950 px-2 py-2.5 text-xs font-bold hover:bg-emerald-400 transition-colors disabled:opacity-50 shadow-sm"
+              >
+                <Check className="h-3.5 w-3.5" /> Complete
               </button>
             </div>
           )}
+          {task.status === "client_feedback" && <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-center"><span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-1 text-xs font-semibold text-amber-300">Client Feedback</span><p className="text-xs text-amber-200 mt-1">{(task as any).client_feedback || task.remarks}</p></div>}
         </div>
       </div>
     </div>
