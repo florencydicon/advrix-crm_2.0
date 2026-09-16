@@ -423,6 +423,8 @@ export default function TaskModal({
   const heading = titleDraft.trim() || task.title || "Untitled task";
   const isGatekeeper = canApprove || isManagerRole(roleKey);
   const isSubmitted = task.status === "submitted";
+  const mustStart = task.status === "approved";
+  const canSubmit = ["in_progress", "needs_improvement", "client_feedback"].includes(task.status);
   const step = task.current_step ?? 0;
   const seq = task.assignees || [];
   const activeIdx = seq.length === 0 ? 0 : Math.min(step, seq.length - 1);
@@ -474,10 +476,14 @@ export default function TaskModal({
           <div className="ml-auto flex items-center gap-1.5 pl-2 border-l border-white/10">
             {isGatekeeper ? (
               <button type="button" disabled={isPending} onClick={approveWork} title={isLastStage ? "Complete (last stage)" : "Complete & advance"} className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${isLastStage ? "bg-emerald-500 text-white" : "bg-brand-300 text-night-950"}`}><Check className="h-4 w-4" /></button>
+            ) : mustStart ? (
+              <button type="button" disabled={isPending} onClick={startTask} title="Start Task (mandatory)" className="h-9 w-9 rounded-lg bg-brand-300 text-night-950 flex items-center justify-center shrink-0"><Layers className="h-4 w-4" /></button>
             ) : isSubmitted ? (
               <span className="h-9 w-9 rounded-lg bg-violet-400/10 border border-violet-300/30 flex items-center justify-center shrink-0"><Clock className="h-4 w-4 text-violet-300" /></span>
+            ) : canSubmit ? (
+              <button type="button" disabled={isPending} onClick={submitWork} title="Submit for review" className="h-9 w-9 rounded-lg bg-brand-300 text-night-950 flex items-center justify-center shrink-0"><Check className="h-4 w-4" /></button>
             ) : (
-              <button type="button" disabled={isPending} onClick={submitWork} className="h-9 w-9 rounded-lg bg-brand-300 text-night-950 flex items-center justify-center shrink-0"><Check className="h-4 w-4" /></button>
+              <span className="h-9 w-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0 opacity-50"><Clock className="h-4 w-4 text-slate-500" /></span>
             )}
             {(canManageTeam || isManagerRole(roleKey)) && (
               <button type="button" disabled={isPending} onClick={deleteTask} className="h-9 w-9 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center shrink-0"><Trash2 className="h-4 w-4" /></button>
@@ -618,7 +624,7 @@ export default function TaskModal({
           {iconBtn(openSection === "upload", () => toggleSection("upload"), FileText, "Upload")}
           {iconBtn(openSection === "team", () => toggleSection("team"), Users, "Team Assignment")}
           <div className="ml-auto flex items-center gap-1.5 pl-2 border-l border-white/10">
-            {/* Complete / Submit - green icon */}
+            {/* Complete / Submit / Start - mandatory flow */}
             {isGatekeeper ? (
               <button
                 type="button"
@@ -629,11 +635,21 @@ export default function TaskModal({
               >
                 {isLastStage ? <Check className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
               </button>
+            ) : mustStart ? (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={startTask}
+                title="Start Task (mandatory)"
+                className="h-9 w-9 rounded-lg bg-brand-300 text-night-950 flex items-center justify-center shrink-0 hover:brightness-110"
+              >
+                <Layers className="h-4 w-4" />
+              </button>
             ) : isSubmitted ? (
               <span title="Awaiting review" className="h-9 w-9 rounded-lg bg-violet-400/10 border border-violet-300/30 flex items-center justify-center shrink-0">
                 <Clock className="h-4 w-4 text-violet-300" />
               </span>
-            ) : (
+            ) : canSubmit ? (
               <button
                 type="button"
                 disabled={isPending}
@@ -643,6 +659,10 @@ export default function TaskModal({
               >
                 <Check className="h-4 w-4" />
               </button>
+            ) : (
+              <span title="Locked - follow mandatory flow" className="h-9 w-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0 opacity-50">
+                <Clock className="h-4 w-4 text-slate-500" />
+              </span>
             )}
             {(canManageTeam || isManagerRole(roleKey)) && (
               <button

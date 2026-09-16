@@ -221,6 +221,11 @@ export async function submitPipelineTaskAction(
   if (!task) return { ok: false, error: "Task not found." };
   if (task.status === "completed") return { ok: false, error: "Task is already completed." };
   if (task.status === "submitted") return { ok: false, error: "Already submitted for review." };
+  // Enforce mandatory flow: must Start before Submit
+  if (task.status === "approved") return { ok: false, error: "Please Start Task first (sets in_progress) before submitting." };
+  if (!["in_progress", "needs_improvement", "client_feedback"].includes(task.status)) {
+    return { ok: false, error: `Cannot submit from status ${task.status}. Start the task first.` };
+  }
   const isAssignee = task.assigned_to === session.sub;
   if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
     return { ok: false, error: "Not authorized." };
@@ -1106,7 +1111,10 @@ export async function sendBackWithClientFeedbackAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
-  if (!isGatekeeper(session)) return { ok: false, error: "Only Admins / PMs / SMM can send back." };
+  // Mandatory flow: SMM (or PM/Super Admin) sends client feedback back to previous stage (Designer/Video Editor)
+  const roleKey = (session.role_key || "").toUpperCase();
+  const allowed = isGatekeeper(session) || roleKey === "SMM" || roleKey === "VIDEOGRAPHER" || roleKey === "DESIGNER" || roleKey === "EDITOR";
+  if (!allowed) return { ok: false, error: "Only SMM / PM / Admin can send client feedback." };
   const task = await taskOf(taskId);
   if (!task) return { ok: false, error: "Task not found." };
   if (task.status === "completed") return { ok: false, error: "Completed tasks live in History." };
@@ -1118,20 +1126,48 @@ export async function sendBackWithClientFeedbackAction(
   const existing = existingRow[0]?.remarks || "";
   const share = typed || "Client requested rework.";
   const newRemarks = `${signature}: ${share}` + (existing ? `\n\n${existing}` : "");
-  await query(
-    `UPDATE tasks SET remarks = $1, client_feedback = $2, remarks_edited_by = $3, remarks_edited_at = now(),
-     status = 'client_feedback', reviewed_at = now()
-     WHERE id = $4`,
-    [newRemarks, share, session.sub, taskId]
-  );
-  if (task.assigned_to && task.assigned_to !== session.sub) {
-    await createNotification({
-      userId: task.assigned_to,
-      type: "task",
-      title: "Client feedback — rework needed",
-      body: `${session.name} added client feedback on "${task.title || "your task"}".`,
-      link: taskDashboardLink(taskId),
-    });
+
+  // Move task back to previous stage (Designer/Video Editor) — mandatory A←B
+  const trow = await query<{ project_id: string; current_step: number }>(`SELECT project_id, current_step FROM tasks WHERE id = $1`, [taskId]);
+  const seq = await query<{ user_id: string; position: number }>(`SELECT user_id, position FROM task_assignees WHERE task_id = $1 ORDER BY position ASC, added_at ASC`, [taskId]);
+  let targetIdx = (trow[0]?.current_step ?? 0) - 1;
+  if (targetIdx < 0) targetIdx = 0;
+  const target = seq[targetIdx];
+  if (target?.user_id) {
+    const roleKeyTarget = await query<{ key: string }>(`SELECT r.key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`, [target.user_id]).then((r) => r[0]?.key || null);
+    await query(
+      `UPDATE tasks SET remarks = $1, client_feedback = $2, remarks_edited_by = $3, remarks_edited_at = now(),
+       status = 'client_feedback', reviewed_at = now(),
+       current_step = $5, assigned_to = $6, role_key = $7
+       WHERE id = $4`,
+      [newRemarks, share, session.sub, taskId, targetIdx, target.user_id, roleKeyTarget]
+    );
+    // Notify the designer/video editor who is now responsible
+    if (target.user_id !== session.sub) {
+      await createNotification({
+        userId: target.user_id,
+        type: "task",
+        title: "Client feedback — rework needed",
+        body: `${session.name} sent client feedback on "${task.title || "your task"}" — you are up for redesign.`,
+        link: taskDashboardLink(taskId),
+      });
+    }
+  } else {
+    await query(
+      `UPDATE tasks SET remarks = $1, client_feedback = $2, remarks_edited_by = $3, remarks_edited_at = now(),
+       status = 'client_feedback', reviewed_at = now()
+       WHERE id = $4`,
+      [newRemarks, share, session.sub, taskId]
+    );
+    if (task.assigned_to && task.assigned_to !== session.sub) {
+      await createNotification({
+        userId: task.assigned_to,
+        type: "task",
+        title: "Client feedback — rework needed",
+        body: `${session.name} added client feedback on "${task.title || "your task"}".`,
+        link: taskDashboardLink(taskId),
+      });
+    }
   }
   revalidate();
   return { ok: true };
