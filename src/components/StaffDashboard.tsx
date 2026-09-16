@@ -585,6 +585,7 @@ export default function StaffDashboard({
           canManageTeam={canManageTeam}
           canApprove={canApprove}
           roleKey={roleKey}
+          userId={userId}
           onClose={() => setOpenTask(null)}
           refresh={refresh}
         />

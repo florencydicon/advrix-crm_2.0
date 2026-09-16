@@ -580,6 +580,7 @@ export default function SmmDashboard({
           canManageTeam={canManageTeam}
           canApprove={canApprove}
           roleKey={roleKey}
+          userId={userId}
           onClose={() => setOpenTask(null)}
           refresh={refresh}
         />
