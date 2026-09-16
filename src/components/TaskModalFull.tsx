@@ -67,6 +67,12 @@ function isContentEditor(roleKey?: string | null): boolean {
   return r === "WRITER" || r === "CONTENT_WRITER";
 }
 
+/** SMM stage handles client feedback and the uploaded-platforms handoff. */
+function isSmmRole(roleKey?: string | null): boolean {
+  const r = (roleKey || "").toUpperCase();
+  return r === "SMM";
+}
+
 function fmtTimeOnly(v?: string | null) {
   if (!v) return "-";
   const d = new Date(v);
@@ -475,6 +481,9 @@ export default function TaskModal({
   const isCompleted = task.status === "completed";
   const isAssignee = !!userId && task.assigned_to === userId;
   const mustStart = task.status === "approved" && isAssignee;
+  const isSmm = isSmmRole(roleKey);
+  const showUploadedPlatforms = isSmm || isGatekeeper;
+  const showClientFeedbackComposer = isSmm || isGatekeeper;
   const step = task.current_step ?? 0;
   const seq = task.assignees || [];
   const activeIdx = seq.length === 0 ? 0 : Math.min(step, seq.length - 1);
@@ -736,26 +745,28 @@ https://reference-link.com/..."
             )}
           </section>
 
-          {/* ---- Uploaded Platforms ---- */}
-          <section>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-              Uploaded Platforms
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {["Instagram", "Facebook", "YouTube", "LinkedIn", "Twitter/X", "Pinterest", "Threads", "Website"].map((pl: string) => (
-                <label key={pl} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs cursor-pointer ${platformsDraft.includes(pl) ? "border-brand-300 bg-brand-300/10 text-brand-300" : "border-white/10 bg-white/[0.02] text-slate-400"}`}>
-                  <input type="checkbox" checked={platformsDraft.includes(pl)} onChange={() => togglePlatform(pl)} className="h-3.5 w-3.5 accent-brand-300" />
-                  {pl}
-                </label>
-              ))}
-            </div>
-            <button type="button" disabled={isPending} onClick={markUploaded} className="btn-primary w-full mt-3 !py-2 text-sm">
-              <Check className="h-4 w-4" /> Mark as Uploaded
-            </button>
-            {task.platforms?.length ? <p className="text-[11px] text-slate-500 mt-2">Current: {task.platforms.join(", ")}</p> : null}
-          </section>
+          {/* ---- Uploaded Platforms (SMM / PM / Admin only) ---- */}
+          {showUploadedPlatforms && (
+            <section>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                Uploaded Platforms
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {["Instagram", "Facebook", "YouTube", "LinkedIn", "Twitter/X", "Pinterest", "Threads", "Website"].map((pl: string) => (
+                  <label key={pl} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs cursor-pointer ${platformsDraft.includes(pl) ? "border-brand-300 bg-brand-300/10 text-brand-300" : "border-white/10 bg-white/[0.02] text-slate-400"}`}>
+                    <input type="checkbox" checked={platformsDraft.includes(pl)} onChange={() => togglePlatform(pl)} className="h-3.5 w-3.5 accent-brand-300" />
+                    {pl}
+                  </label>
+                ))}
+              </div>
+              <button type="button" disabled={isPending} onClick={markUploaded} className="btn-primary w-full mt-3 !py-2 text-sm">
+                <Check className="h-4 w-4" /> Mark as Uploaded
+              </button>
+              {task.platforms?.length ? <p className="text-[11px] text-slate-500 mt-2">Current: {task.platforms.join(", ")}</p> : null}
+            </section>
+          )}
 
-          {/* ---- Client Feedback ---- */}
+          {/* ---- Client Feedback (read-only for all; composer only for SMM / PM / Admin) ---- */}
           <section>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
               Client Feedback
@@ -766,13 +777,15 @@ https://reference-link.com/..."
                 <p className="text-xs text-amber-100 mt-1 whitespace-pre-wrap">{task.client_feedback}</p>
               </div>
             ) : null}
-            <div className="p-3 rounded-lg border border-white/10 bg-white/[0.02]">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Client Feedback (SMM → Designer)</p>
-              <textarea value={clientFeedback} onChange={(e) => setClientFeedback(e.target.value)} rows={2} placeholder="Client ne su kidhu te lakho..." className="input !py-2 text-xs resize-none" />
-              <button type="button" disabled={isPending} onClick={sendBackClient} className="btn-ghost w-full mt-2 !py-1.5 text-xs border border-amber-400/30 text-amber-300">
-                <Undo2 className="h-3.5 w-3.5" /> Send Back with Client Feedback
-              </button>
-            </div>
+            {showClientFeedbackComposer && !isCompleted && (
+              <div className="p-3 rounded-lg border border-white/10 bg-white/[0.02]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Client Feedback (SMM → Designer)</p>
+                <textarea value={clientFeedback} onChange={(e) => setClientFeedback(e.target.value)} rows={2} placeholder="Client ne su kidhu te lakho..." className="input !py-2 text-xs resize-none" />
+                <button type="button" disabled={isPending} onClick={sendBackClient} className="btn-ghost w-full mt-2 !py-1.5 text-xs border border-amber-400/30 text-amber-300">
+                  <Undo2 className="h-3.5 w-3.5" /> Send Back with Client Feedback
+                </button>
+              </div>
+            )}
           </section>
 
           {/* ---- Stages (single UI like hiring stages) ---- */}
@@ -918,15 +931,6 @@ https://reference-link.com/..."
             )}
           </section>
 
-          {/* ---- Mandatory Start (only assignee) ---- */}
-          {mustStart && (
-            <section className="rounded-xl border border-brand-300/40 bg-brand-300/10 p-3">
-              <button type="button" disabled={isPending} onClick={startTask} className="btn-primary w-full !py-2.5 text-sm">
-                <Layers className="h-4 w-4" /> Start Task
-              </button>
-              <p className="text-[11px] text-slate-500 mt-1.5 text-center">Tap Start to begin work (approved → in_progress) — only assigned person</p>
-            </section>
-          )}
           {/* ---- Super Admin / PM 3-button row (old full view) ---- */}
           {isGatekeeper && !isCompleted && (
             <section>
@@ -944,7 +948,7 @@ https://reference-link.com/..."
               <p className="text-[10px] text-slate-500 mt-1.5 text-center">Send Back • Move Forward (A→B→C) • Complete this task</p>
             </section>
           )}
-          {/* ---- Actions: remaining for non-gatekeeper ---- */}
+          {/* ---- Actions: single contextual action bar row ---- */}
           <section className="space-y-2.5">
             {isCompleted ? (
               <div className="rounded-xl border border-emerald-300/30 bg-emerald-400/[0.07] p-3">
@@ -959,6 +963,18 @@ https://reference-link.com/..."
                     <Check className="h-4 w-4" /> Re-open Task
                   </button>
                 )}
+              </div>
+            ) : mustStart ? (
+              <div className="rounded-xl border border-brand-300/40 bg-brand-300/10 p-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-white flex items-center gap-1.5">
+                    <Layers className="h-4 w-4 text-brand-300" /> Start Task
+                  </p>
+                  <p className="text-xs text-slate-500">Tap Start to begin work (approved → in_progress). Only the assigned person can start.</p>
+                </div>
+                <button type="button" disabled={isPending} onClick={startTask} className="btn-primary !py-2 text-sm shrink-0">
+                  <Layers className="h-4 w-4" /> Start Task
+                </button>
               </div>
             ) : !isGatekeeper && isSubmitted ? (
               <div className="rounded-xl border border-violet-300/30 bg-violet-400/[0.07] p-3">
