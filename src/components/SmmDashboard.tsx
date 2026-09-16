@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Users, Upload, CheckCircle2, MoreVertical, AlertTriangle, PlayCircle, History } from "lucide-react";
+import { Users, Upload, CheckCircle2, MoreVertical, AlertTriangle, PlayCircle, History, Layers } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
@@ -20,6 +20,7 @@ import {
   bulkAssignPipelineTeamAction,
   bulkDeletePipelineTasksAction,
   bulkSetPipelineStatusAction,
+  startPipelineTaskAction,
 } from "@/lib/actions/pipeline";
 
 function taskTypeLabel(groupKey: string | null): string {
@@ -57,12 +58,14 @@ const ActiveDesktopRow = memo(function ActiveDesktopRow({
   isSelected,
   onOpen,
   onToggleSelect,
+  onStart,
 }: {
   t: Task;
   isManager: boolean;
   isSelected: boolean;
   onOpen: (t: Task) => void;
   onToggleSelect: (id: string) => void;
+  onStart: (id: string) => void;
 }) {
   const overdue = isOverdue(t);
   return (
@@ -91,7 +94,19 @@ const ActiveDesktopRow = memo(function ActiveDesktopRow({
         <span className="text-xs text-slate-300 truncate block max-w-[140px]">{t.project_name}</span>
       </td>
       <td className="px-3 py-2.5">
-        <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-sm text-white font-medium leading-tight truncate">{t.title}</p>
+          {t.status === "approved" && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
+              className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2 py-0.5 text-[10px] font-bold hover:bg-brand-200 transition-colors shrink-0"
+              title="Start Task"
+            >
+              <Layers className="h-3 w-3" /> Start
+            </button>
+          )}
+        </div>
         {overdue && (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-300 mt-0.5">
             <AlertTriangle className="h-3 w-3" /> Overdue
@@ -127,12 +142,14 @@ const ActiveMobileCard = memo(function ActiveMobileCard({
   isSelected,
   onOpen,
   onToggleSelect,
+  onStart,
 }: {
   t: Task;
   isManager: boolean;
   isSelected: boolean;
   onOpen: (t: Task) => void;
   onToggleSelect: (id: string) => void;
+  onStart: (id: string) => void;
 }) {
   return (
     <div
@@ -183,6 +200,16 @@ const ActiveMobileCard = memo(function ActiveMobileCard({
           )}
           Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
         </span>
+        {t.status === "approved" && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
+            className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2.5 py-1 text-[11px] font-bold hover:bg-brand-200 transition-colors ml-auto"
+            aria-label={`Start ${t.title}`}
+          >
+            <Layers className="h-3 w-3" /> Start
+          </button>
+        )}
       </div>
     </div>
   );
@@ -401,6 +428,17 @@ export default function SmmDashboard({
     []
   );
 
+  const handleStart = useCallback(
+    async (id: string) => {
+      const res = await startPipelineTaskAction(id);
+      if (!res.ok) { toast(res.error || "Could not start.", "error"); return; }
+      toast("Task started.");
+      setOpenTask((open) => (open && open.id === id ? { ...open, status: "in_progress" as const } : open));
+      await refresh();
+    },
+    [refresh, toast]
+  );
+
   return (
     <div className="w-full max-w-none space-y-3 pb-20 md:pb-0 overflow-x-hidden">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
@@ -541,14 +579,15 @@ export default function SmmDashboard({
                     </thead>
                     <tbody className="divide-y divide-white/[0.04]">
                       {filteredActive.map((t) => (
-                        <ActiveDesktopRow
-                          key={t.id}
-                          t={t}
-                          isManager={isManager}
-                          isSelected={selected.includes(t.id)}
-                          onOpen={openTaskById}
-                          onToggleSelect={toggleSelectId}
-                        />
+<ActiveDesktopRow
+                        key={t.id}
+                        t={t}
+                        isManager={isManager}
+                        isSelected={selected.includes(t.id)}
+                        onOpen={openTaskById}
+                        onToggleSelect={toggleSelectId}
+                        onStart={handleStart}
+                      />
                       ))}
                     </tbody>
                   </table>
@@ -563,6 +602,7 @@ export default function SmmDashboard({
                     isSelected={selected.includes(t.id)}
                     onOpen={openTaskById}
                     onToggleSelect={toggleSelectId}
+                    onStart={handleStart}
                   />
                 ))}
               </div>
