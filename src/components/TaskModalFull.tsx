@@ -16,6 +16,7 @@ import {
   Trash2,
   CalendarDays,
   AlertTriangle,
+  ArrowRight,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
 import { StatusBadge, PriorityBadge } from "@/components/ui";
@@ -37,6 +38,10 @@ import {
   bulkSetPipelineStageAction,
   bulkMoveBackToStageAction,
   reopenPipelineTaskAction,
+  startPipelineTaskAction,
+  setPipelineTaskReferenceLinksAction,
+  sendBackWithClientFeedbackAction,
+  markPipelineTaskUploadedAction,
 } from "@/lib/actions/pipeline";
 
 function initials(name?: string | null) {
@@ -110,6 +115,7 @@ export default function TaskModal({
   canManageTeam,
   canApprove,
   roleKey,
+  userId,
   onClose,
   refresh,
 }: {
@@ -119,6 +125,7 @@ export default function TaskModal({
   canManageTeam: boolean;
   canApprove: boolean;
   roleKey?: string | null;
+  userId?: string | null;
   onClose: () => void;
   refresh: () => Promise<void>;
 }) {
@@ -127,6 +134,9 @@ export default function TaskModal({
   const [titleDraft, setTitleDraft] = useState(initialTask.title || "");
   const [contentDraft, setContentDraft] = useState(initialTask.content || "");
   const [remarks, setRemarks] = useState(initialTask.remarks || "");
+  const [referenceLinks, setReferenceLinks] = useState((initialTask as any).reference_links || "");
+  const [clientFeedback, setClientFeedback] = useState("");
+  const [platformsDraft, setPlatformsDraft] = useState<string[]>(initialTask.platforms || []);
   const [deadlineDraft, setDeadlineDraft] = useState(initialTask.due_date || "");
   const [priorityDraft, setPriorityDraft] = useState(initialTask.priority || "medium");
   const [editedBy, setEditedBy] = useState<{ name: string; role: string; at: string } | null>(
@@ -152,6 +162,8 @@ export default function TaskModal({
   contentRef.current = contentDraft;
   const remarksRef = useRef(remarks);
   remarksRef.current = remarks;
+  const linksRef = useRef(referenceLinks);
+  linksRef.current = referenceLinks;
 
   const canEditContent = canApprove || isContentEditor(roleKey) || isManagerRole(roleKey);
   const canEditDeadline = canApprove || isManagerRole(roleKey) || canManageTeam;
@@ -161,6 +173,8 @@ export default function TaskModal({
     setTitleDraft(fresh.title || "");
     setContentDraft(fresh.content || "");
     setRemarks(fresh.remarks || "");
+    setReferenceLinks((fresh as any).reference_links || "");
+    setPlatformsDraft(fresh.platforms || []);
     setDeadlineDraft(fresh.due_date || "");
     setPriorityDraft(fresh.priority || "medium");
     setEditedBy(
@@ -222,6 +236,20 @@ export default function TaskModal({
         if (!silent) toast("Content saved.");
       } else {
         toast(res.error || "Could not save the content.", "error");
+      }
+    },
+    [toast]
+  );
+
+  const persistLinks = useCallback(
+    async (silent: boolean) => {
+      if (linksRef.current === (taskRef.current as any).reference_links) return;
+      const res = await setPipelineTaskReferenceLinksAction(taskRef.current.id, linksRef.current);
+      if (res.ok) {
+        setTask((prev) => ({ ...prev, reference_links: linksRef.current } as any));
+        if (!silent) toast("Reference links saved.");
+      } else {
+        toast(res.error || "Could not save links.", "error");
       }
     },
     [toast]
@@ -344,6 +372,51 @@ export default function TaskModal({
     });
   };
 
+  const startTask = () => {
+    startTransition(async () => {
+      const res = await startPipelineTaskAction(task.id);
+      if (!res.ok) { toast(res.error || "Could not start.", "error"); return; }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      toast("Task started.");
+    });
+  };
+
+  const togglePlatform = (p: string) => {
+    setPlatformsDraft((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+  };
+
+  const markUploaded = () => {
+    if (platformsDraft.length === 0) { toast("Select at least one platform.", "error"); return; }
+    startTransition(async () => {
+      const res = await markPipelineTaskUploadedAction(task.id, platformsDraft);
+      if (!res.ok) { toast(res.error || "Could not mark uploaded.", "error"); return; }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id)
+        || (await getPipelineBoardAction()).completed.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      else onClose();
+      toast("Marked as uploaded.");
+    });
+  };
+
+  const sendBackClient = () => {
+    if (!clientFeedback.trim()) {
+      toast("Please enter client feedback.", "error");
+      return;
+    }
+    startTransition(async () => {
+      const res = await sendBackWithClientFeedbackAction(task.id, clientFeedback);
+      if (!res.ok) { toast(res.error || "Could not send back.", "error"); return; }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      setClientFeedback("");
+      toast("Client feedback sent back.");
+    });
+  };
+
   // Submit for Review (Employee): persist remarks, then flag the task as
   // `submitted` for the QC gatekeeper. The stageIndex does NOT advance - the
   // assignee keeps the task until an Admin/PM approves or rejects it.
@@ -400,6 +473,8 @@ export default function TaskModal({
   const isGatekeeper = canApprove || isManagerRole(roleKey);
   const isSubmitted = task.status === "submitted";
   const isCompleted = task.status === "completed";
+  const isAssignee = !!userId && task.assigned_to === userId;
+  const mustStart = task.status === "approved" && isAssignee;
   const step = task.current_step ?? 0;
   const seq = task.assignees || [];
   const activeIdx = seq.length === 0 ? 0 : Math.min(step, seq.length - 1);
@@ -632,6 +707,74 @@ export default function TaskModal({
             </p>
           </section>
 
+          {/* ---- Reference Links / Google Drive ---- */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Reference Links / Google Drive
+            </p>
+            <p className="text-[11px] text-slate-500 mb-2">Paste reference URLs, Drive links – one per line.</p>
+            <textarea
+              value={referenceLinks}
+              onChange={(e) => setReferenceLinks(e.target.value)}
+              onBlur={() => persistLinks(true)}
+              rows={3}
+              placeholder="https://drive.google.com/...
+https://reference-link.com/..."
+              className="input !py-2.5 text-sm resize-none"
+            />
+            <button type="button" disabled={isPending} onClick={() => persistLinks(false)} className="btn-primary w-full mt-2 !py-2 text-sm">
+              <Save className="h-4 w-4" /> Save Links
+            </button>
+            {referenceLinks.trim() && (
+              <div className="mt-2 space-y-1">
+                {referenceLinks.split("\n").filter(Boolean).map((l: string, i: number) => (
+                  <a key={i} href={l.trim()} target="_blank" rel="noopener noreferrer" className="block text-xs text-brand-300 hover:text-brand-200 truncate underline">
+                    {l.trim()}
+                  </a>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ---- Uploaded Platforms ---- */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+              Uploaded Platforms
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {["Instagram", "Facebook", "YouTube", "LinkedIn", "Twitter/X", "Pinterest", "Threads", "Website"].map((pl: string) => (
+                <label key={pl} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs cursor-pointer ${platformsDraft.includes(pl) ? "border-brand-300 bg-brand-300/10 text-brand-300" : "border-white/10 bg-white/[0.02] text-slate-400"}`}>
+                  <input type="checkbox" checked={platformsDraft.includes(pl)} onChange={() => togglePlatform(pl)} className="h-3.5 w-3.5 accent-brand-300" />
+                  {pl}
+                </label>
+              ))}
+            </div>
+            <button type="button" disabled={isPending} onClick={markUploaded} className="btn-primary w-full mt-3 !py-2 text-sm">
+              <Check className="h-4 w-4" /> Mark as Uploaded
+            </button>
+            {task.platforms?.length ? <p className="text-[11px] text-slate-500 mt-2">Current: {task.platforms.join(", ")}</p> : null}
+          </section>
+
+          {/* ---- Client Feedback ---- */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Client Feedback
+            </p>
+            {task.client_feedback ? (
+              <div className="mb-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2">
+                <p className="text-[11px] font-semibold text-amber-300">Previous feedback</p>
+                <p className="text-xs text-amber-100 mt-1 whitespace-pre-wrap">{task.client_feedback}</p>
+              </div>
+            ) : null}
+            <div className="p-3 rounded-lg border border-white/10 bg-white/[0.02]">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Client Feedback (SMM → Designer)</p>
+              <textarea value={clientFeedback} onChange={(e) => setClientFeedback(e.target.value)} rows={2} placeholder="Client ne su kidhu te lakho..." className="input !py-2 text-xs resize-none" />
+              <button type="button" disabled={isPending} onClick={sendBackClient} className="btn-ghost w-full mt-2 !py-1.5 text-xs border border-amber-400/30 text-amber-300">
+                <Undo2 className="h-3.5 w-3.5" /> Send Back with Client Feedback
+              </button>
+            </div>
+          </section>
+
           {/* ---- Stages (single UI like hiring stages) ---- */}
           <section>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
@@ -775,7 +918,33 @@ export default function TaskModal({
             )}
           </section>
 
-          {/* ---- Actions: Gatekeeper vs Employee ---- */}
+          {/* ---- Mandatory Start (only assignee) ---- */}
+          {mustStart && (
+            <section className="rounded-xl border border-brand-300/40 bg-brand-300/10 p-3">
+              <button type="button" disabled={isPending} onClick={startTask} className="btn-primary w-full !py-2.5 text-sm">
+                <Layers className="h-4 w-4" /> Start Task
+              </button>
+              <p className="text-[11px] text-slate-500 mt-1.5 text-center">Tap Start to begin work (approved → in_progress) — only assigned person</p>
+            </section>
+          )}
+          {/* ---- Super Admin / PM 3-button row (old full view) ---- */}
+          {isGatekeeper && !isCompleted && (
+            <section>
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" disabled={isPending} onClick={sendBack} className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-2 py-2.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/15 transition-colors disabled:opacity-50">
+                  <Undo2 className="h-3.5 w-3.5" /> Send Back
+                </button>
+                <button type="button" disabled={isPending} onClick={approveWork} className="flex items-center justify-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-400/10 px-2 py-2.5 text-xs font-semibold text-sky-300 hover:bg-sky-400/15 transition-colors disabled:opacity-50">
+                  <ArrowRight className="h-3.5 w-3.5" /> Move Forward
+                </button>
+                <button type="button" disabled={isPending} onClick={approveWork} className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500 text-night-950 px-2 py-2.5 text-xs font-bold hover:bg-emerald-400 transition-colors disabled:opacity-50 shadow-sm">
+                  <Check className="h-3.5 w-3.5" /> Complete
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1.5 text-center">Send Back • Move Forward (A→B→C) • Complete this task</p>
+            </section>
+          )}
+          {/* ---- Actions: remaining for non-gatekeeper ---- */}
           <section className="space-y-2.5">
             {isCompleted ? (
               <div className="rounded-xl border border-emerald-300/30 bg-emerald-400/[0.07] p-3">
@@ -791,41 +960,7 @@ export default function TaskModal({
                   </button>
                 )}
               </div>
-            ) : isGatekeeper ? (
-              <>
-                <div className="rounded-xl border border-violet-300/30 bg-violet-400/[0.07] p-3 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-white flex items-center gap-1.5">
-                      <Check className="h-4 w-4 text-violet-300" />{" "}
-                      Complete this task
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {isSubmitted
-                        ? "Approves the submitted work - auto-assigns the next member (A->B->C)."
-                        : "Completes this stage - auto-assigns the next member (A->B->C)."}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={approveWork}
-                    className="btn-primary !py-2 text-sm shrink-0"
-                  >
-                    <Check className="h-4 w-4" /> Complete this task
-                  </button>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={sendBack}
-                    className="btn-ghost text-sm !px-3 !py-2"
-                  >
-                    <Undo2 className="h-4 w-4" /> Send Back
-                  </button>
-                </div>
-              </>
-            ) : isSubmitted ? (
+            ) : !isGatekeeper && isSubmitted ? (
               <div className="rounded-xl border border-violet-300/30 bg-violet-400/[0.07] p-3">
                 <p className="text-sm font-medium text-white flex items-center gap-1.5">
                   <Clock className="h-4 w-4 text-violet-300" /> Submitted - Awaiting Review

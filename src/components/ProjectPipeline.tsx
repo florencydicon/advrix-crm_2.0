@@ -1283,9 +1283,9 @@ export default function ProjectPipeline({
         </div>
       )}
 
-      {/* Full modal — List tab uses same TaskModal (with 3-button row + Start) */}
+      {/* Full modal — List tab uses old full-view modal (TaskModalFull) with 3-button row */}
       {activeTask && (
-        <TaskModal
+        <TaskModalFull
           key={activeTask.id}
           task={activeTask}
           team={team}
