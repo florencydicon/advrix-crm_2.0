@@ -4,6 +4,20 @@ import { useState, useEffect } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -109,31 +123,51 @@ export function DatePicker({
         )}
       </div>
 
-      {/* Centered popup — horizontally & vertically middle of the viewport */}
+      {/* Centered popup — horizontally & vertically middle of the viewport - WHOLE calendar with year/month pickers */}
       {open && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="relative w-80 max-w-full rounded-2xl border border-white/10 bg-night-850 p-4 shadow-2xl shadow-black/50">
-            <div className="flex items-center justify-between mb-3">
-              <button type="button" onClick={prev} className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+            <div className="flex items-center gap-1 mb-3">
+              <button type="button" onClick={prev} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0" aria-label="Previous month">
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <p className="text-sm font-semibold text-white">
-                {new Date(view.y, view.m, 1).toLocaleDateString([], { month: "long", year: "numeric" })}
-              </p>
-              <div className="flex items-center gap-1">
-                <button type="button" onClick={next} className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                  title="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+              <select
+                value={view.m}
+                onChange={(e) => setView((v) => ({ ...v, m: Number(e.target.value) }))}
+                className="flex-1 min-w-0 rounded-lg border border-white/10 bg-night-900 px-2 py-1.5 text-sm font-semibold text-white focus:outline-none focus:ring-1 focus:ring-brand-300/30"
+                aria-label="Select month"
+              >
+                {MONTHS.map((label, idx) => (
+                  <option key={label} value={idx} className="bg-night-900">
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={view.y}
+                onChange={(e) => setView((v) => ({ ...v, y: Number(e.target.value) }))}
+                className="w-[88px] shrink-0 rounded-lg border border-white/10 bg-night-900 px-2 py-1.5 text-sm font-semibold text-white focus:outline-none focus:ring-1 focus:ring-brand-300/30"
+                aria-label="Select year"
+              >
+                {Array.from({ length: 16 }, (_, i) => 2020 + i).map((yr) => (
+                  <option key={yr} value={yr} className="bg-night-900">
+                    {yr}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={next} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0" aria-label="Next month">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors shrink-0"
+                title="Close"
+                aria-label="Close calendar"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
             <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
@@ -172,14 +206,29 @@ export function DatePicker({
               })}
             </div>
 
-            <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/10">
-              <span className="text-[10px] text-slate-500">
-                {required && !internal ? "Required — pick a date" : internal ? `Selected: ${formatted}` : "Pick a date"}
-              </span>
+            <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/10 gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const t = new Date();
+                    setView({ y: t.getFullYear(), m: t.getMonth() });
+                    const iso = toIso(t);
+                    setInternal(iso);
+                    onChange?.(iso);
+                  }}
+                  className="text-[11px] font-semibold text-white bg-white/10 hover:bg-white/15 px-2.5 py-1 rounded-lg transition-colors"
+                >
+                  Today
+                </button>
+                <span className="text-[10px] text-slate-500 hidden sm:inline">
+                  {required && !internal ? "Required — pick a date" : internal ? `Selected: ${formatted}` : "Pick a date"}
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-[11px] font-semibold text-brand-300 hover:text-brand-200 px-2 py-1 rounded-lg hover:bg-brand-300/10 transition-colors"
+                className="text-[11px] font-semibold text-brand-300 hover:text-brand-200 px-2 py-1 rounded-lg hover:bg-brand-300/10 transition-colors shrink-0"
               >
                 Done
               </button>
