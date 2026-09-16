@@ -103,6 +103,7 @@ export default function TaskModal({
   canManageTeam,
   canApprove,
   roleKey,
+  userId,
   onClose,
   refresh,
   siblingTasks,
@@ -115,6 +116,7 @@ export default function TaskModal({
   canManageTeam: boolean;
   canApprove: boolean;
   roleKey?: string | null;
+  userId?: string | null;
   onClose: () => void;
   refresh: () => Promise<void>;
   siblingTasks?: Task[];
@@ -423,8 +425,9 @@ export default function TaskModal({
   const heading = titleDraft.trim() || task.title || "Untitled task";
   const isGatekeeper = canApprove || isManagerRole(roleKey);
   const isSubmitted = task.status === "submitted";
-  const mustStart = task.status === "approved";
-  const canSubmit = ["in_progress", "needs_improvement", "client_feedback"].includes(task.status);
+  const isAssignee = !!userId && task.assigned_to === userId;
+  const mustStart = task.status === "approved" && isAssignee;
+  const canSubmit = ["in_progress", "needs_improvement", "client_feedback"].includes(task.status) && isAssignee;
   const step = task.current_step ?? 0;
   const seq = task.assignees || [];
   const activeIdx = seq.length === 0 ? 0 : Math.min(step, seq.length - 1);

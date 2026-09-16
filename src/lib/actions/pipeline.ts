@@ -1066,7 +1066,7 @@ export async function startPipelineTaskAction(taskId: string): Promise<{ ok: boo
   const task = await taskOf(taskId);
   if (!task) return { ok: false, error: "Task not found." };
   const isAssignee = task.assigned_to === session.sub;
-  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) return { ok: false, error: "Not your task." };
+  if (!isAssignee) return { ok: false, error: "Only the assigned person can start this task." };
   if (task.status !== "approved") return { ok: false, error: "Task already started." };
   await query(`UPDATE tasks SET status = 'in_progress' WHERE id = $1`, [taskId]);
   revalidate();

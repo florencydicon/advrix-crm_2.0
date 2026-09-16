@@ -116,6 +116,7 @@ const PipelineActiveRow = memo(function PipelineActiveRow({
   onOpen,
   onToggleSelect,
   onStart,
+  currentUserId,
 }: {
   t: Task;
   isManager: boolean;
@@ -123,6 +124,7 @@ const PipelineActiveRow = memo(function PipelineActiveRow({
   onOpen: (t: Task) => void;
   onToggleSelect: (id: string) => void;
   onStart: (id: string) => void;
+  currentUserId: string | null;
 }) {
   const overdue = isOverdue(t);
   const sub = t.status === "submitted";
@@ -156,12 +158,12 @@ const PipelineActiveRow = memo(function PipelineActiveRow({
           <div className="max-w-[260px] truncate text-sm font-medium text-white">{t.title}</div>
           {t.status === "submitted" && <QcPill />}
           {t.status === "client_feedback" && <ClientFeedbackPill />}
-          {t.status === "approved" && (
+          {t.status === "approved" && t.assigned_to === currentUserId && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onStart(t.id); }}
               className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2 py-0.5 text-[10px] font-bold hover:bg-brand-200 transition-colors shrink-0"
-              title="Start Task"
+              title="Start Task - only assignee"
             >
               <Layers className="h-3 w-3" /> Start
             </button>
@@ -260,6 +262,7 @@ const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
   onOpen,
   onToggleSelect,
   onStart,
+  currentUserId,
 }: {
   t: Task;
   isManager: boolean;
@@ -267,6 +270,7 @@ const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
   onOpen: (t: Task) => void;
   onToggleSelect: (id: string) => void;
   onStart: (id: string) => void;
+  currentUserId: string | null;
 }) {
   const overdue = isOverdue(t);
   return (
@@ -308,7 +312,7 @@ const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
         {t.status === "submitted" && <QcPill />}
         {t.status === "client_feedback" && <ClientFeedbackPill />}
-        {t.status === "approved" && (
+        {t.status === "approved" && t.assigned_to === currentUserId && (
           <button type="button" onClick={(e)=>{e.stopPropagation(); onStart(t.id);}} className="inline-flex items-center gap-1 rounded-full bg-brand-300 text-night-950 px-2 py-0.5 text-[10px] font-bold hover:bg-brand-200"><Layers className="h-3 w-3" /> Start</button>
         )}
         <StatusBadge status={t.status} />
@@ -762,6 +766,7 @@ export default function ProjectPipeline({
                 onOpen={openActive}
                 onToggleSelect={toggleSelectId}
                 onStart={handleStart}
+                currentUserId={board.userId}
               />
             ))}
           </tbody>
@@ -820,6 +825,7 @@ export default function ProjectPipeline({
           onOpen={openActive}
           onToggleSelect={toggleSelectId}
           onStart={handleStart}
+          currentUserId={board.userId}
         />
       ))}
     </div>
@@ -986,6 +992,7 @@ export default function ProjectPipeline({
             canManageTeam={board.canManage}
             canApprove={board.canApprove}
             roleKey={board.roleKey}
+            userId={board.userId}
             onClose={() => {
               setProjectTask(null);
               setOpenProject(null);
@@ -1276,9 +1283,9 @@ export default function ProjectPipeline({
         </div>
       )}
 
-      {/* Old full modal — only for List tab */}
+      {/* Full modal — List tab uses same TaskModal (with 3-button row + Start) */}
       {activeTask && (
-        <TaskModalFull
+        <TaskModal
           key={activeTask.id}
           task={activeTask}
           team={team}
@@ -1286,6 +1293,7 @@ export default function ProjectPipeline({
           canManageTeam={board.canManage}
           canApprove={board.canApprove}
           roleKey={board.roleKey}
+          userId={board.userId}
           onClose={() => setActiveTask(null)}
           refresh={reload}
         />
