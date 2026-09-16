@@ -159,7 +159,8 @@ async function allocateTasksForRole(projectId: string, roleKey: string, userId: 
 export async function generateDeliverableTasks(
   projectId: string,
   customTitles?: Record<string, string[]>,
-  priority: string = "medium"
+  priority: string = "medium",
+  referenceLinksMap?: Record<string, string[]>
 ) {
   try {
     const deliverables = await query<DeliverableRow>(
@@ -181,6 +182,7 @@ export async function generateDeliverableTasks(
       groupKey: string;
       title: string;
       description: string;
+      refLink: string | null;
     }[] = [];
     for (const d of deliverables) {
       const label = d.is_custom && d.custom_label ? d.custom_label : d.category_label;
@@ -189,11 +191,16 @@ export async function generateDeliverableTasks(
         // Use custom title if provided for this deliverable+index (for sub-task title editing UX)
         const customForKey = customTitles?.[d.category_key] || (d.is_custom && d.custom_label ? customTitles?.[`custom:${d.custom_label}`] : undefined);
         const title = customForKey?.[i - 1]?.trim() ? customForKey[i - 1].trim().slice(0, 200) : `${label} ${pad(i)}`;
+        const refForKey = referenceLinksMap?.[d.category_key] || (d.is_custom && d.custom_label ? referenceLinksMap?.[`custom:${d.custom_label}`] : undefined);
+        const refLink = refForKey?.[i - 1]?.trim() || null;
         const existingId = existingById.get(stepKey);
         if (existingId) {
           // If custom title provided for existing task, update it (allows editing at creation time)
           if (customForKey?.[i - 1]?.trim()) {
             await query(`UPDATE tasks SET title = $1 WHERE id = $2`, [title, existingId]);
+          }
+          if (refLink) {
+            await query(`UPDATE tasks SET reference_links = $1 WHERE id = $2`, [refLink, existingId]);
           }
           // Sync priority when it changed at creation time
           if (priority && priority !== "medium") {
@@ -206,6 +213,7 @@ export async function generateDeliverableTasks(
           groupKey: d.category_key,
           title,
           description: `Unified deliverable "${title}". This task flows sequentially through the assigned team — each member starts, submits, and is approved before the next hand-off.`,
+          refLink,
         });
       }
     }
@@ -214,14 +222,14 @@ export async function generateDeliverableTasks(
       const values: unknown[] = [];
       const tuples: string[] = [];
       toInsert.forEach((t, i) => {
-        const base = i * 6;
-        values.push(projectId, t.stepKey, t.groupKey, t.title, t.description, priority);
+        const base = i * 7;
+        values.push(projectId, t.stepKey, t.groupKey, t.title, t.description, priority, t.refLink);
         tuples.push(
-          `($${base + 1}, $${base + 2}, $${base + 3}, NULL, NULL, 1, $${base + 4}, $${base + 5}, NULL, 'approved', $${base + 6}, NULL, NULL, now())`
+          `($${base + 1}, $${base + 2}, $${base + 3}, NULL, NULL, 1, $${base + 4}, $${base + 5}, NULL, 'approved', $${base + 6}, NULL, NULL, now(), $${base + 7})`
         );
       });
       await query(
-        `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by, brief_approved_at)
+        `INSERT INTO tasks (project_id, step_key, group_key, role_key, deliverable_id, sequence, title, description, content, status, priority, assigned_to, created_by, brief_approved_at, reference_links)
          VALUES ${tuples.join(", ")}`,
         values
       );

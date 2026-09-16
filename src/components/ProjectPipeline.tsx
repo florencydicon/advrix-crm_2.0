@@ -28,6 +28,7 @@ import {
   bulkDeletePipelineTasksAction,
   bulkSetPipelineStatusAction,
   bulkSetPipelineStageAction,
+  bulkSetPipelineDeadlineAction,
   bulkMoveBackPipelineTasksAction,
   bulkMoveBackToStageAction,
   moveBackPipelineTaskAction,
@@ -93,6 +94,13 @@ function QcPill() {
     </span>
   );
 }
+function ClientFeedbackPill() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400/50 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+      <AlertTriangle className="h-3 w-3" /> Client Feedback
+    </span>
+  );
+}
 
 // --- Memoized row components ------------------------------------------------
 // Rows re-render on every board-poll; memoizing lets a checkbox toggle / filter
@@ -144,6 +152,7 @@ const PipelineActiveRow = memo(function PipelineActiveRow({
         <div className="flex items-center gap-2">
           <div className="max-w-[260px] truncate text-sm font-medium text-white">{t.title}</div>
           {t.status === "submitted" && <QcPill />}
+          {t.status === "client_feedback" && <ClientFeedbackPill />}
           {overdue && (
             <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" aria-label="Overdue" />
           )}
@@ -283,6 +292,7 @@ const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
       </div>
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
         {t.status === "submitted" && <QcPill />}
+        {t.status === "client_feedback" && <ClientFeedbackPill />}
         <StatusBadge status={t.status} />
         <DeadlineBadge task={t} />
         <PriorityBadge priority={t.priority} />
@@ -364,7 +374,24 @@ export default function ProjectPipeline({
   }, []);
 
   // Active board layout: grouped by project (default) or flat list.
-  const [view, setView] = useState<"projects" | "list">("projects");
+  // Default view is always "projects" for both mobile and web; persisted in localStorage.
+  const [view, setView] = useState<"projects" | "list">(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("advrix.pipeline.view");
+      if (saved === "projects" || saved === "list") return saved;
+    }
+    return "projects";
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("advrix.pipeline.view", view);
+    } catch {}
+  }, [view]);
+  // Force default to projects on first mount if no saved preference
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("advrix.pipeline.view") : null;
+    if (!saved) setView("projects");
+  }, []);
   // Project whose subtasks are open in the modal.
   const [openProject, setOpenProject] = useState<{ projectId: string; projectName: string } | null>(null);
   // Selected task inside the Projects unified modal (navigation within single modal)
@@ -544,6 +571,42 @@ export default function ProjectPipeline({
       return;
     }
     notify(`Moved ${res.count} task${res.count === 1 ? "" : "s"} to new stage.`);
+    setSelected([]);
+    await reload();
+  };
+
+  const bulkDeadline = async (date: string | null) => {
+    const res = await bulkSetPipelineDeadlineAction(selected, date);
+    if (!res.ok) {
+      notify(res.error || "Bulk deadline failed.");
+      return;
+    }
+    notify(date ? `Deadline set for ${res.count} task${res.count === 1 ? "" : "s"}.` : `Deadline cleared for ${res.count} task${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await reload();
+  };
+
+  const bulkTitles = async (lines: string[]) => {
+    const { bulkSetPipelineTitlesAction } = await import("@/lib/actions/pipeline");
+    const res = await bulkSetPipelineTitlesAction(selected, lines);
+    if (!res.ok) { notify(res.error || "Bulk title failed."); return; }
+    notify(`Updated ${res.count} title${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await reload();
+  };
+  const bulkContents = async (lines: string[]) => {
+    const { bulkSetPipelineContentsAction } = await import("@/lib/actions/pipeline");
+    const res = await bulkSetPipelineContentsAction(selected, lines);
+    if (!res.ok) { notify(res.error || "Bulk content failed."); return; }
+    notify(`Updated ${res.count} content${res.count === 1 ? "" : "s"}.`);
+    setSelected([]);
+    await reload();
+  };
+  const bulkLinks = async (lines: string[]) => {
+    const { bulkSetPipelineReferenceLinksAction } = await import("@/lib/actions/pipeline");
+    const res = await bulkSetPipelineReferenceLinksAction(selected, lines);
+    if (!res.ok) { notify(res.error || "Bulk links failed."); return; }
+    notify(`Updated ${res.count} link${res.count === 1 ? "" : "s"}.`);
     setSelected([]);
     await reload();
   };
@@ -1030,12 +1093,12 @@ export default function ProjectPipeline({
 
       {/* Tabs + Filters */}
       <div className="mb-4 shrink-0 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1 sm:pb-0">
             <button
               type="button"
               onClick={() => setTab("active")}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors shrink-0 ${
                 tab === "active"
                   ? "bg-brand-300 text-night-950"
                   : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
@@ -1050,7 +1113,7 @@ export default function ProjectPipeline({
             <button
               type="button"
               onClick={() => setTab("history")}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors shrink-0 ${
                 tab === "history"
                   ? "bg-brand-300 text-night-950"
                   : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
@@ -1062,31 +1125,33 @@ export default function ProjectPipeline({
                 {completedCount}
               </span>
             </button>
-            {tab === "active" && (
-              <div className="ml-3 flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10">
-                <button
-                  type="button"
-                  onClick={() => setView("projects")}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                    view === "projects" ? "bg-brand-300 text-night-950" : "text-slate-300 hover:bg-white/[0.06]"
-                  }`}
-                >
-                  <FolderKanban className="h-3.5 w-3.5" />
-                  Projects
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView("list")}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                    view === "list" ? "bg-brand-300 text-night-950" : "text-slate-300 hover:bg-white/[0.06]"
-                  }`}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  List
-                </button>
-              </div>
-            )}
           </div>
+          {tab === "active" && (
+            <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10 shrink-0 self-start sm:self-auto sm:ml-auto">
+              <button
+                type="button"
+                onClick={() => setView("projects")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  view === "projects" ? "bg-brand-300 text-night-950" : "text-slate-300 hover:bg-white/[0.06]"
+                }`}
+                aria-pressed={view === "projects"}
+              >
+                <FolderKanban className="h-3.5 w-3.5" />
+                Projects
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  view === "list" ? "bg-brand-300 text-night-950" : "text-slate-300 hover:bg-white/[0.06]"
+                }`}
+                aria-pressed={view === "list"}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                List
+              </button>
+            </div>
+          )}
         </div>
 
         <AdvancedFilterBar api={af} />
@@ -1126,11 +1191,17 @@ export default function ProjectPipeline({
                     canAssign
                     canDelete
                     canStage={canBulkStage}
+                    canDeadline={isManager}
+                    canBulkEdit={isManager}
                     statusOptions={[]}
                     onAssign={bulkAssign}
                     onDelete={bulkDelete}
                     onStatus={async () => {}}
                     onStage={bulkStage}
+                    onDeadline={bulkDeadline}
+                    onBulkTitles={bulkTitles}
+                    onBulkContents={bulkContents}
+                    onBulkLinks={bulkLinks}
                     stageOptions={stageCandidates}
                     onClear={() => setSelected([])}
                   />

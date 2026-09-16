@@ -23,11 +23,24 @@ const TYPE_COLORS: Record<string, string> = {
   system: "text-slate-300",
 };
 
+function parseDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  let s = dateStr.trim();
+  if (s.includes(" ") && !s.includes("T")) s = s.replace(" ", "T");
+  if (!s.endsWith("Z") && !s.match(/[+-]\d{2}:?\d{2}$/) && !s.match(/[+-]\d{4}$/)) {
+    if (!s.includes("Z")) s = s + "Z";
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  const d2 = new Date(dateStr);
+  if (!isNaN(d2.getTime())) return d2;
+  return null;
+}
 function timeAgo(dateStr: string) {
-  let d = new Date(dateStr);
-  if (isNaN(d.getTime()) && dateStr) d = new Date(dateStr + "Z");
-  if (isNaN(d.getTime())) return dateStr;
+  const d = parseDate(dateStr);
+  if (!d) return dateStr;
   const diff = Math.round((Date.now() - d.getTime()) / 1000);
+  if (diff < 0) return "just now";
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -35,8 +48,9 @@ function timeAgo(dateStr: string) {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 }
 function formatIST(dateStr: string) {
+  const d = parseDate(dateStr);
+  if (!d) return dateStr;
   try {
-    const d = new Date(dateStr.endsWith("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z");
     return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   } catch { return dateStr; }
 }
@@ -50,6 +64,12 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
   // Live list seeded from the server prop — refreshed by polling below so the
   // page, the bell dropdown, and the sidebar badge always agree.
   const [live, setLive] = useState<Notification[]>(notifications);
+  // Force re-render every minute so timeAgo stays accurate without hard refresh
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(v => v + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
   const TOASTED_KEY = "advrix.toastedIds";
   // Hydrate persisted read set so Mark all remains sticky across refresh for all roles
   useEffect(() => {

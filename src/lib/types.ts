@@ -210,18 +210,19 @@ export interface Task {
   review_comment: string | null;
   client_feedback: string | null;
   platforms: string[];
-   reviewed_by: string | null;
-   reviewed_at: string | null;
-   due_date: string | null;
-   on_leave_note: string | null;
-   remarks: string | null;
-   remarks_edited_by: string | null;
-   remarks_edited_by_name: string | null;
-   remarks_edited_by_role: string | null;
-   remarks_edited_at: string | null;
-   content_status: ContentStatus | string | null;
-   created_at: string;
-   completed_at: string | null;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    due_date: string | null;
+    on_leave_note: string | null;
+    remarks: string | null;
+    remarks_edited_by: string | null;
+    remarks_edited_by_name: string | null;
+    remarks_edited_by_role: string | null;
+    remarks_edited_at: string | null;
+    reference_links: string | null;
+    content_status: ContentStatus | string | null;
+    created_at: string;
+    completed_at: string | null;
 }
 
 export interface WorkflowGroup {

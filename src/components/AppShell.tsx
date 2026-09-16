@@ -47,7 +47,6 @@ const NAV: NavItem[] = [
   { href: "/attendance", label: "Attendance", icon: Clock },
   { href: "/updates", label: "Updates", icon: Bell },
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
-  { href: "/content", label: "Content Management", icon: FileText, anyPermission: ["tasks:execute", "tasks:manage", "tasks:review"] },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
   { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
@@ -97,11 +96,29 @@ function getCollapsedServerSnapshot() {
   return false; // Always expanded on server — matches useState(false)
 }
 
+function parseDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  // Postgres timestamptz comes as ISO string; handle both "2026-09-16 09:41:00" and "2026-09-16T09:41:00.000Z"
+  let s = dateStr.trim();
+  // If it contains space but no T, replace first space with T for ISO
+  if (s.includes(" ") && !s.includes("T")) s = s.replace(" ", "T");
+  // If no timezone info, assume UTC
+  if (!s.endsWith("Z") && !s.match(/[+-]\d{2}:?\d{2}$/) && !s.match(/[+-]\d{4}$/)) {
+    // If string already has Z, don't add again
+    if (!s.includes("Z")) s = s + "Z";
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  // Fallback: try original
+  const d2 = new Date(dateStr);
+  if (!isNaN(d2.getTime())) return d2;
+  return null;
+}
 function timeAgo(dateStr: string) {
-  let d = new Date(dateStr);
-  if (isNaN(d.getTime()) && dateStr) d = new Date(dateStr + "Z");
-  if (isNaN(d.getTime())) return dateStr;
+  const d = parseDate(dateStr);
+  if (!d) return dateStr;
   const diff = Math.round((Date.now() - d.getTime()) / 1000);
+  if (diff < 0) return "just now";
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -109,8 +126,9 @@ function timeAgo(dateStr: string) {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 }
 function formatIST(dateStr: string) {
+  const d = parseDate(dateStr);
+  if (!d) return dateStr;
   try {
-    const d = new Date(dateStr.endsWith("Z") || dateStr.includes("+") ? dateStr : dateStr + "Z");
     return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   } catch { return dateStr; }
 }
@@ -141,6 +159,12 @@ export default function AppShell({
   const awayAt = useRef<number | null>(null);
   const unreadRef = useRef(unread);
   unreadRef.current = unread;
+  // Tick every minute so timeAgo in bell stays fresh without poll
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(v => v + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   /**
    * Global "Upcoming Deadline" alerts: asks the server for the current user's

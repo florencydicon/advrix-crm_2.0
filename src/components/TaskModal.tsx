@@ -38,6 +38,11 @@ import {
   deletePipelineTaskAction,
   bulkSetPipelineDeadlineAction,
   getPipelineBoardAction,
+  setPipelineTaskReferenceLinksAction,
+  sendBackWithClientFeedbackAction,
+  startPipelineTaskAction,
+  setPipelineTaskPlatformsAction,
+  markPipelineTaskUploadedAction,
 } from "@/lib/actions/pipeline";
 
 function initials(name?: string | null) {
@@ -89,7 +94,7 @@ function MarqueeHeading({ text }: { text: string }) {
   );
 }
 
-type SectionKey = "deadline" | "title" | "priority" | "content" | "remarks" | "team" | null;
+type SectionKey = "deadline" | "title" | "priority" | "content" | "remarks" | "links" | "upload" | "team" | null;
 
 export default function TaskModal({
   task: initialTask,
@@ -121,6 +126,9 @@ export default function TaskModal({
   const [titleDraft, setTitleDraft] = useState(initialTask.title || "");
   const [contentDraft, setContentDraft] = useState(initialTask.content || "");
   const [remarks, setRemarks] = useState(initialTask.remarks || "");
+  const [referenceLinks, setReferenceLinks] = useState((initialTask as any).reference_links || "");
+  const [clientFeedback, setClientFeedback] = useState("");
+  const [platformsDraft, setPlatformsDraft] = useState<string[]>(initialTask.platforms || []);
   const [deadlineDraft, setDeadlineDraft] = useState(initialTask.due_date || "");
   const [priorityDraft, setPriorityDraft] = useState(initialTask.priority || "medium");
   const [editedBy, setEditedBy] = useState<{ name: string; role: string; at: string } | null>(
@@ -148,6 +156,8 @@ export default function TaskModal({
   contentRef.current = contentDraft;
   const remarksRef = useRef(remarks);
   remarksRef.current = remarks;
+  const linksRef = useRef(referenceLinks);
+  linksRef.current = referenceLinks;
 
   const canEditContent = canApprove || isContentEditor(roleKey) || isManagerRole(roleKey);
   const canEditDeadline = canApprove || isManagerRole(roleKey) || canManageTeam;
@@ -159,6 +169,8 @@ export default function TaskModal({
     setTitleDraft(fresh.title || "");
     setContentDraft(fresh.content || "");
     setRemarks(fresh.remarks || "");
+    setReferenceLinks((fresh as any).reference_links || "");
+    setPlatformsDraft(fresh.platforms || []);
     setDeadlineDraft(fresh.due_date || "");
     setPriorityDraft(fresh.priority || "medium");
     setEditedBy(
@@ -214,6 +226,20 @@ export default function TaskModal({
         if (!silent) toast("Content saved.");
       } else {
         toast(res.error || "Could not save the content.", "error");
+      }
+    },
+    [toast]
+  );
+
+  const persistLinks = useCallback(
+    async (silent: boolean) => {
+      if (linksRef.current === (taskRef.current as any).reference_links) return;
+      const res = await setPipelineTaskReferenceLinksAction(taskRef.current.id, linksRef.current);
+      if (res.ok) {
+        setTask((prev) => ({ ...prev, reference_links: linksRef.current } as any));
+        if (!silent) toast("Reference links saved.");
+      } else {
+        toast(res.error || "Could not save links.", "error");
       }
     },
     [toast]
@@ -313,6 +339,50 @@ export default function TaskModal({
       const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id);
       if (fresh) applyFresh(fresh);
       toast("Sent back for rework.");
+    });
+  };
+
+  const sendBackClient = () => {
+    if (!clientFeedback.trim()) {
+      toast("Please enter client feedback.", "error");
+      return;
+    }
+    startTransition(async () => {
+      const res = await sendBackWithClientFeedbackAction(task.id, clientFeedback);
+      if (!res.ok) { toast(res.error || "Could not send back.", "error"); return; }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      setClientFeedback("");
+      toast("Client feedback sent back.");
+    });
+  };
+
+  const startTask = () => {
+    startTransition(async () => {
+      const res = await startPipelineTaskAction(task.id);
+      if (!res.ok) { toast(res.error || "Could not start.", "error"); return; }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      toast("Task started.");
+    });
+  };
+
+  const togglePlatform = (p: string) => {
+    setPlatformsDraft(prev => prev.includes(p) ? prev.filter(x=>x!==p) : [...prev, p]);
+  };
+
+  const markUploaded = () => {
+    if (platformsDraft.length === 0) { toast("Select at least one platform.", "error"); return; }
+    startTransition(async () => {
+      const res = await markPipelineTaskUploadedAction(task.id, platformsDraft);
+      if (!res.ok) { toast(res.error || "Could not mark uploaded.", "error"); return; }
+      await refresh();
+      const fresh = (await getPipelineBoardAction()).active.find((t) => t.id === task.id) || (await getPipelineBoardAction()).completed.find((t) => t.id === task.id);
+      if (fresh) applyFresh(fresh);
+      else onClose();
+      toast("Marked as uploaded.");
     });
   };
 
@@ -453,6 +523,37 @@ export default function TaskModal({
               <textarea value={remarks} onChange={e=>setRemarks(e.target.value)} rows={3} placeholder="Notes, feedback…" className="input !py-2.5 text-sm resize-none" />
               <button type="button" disabled={isPending} onClick={()=>persistRemarks(false)} className="btn-primary w-full mt-2 !py-2 text-sm"><Save className="h-4 w-4" /> Save Remarks</button>
               <p className="text-xs text-slate-400 truncate mt-1.5">{editedBy ? <>Last updated by: <span className="text-slate-200 font-medium">{editedBy.name.split(" ")[0]}</span> ({editedBy.role}) at <span className="text-slate-300">{fmtTimeOnly(editedBy.at)}</span></> : <>Auto-saves as you type</>}</p>
+              {task.client_feedback && <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2"><p className="text-[11px] font-semibold text-amber-300">Client Feedback</p><p className="text-xs text-amber-100 mt-1 whitespace-pre-wrap">{task.client_feedback}</p></div>}
+              <div className="mt-3 p-3 rounded-lg border border-white/10 bg-white/[0.02]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Client Feedback (SMM → Designer)</p>
+                <textarea value={clientFeedback} onChange={e=>setClientFeedback(e.target.value)} rows={2} placeholder="Client ne su kidhu te lakho..." className="input !py-2 text-xs resize-none" />
+                <button type="button" disabled={isPending} onClick={sendBackClient} className="btn-ghost w-full mt-2 !py-1.5 text-xs border border-amber-400/30 text-amber-300"><Undo2 className="h-3.5 w-3.5" /> Send Back with Client Feedback</button>
+              </div>
+            </section>
+          )}
+          {openSection === "links" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Reference Links / Google Drive</p>
+              <p className="text-[11px] text-slate-500 mb-2">Paste reference URLs, Drive links – one per line. Designer ne easy rese.</p>
+              <textarea value={referenceLinks} onChange={e=>setReferenceLinks(e.target.value)} rows={3} placeholder="https://drive.google.com/...&#10;https://reference-link.com/..." className="input !py-2.5 text-sm resize-none" />
+              <button type="button" disabled={isPending} onClick={()=>persistLinks(false)} className="btn-primary w-full mt-2 !py-2 text-sm"><Save className="h-4 w-4" /> Save Links</button>
+              {referenceLinks.trim() && <div className="mt-2 space-y-1">{referenceLinks.split("\n").filter(Boolean).map((l: string,i: number)=><a key={i} href={l.trim()} target="_blank" rel="noopener noreferrer" className="block text-xs text-brand-300 hover:text-brand-200 truncate underline">{l.trim()}</a>)}</div>}
+            </section>
+          )}
+          {openSection === "upload" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Uploaded Platforms</p>
+              <div className="grid grid-cols-2 gap-2">
+                {["Instagram","Facebook","YouTube","LinkedIn","Twitter/X","Pinterest","Threads","Website"].map((pl: string)=>(
+                  <label key={pl} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs cursor-pointer ${platformsDraft.includes(pl) ? "border-brand-300 bg-brand-300/10 text-brand-300" : "border-white/10 bg-white/[0.02] text-slate-400"}`}>
+                    <input type="checkbox" checked={platformsDraft.includes(pl)} onChange={()=>togglePlatform(pl)} className="h-3.5 w-3.5 accent-brand-300" />
+                    {pl}
+                  </label>
+                ))}
+              </div>
+              <button type="button" disabled={isPending} onClick={markUploaded} className="btn-primary w-full mt-3 !py-2 text-sm"><Check className="h-4 w-4" /> Mark as Uploaded</button>
+              {task.platforms?.length ? <p className="text-[11px] text-slate-500 mt-2">Current: {task.platforms.join(", ")}</p> : null}
+              {task.status === "approved" && <button type="button" disabled={isPending} onClick={startTask} className="btn-ghost w-full mt-2 !py-2 text-sm"><Layers className="h-4 w-4" /> Start Task</button>}
             </section>
           )}
           {openSection === "team" && (
@@ -463,6 +564,12 @@ export default function TaskModal({
             </section>
           )}
           {isGatekeeper && isSubmitted && <div className="flex justify-end"><button type="button" disabled={isPending} onClick={sendBack} className="btn-ghost text-sm !px-3 !py-2"><Undo2 className="h-4 w-4" /> Send Back</button></div>}
+          {task.status === "approved" && (
+            <div className="flex justify-center">
+              <button type="button" disabled={isPending} onClick={startTask} className="btn-primary !py-2 text-sm w-full"><Layers className="h-4 w-4" /> Start Task</button>
+            </div>
+          )}
+          {task.status === "client_feedback" && <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-center"><span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-1 text-xs font-semibold text-amber-300">Client Feedback</span><p className="text-xs text-amber-200 mt-1">{(task as any).client_feedback || task.remarks}</p></div>}
         </div>
       </div>
     );
@@ -507,6 +614,8 @@ export default function TaskModal({
           {iconBtn(openSection === "priority", () => toggleSection("priority"), Flag, "Priority")}
           {iconBtn(openSection === "content", () => toggleSection("content"), Layers, "Content / Copy")}
           {iconBtn(openSection === "remarks", () => toggleSection("remarks"), MessageSquare, "Remarks / Feedback")}
+          {iconBtn(openSection === "links", () => toggleSection("links"), FileText, "Reference Links")}
+          {iconBtn(openSection === "upload", () => toggleSection("upload"), FileText, "Upload")}
           {iconBtn(openSection === "team", () => toggleSection("team"), Users, "Team Assignment")}
           <div className="ml-auto flex items-center gap-1.5 pl-2 border-l border-white/10">
             {/* Complete / Submit - green icon */}
@@ -710,6 +819,39 @@ export default function TaskModal({
                   <>Auto-saves as you type</>
                 )}
               </p>
+              {(task as any).client_feedback && <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2"><p className="text-[11px] font-semibold text-amber-300">Client Feedback</p><p className="text-xs text-amber-100 mt-1 whitespace-pre-wrap">{(task as any).client_feedback}</p></div>}
+              <div className="mt-3 p-3 rounded-lg border border-white/10 bg-white/[0.02]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Client Feedback (SMM → Designer)</p>
+                <textarea value={clientFeedback} onChange={e=>setClientFeedback(e.target.value)} rows={2} placeholder="Client ne su kidhu te lakho..." className="input !py-2 text-xs resize-none" />
+                <button type="button" disabled={isPending} onClick={sendBackClient} className="btn-ghost w-full mt-2 !py-1.5 text-xs border border-amber-400/30 text-amber-300"><Undo2 className="h-3.5 w-3.5" /> Send Back with Client Feedback</button>
+              </div>
+            </section>
+          )}
+
+          {openSection === "links" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Reference Links / Google Drive</p>
+              <p className="text-[11px] text-slate-500 mb-2">Paste reference URLs, Drive links – one per line.</p>
+              <textarea value={referenceLinks} onChange={e=>setReferenceLinks(e.target.value)} rows={3} placeholder="https://drive.google.com/...&#10;https://reference-link.com/..." className="input !py-2.5 text-sm resize-none" />
+              <button type="button" disabled={isPending} onClick={()=>persistLinks(false)} className="btn-primary w-full mt-2 !py-2 text-sm"><Save className="h-4 w-4" /> Save Links</button>
+              {referenceLinks.trim() && <div className="mt-2 space-y-1">{referenceLinks.split("\n").filter(Boolean).map((l: string,i: number)=><a key={i} href={l.trim()} target="_blank" rel="noopener noreferrer" className="block text-xs text-brand-300 hover:text-brand-200 truncate underline">{l.trim()}</a>)}</div>}
+            </section>
+          )}
+
+          {openSection === "upload" && (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Uploaded Platforms</p>
+              <div className="grid grid-cols-2 gap-2">
+                {["Instagram","Facebook","YouTube","LinkedIn","Twitter/X","Pinterest","Threads","Website"].map((pl: string)=>(
+                  <label key={pl} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs cursor-pointer ${platformsDraft.includes(pl) ? "border-brand-300 bg-brand-300/10 text-brand-300" : "border-white/10 bg-white/[0.02] text-slate-400"}`}>
+                    <input type="checkbox" checked={platformsDraft.includes(pl)} onChange={()=>togglePlatform(pl)} className="h-3.5 w-3.5 accent-brand-300" />
+                    {pl}
+                  </label>
+                ))}
+              </div>
+              <button type="button" disabled={isPending} onClick={markUploaded} className="btn-primary w-full mt-3 !py-2 text-sm"><Check className="h-4 w-4" /> Mark as Uploaded</button>
+              {task.platforms?.length ? <p className="text-[11px] text-slate-500 mt-2">Current: {task.platforms.join(", ")}</p> : null}
+              {task.status === "approved" && <button type="button" disabled={isPending} onClick={startTask} className="btn-ghost w-full mt-2 !py-2 text-sm"><Layers className="h-4 w-4" /> Start Task</button>}
             </section>
           )}
 

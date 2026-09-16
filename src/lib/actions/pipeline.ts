@@ -68,9 +68,10 @@ const PIPELINE_TASK_SELECT = `
            FROM task_contributions tc
            WHERE tc.task_id = t.id
          ), '[]'::json) AS contributions,
-         reu.id AS remarks_edited_by, reu.full_name AS remarks_edited_by_name,
-         rer.label AS remarks_edited_by_role, t.remarks_edited_at::text AS remarks_edited_at
-  FROM tasks t
+          reu.id AS remarks_edited_by, reu.full_name AS remarks_edited_by_name,
+          rer.label AS remarks_edited_by_role, t.remarks_edited_at::text AS remarks_edited_at,
+          t.reference_links, t.client_feedback
+   FROM tasks t
   JOIN projects p ON p.id = t.project_id
   JOIN clients c ON c.id = p.client_id
   LEFT JOIN users u ON u.id = t.assigned_to
@@ -956,6 +957,184 @@ export async function bulkSetPipelineContentStatusAction(
   }
   revalidate();
   return { ok: true, count: ids.length };
+}
+
+/**
+ * Bulk: set individual titles for multiple tasks (paste from Google Sheet).
+ * Each line maps to one selected task in the order provided.
+ * Managers and content editors only.
+ */
+export async function bulkSetPipelineTitlesAction(
+  taskIds: string[],
+  titles: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isContentEditor(session)) return { ok: false, error: "Only content editors and managers can rename tasks." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  if (!Array.isArray(titles) || titles.length === 0) return { ok: false, error: "No titles provided." };
+  let count = 0;
+  for (let i = 0; i < ids.length && i < titles.length; i++) {
+    const clean = String(titles[i] || "").trim().replace(/[\n\r]+/g, " ").slice(0, 200);
+    if (!clean) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await query(`UPDATE tasks SET title = $2 WHERE id = $1`, [ids[i], clean]);
+    count++;
+  }
+  revalidate();
+  return { ok: true, count };
+}
+
+/**
+ * Bulk: set content for multiple tasks (paste from Sheet).
+ * Each line maps to one selected task in order; empty lines skipped.
+ */
+export async function bulkSetPipelineContentsAction(
+  taskIds: string[],
+  contents: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isContentEditor(session)) return { ok: false, error: "Only content editors and managers can edit content." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  if (!Array.isArray(contents) || contents.length === 0) return { ok: false, error: "No content provided." };
+  let count = 0;
+  for (let i = 0; i < ids.length && i < contents.length; i++) {
+    const clean = String(contents[i] ?? "");
+    if (!clean.trim()) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [ids[i], clean]);
+    count++;
+  }
+  revalidate();
+  return { ok: true, count };
+}
+
+/**
+ * Reference / Drive links per subtask — free-form text (URLs, one per line).
+ */
+export async function setPipelineTaskReferenceLinksAction(
+  taskId: string,
+  links: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  const isAssignee = task.assigned_to === session.sub;
+  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) {
+    return { ok: false, error: "Not authorized." };
+  }
+  const clean = String(links ?? "").slice(0, 5000);
+  await query(`UPDATE tasks SET reference_links = $2 WHERE id = $1`, [taskId, clean]);
+  revalidate();
+  return { ok: true };
+}
+
+export async function bulkSetPipelineReferenceLinksAction(
+  taskIds: string[],
+  linksArray: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  let count = 0;
+  for (let i = 0; i < ids.length && i < linksArray.length; i++) {
+    const clean = String(linksArray[i] ?? "").slice(0, 5000);
+    // eslint-disable-next-line no-await-in-loop
+    await query(`UPDATE tasks SET reference_links = $2 WHERE id = $1`, [ids[i], clean]);
+    count++;
+  }
+  revalidate();
+  return { ok: true, count };
+}
+
+/**
+ * Client feedback variant of send-back — tags feedback as client feedback and shows pill.
+ */
+export async function startPipelineTaskAction(taskId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  const isAssignee = task.assigned_to === session.sub;
+  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) return { ok: false, error: "Not your task." };
+  if (task.status !== "approved") return { ok: false, error: "Task already started." };
+  await query(`UPDATE tasks SET status = 'in_progress' WHERE id = $1`, [taskId]);
+  revalidate();
+  return { ok: true };
+}
+
+export async function setPipelineTaskPlatformsAction(
+  taskId: string,
+  platforms: string[]
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  const clean = [...new Set((platforms || []).map(s => String(s).trim()).filter(Boolean))].slice(0, 10);
+  await query(`UPDATE tasks SET platforms = $2 WHERE id = $1`, [taskId, clean]);
+  revalidate();
+  return { ok: true };
+}
+
+export async function markPipelineTaskUploadedAction(taskId: string, platforms: string[]): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  const clean = [...new Set((platforms || []).map(s => String(s).trim()).filter(Boolean))].slice(0, 10);
+  await query(`UPDATE tasks SET platforms = $2, status = 'upload_done' WHERE id = $1`, [taskId, clean]);
+  await createNotification({
+    userId: task.assigned_to && task.assigned_to !== session.sub ? task.assigned_to : session.sub,
+    type: "task",
+    title: "Task uploaded",
+    body: `"${task.title || "A task"}" marked as uploaded on ${clean.join(", ") || "platforms"}.`,
+    link: taskDashboardLink(taskId),
+  });
+  revalidate();
+  return { ok: true };
+}
+
+export async function sendBackWithClientFeedbackAction(
+  taskId: string,
+  feedback: string
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isGatekeeper(session)) return { ok: false, error: "Only Admins / PMs / SMM can send back." };
+  const task = await taskOf(taskId);
+  if (!task) return { ok: false, error: "Task not found." };
+  if (task.status === "completed") return { ok: false, error: "Completed tasks live in History." };
+  const firstName = (session.name || "User").split(" ")[0] || "User";
+  const role = session.role_label || session.role_key || "Team";
+  const signature = `[Client Feedback by ${firstName} - ${role}]`;
+  const typed = richToPlain(sanitizeRich(String(feedback ?? ""))).trim();
+  const existingRow = await query<{ remarks: string | null; client_feedback: string | null }>(`SELECT remarks, client_feedback FROM tasks WHERE id = $1`, [taskId]);
+  const existing = existingRow[0]?.remarks || "";
+  const share = typed || "Client requested rework.";
+  const newRemarks = `${signature}: ${share}` + (existing ? `\n\n${existing}` : "");
+  await query(
+    `UPDATE tasks SET remarks = $1, client_feedback = $2, remarks_edited_by = $3, remarks_edited_at = now(),
+     status = 'client_feedback', reviewed_at = now()
+     WHERE id = $4`,
+    [newRemarks, share, session.sub, taskId]
+  );
+  if (task.assigned_to && task.assigned_to !== session.sub) {
+    await createNotification({
+      userId: task.assigned_to,
+      type: "task",
+      title: "Client feedback — rework needed",
+      body: `${session.name} added client feedback on "${task.title || "your task"}".`,
+      link: taskDashboardLink(taskId),
+    });
+  }
+  revalidate();
+  return { ok: true };
 }
 
 /** Content Hub board — existing tasks whose deliverable type carries a content_role (Client -> Project/Task -> Content Hub; no orphans by construction). Same RBAC scoping as the pipeline: global viewers see everything, PMs only their assigned clients, everyone else only their own tasks. */

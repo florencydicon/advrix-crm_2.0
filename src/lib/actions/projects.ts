@@ -218,6 +218,14 @@ export async function createProjectAction(formData: FormData) {
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) taskTitles = parsed as Record<string, string[]>;
     }
   } catch {}
+  let referenceLinks: Record<string, string[]> | undefined;
+  try {
+    const raw = String(formData.get("reference_links_json") || "");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) referenceLinks = parsed as Record<string, string[]>;
+    }
+  } catch {}
 
   if (!client_id) return { error: "Client is required." };
 
@@ -264,7 +272,7 @@ export async function createProjectAction(formData: FormData) {
       );
     }
 
-    await generateDeliverableTasks(project[0].id, taskTitles, cleanPriority);
+    await generateDeliverableTasks(project[0].id, taskTitles, cleanPriority, referenceLinks);
     await syncApprovedTaskSequences(project[0].id);
     await computeSequentialDeadlines(project[0].id, { propagateToAll: true });
 

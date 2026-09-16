@@ -60,6 +60,8 @@ function DeliverablesPicker({
   setCustomQty,
   taskTitles,
   setTaskTitles,
+  referenceLinks,
+  setReferenceLinks,
 }: {
   types: DeliverableType[];
   quantities: Record<string, number>;
@@ -72,6 +74,8 @@ function DeliverablesPicker({
   setCustomQty: (v: number) => void;
   taskTitles?: Record<string, string[]>;
   setTaskTitles?: (fn: (prev: Record<string, string[]>) => Record<string, string[]>) => void;
+  referenceLinks?: Record<string, string[]>;
+  setReferenceLinks?: (fn: (prev: Record<string, string[]>) => Record<string, string[]>) => void;
 }) {
   const selected: Deliv[] = [
     ...types
@@ -194,38 +198,105 @@ function DeliverablesPicker({
         {total === 0 ? (
           <p className="text-[11px] text-slate-500">Set quantities above to preview tasks.</p>
         ) : (
-          <div className="space-y-2 max-h-[32vh] overflow-y-auto pr-1">
-            {selected.map((d) => (
-              <div key={d.key} className="space-y-1">
-                <p className="text-[10px] font-medium text-slate-400">{d.label} × {d.quantity}</p>
-                <div className="grid grid-cols-1 gap-1">
-                  {Array.from({ length: d.quantity }, (_, i) => {
-                    const key = d.key;
-                    const current = taskTitles?.[key]?.[i] ?? `${d.label} ${pad(i + 1)}`;
-                    return (
-                      <input
-                        key={`${d.key}-${i}`}
-                        value={current}
-                        onChange={(e) => {
-                          if (!setTaskTitles) return;
-                          const v = e.target.value;
-                          setTaskTitles((prev) => {
-                            const arr = [...(prev[key] || Array.from({ length: d.quantity }, (_, k) => `${d.label} ${pad(k + 1)}`))];
-                            // Ensure array length matches quantity
-                            while (arr.length < d.quantity) arr.push(`${d.label} ${pad(arr.length + 1)}`);
-                            arr[i] = v;
-                            return { ...prev, [key]: arr };
-                          });
-                        }}
-                        placeholder={`${d.label} ${pad(i + 1)}`}
-                        className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/30"
-                      />
-                    );
-                  })}
+          <>
+            {/* Bulk paste from Google Sheet */}
+            <div className="mb-2 p-2 rounded-lg border border-white/10 bg-night-900/50">
+              <p className="text-[11px] font-medium text-slate-300 mb-1">Bulk paste titles from Google Sheet (one per line)</p>
+              <textarea
+                rows={3}
+                placeholder={`Elevate કરો Family Time\nElevate કરો Luxury Time\nElevate કરો Comfort Time`}
+                onChange={(e) => {
+                  const lines = e.target.value.split("\n").map(s=>s.trim()).filter(Boolean);
+                  if (!setTaskTitles || lines.length===0) return;
+                  // Distribute lines sequentially across all selected deliverables in order
+                  let idx = 0;
+                  const next: Record<string, string[]> = {};
+                  for (const d of selected) {
+                    const arr: string[] = [];
+                    for (let i=0;i<d.quantity;i++) {
+                      arr.push(lines[idx] || `${d.label} ${pad(i+1)}`);
+                      idx++;
+                    }
+                    next[d.key] = arr;
+                  }
+                  if (idx>0) setTaskTitles(()=>next);
+                }}
+                className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-1.5 text-xs text-white placeholder:text-slate-500"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Paste {total} lines — they auto-fill the inputs below in order.</p>
+            </div>
+            <div className="space-y-2 max-h-[32vh] overflow-y-auto pr-1">
+              {selected.map((d) => (
+                <div key={d.key} className="space-y-1">
+                  <p className="text-[10px] font-medium text-slate-400">{d.label} × {d.quantity}</p>
+                  <div className="grid grid-cols-1 gap-1">
+                    {Array.from({ length: d.quantity }, (_, i) => {
+                      const key = d.key;
+                      const current = taskTitles?.[key]?.[i] ?? `${d.label} ${pad(i + 1)}`;
+                      const linkVal = referenceLinks?.[key]?.[i] || "";
+                      return (
+                        <div key={`${d.key}-${i}`} className="space-y-1">
+                          <input
+                            value={current}
+                            onChange={(e) => {
+                              if (!setTaskTitles) return;
+                              const v = e.target.value;
+                              setTaskTitles((prev) => {
+                                const arr = [...(prev[key] || Array.from({ length: d.quantity }, (_, k) => `${d.label} ${pad(k + 1)}`))];
+                                while (arr.length < d.quantity) arr.push(`${d.label} ${pad(arr.length + 1)}`);
+                                arr[i] = v;
+                                return { ...prev, [key]: arr };
+                              });
+                            }}
+                            placeholder={`${d.label} ${pad(i + 1)}`}
+                            className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/30"
+                          />
+                          <input
+                            value={linkVal}
+                            onChange={(e) => {
+                              if (!setReferenceLinks) return;
+                              const v = e.target.value;
+                              setReferenceLinks((prev) => {
+                                const arr = [...(prev[key] || Array.from({ length: d.quantity }, () => ""))];
+                                while (arr.length < d.quantity) arr.push("");
+                                arr[i] = v;
+                                return { ...prev, [key]: arr };
+                              });
+                            }}
+                            placeholder="Reference / Drive link for this subtask"
+                            className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-1 text-[11px] text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/30"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <div className="mt-2 p-2 rounded-lg border border-white/10 bg-night-900/50">
+              <p className="text-[11px] font-medium text-slate-300 mb-1">Bulk paste reference links (one per line, maps to each subtask)</p>
+              <textarea
+                rows={2}
+                placeholder={`https://drive.google.com/file1\nhttps://drive.google.com/file2`}
+                onChange={(e) => {
+                  const lines = e.target.value.split("\n").map(s=>s.trim()).filter(Boolean);
+                  if (!setReferenceLinks || lines.length===0) return;
+                  let idx = 0;
+                  const next: Record<string, string[]> = {};
+                  for (const d of selected) {
+                    const arr: string[] = [];
+                    for (let i=0;i<d.quantity;i++) {
+                      arr.push(lines[idx] || "");
+                      idx++;
+                    }
+                    next[d.key] = arr;
+                  }
+                  if (idx>0) setReferenceLinks(()=>next);
+                }}
+                className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-1.5 text-xs text-white placeholder:text-slate-500"
+              />
+            </div>
+          </>
         )}
         {total > 0 && (
           <p className="text-[10px] text-brand-300 mt-1.5">
@@ -278,6 +349,7 @@ export default function ClientsView({
   const [customLabel, setCustomLabel] = useState("");
   const [customQty, setCustomQty] = useState(1);
   const [taskTitles, setTaskTitles] = useState<Record<string, string[]>>({});
+  const [referenceLinks, setReferenceLinks] = useState<Record<string, string[]>>({});
   const [priorityDraft, setPriorityDraft] = useState("medium");
   const [searchDraft, setSearchDraft] = useState(search);
   const [selectedManager, setSelectedManager] = useState("");
@@ -352,6 +424,14 @@ export default function ClientsView({
         }
         if (Object.keys(filtered).length > 0) fd.set("task_titles_json", JSON.stringify(filtered));
       }
+      if (Object.keys(referenceLinks).length > 0) {
+        const filtered: Record<string, string[]> = {};
+        for (const [k, arr] of Object.entries(referenceLinks)) {
+          const clean = arr.map((s) => String(s || "").trim()).filter(Boolean);
+          if (clean.length > 0) filtered[k] = clean;
+        }
+        if (Object.keys(filtered).length > 0) fd.set("reference_links_json", JSON.stringify(filtered));
+      }
       const res = await fn(fd);
       if (res.error) setError(res.error);
       else {
@@ -363,6 +443,7 @@ export default function ClientsView({
         setCustomLabel("");
         setCustomQty(1);
         setTaskTitles({});
+        setReferenceLinks({});
         router.refresh();
       }
     };
@@ -700,6 +781,8 @@ export default function ClientsView({
               setCustomQty={setCustomQty}
               taskTitles={taskTitles}
               setTaskTitles={setTaskTitles}
+              referenceLinks={referenceLinks}
+              setReferenceLinks={setReferenceLinks}
             />
           </div>
           <div>
