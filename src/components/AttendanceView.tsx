@@ -165,30 +165,37 @@ export default function AttendanceView({
 
   const [geoLoc, setGeoLoc] = useState<{ latitude: number | null; longitude: number | null; location_text: string | null }>({ latitude: null, longitude: null, location_text: null });
 
-  const [locStatus, setLocStatus] = useState<"checking" | "granted" | "denied" | "prompt">("checking");
+  const [locStatus, setLocStatus] = useState<"granted" | "denied" | "prompt">("prompt");
 
+  // Only track denied/granted to show a banner. Prompt = no banner.
+  // Location is requested lazily on Punch In/Out — the browser's native Allow dialog
+  // appears then. If already granted, it resolves instantly without any prompt.
+  // If denied or later removed, we flip to denied and show guidance.
   useEffect(() => {
-    if (!navigator.geolocation) { setLocStatus("denied"); return; }
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: "geolocation" }).then((result) => {
+    if (!navigator.permissions) return;
+    navigator.permissions.query({ name: "geolocation" } as PermissionDescriptor).then((result) => {
+      if (result.state === "denied") setLocStatus("denied");
+      else if (result.state === "granted") setLocStatus("granted");
+      else setLocStatus("prompt");
+      const onChange = () => {
         setLocStatus(result.state === "granted" ? "granted" : result.state === "denied" ? "denied" : "prompt");
-        result.addEventListener("change", () => {
-          setLocStatus(result.state === "granted" ? "granted" : result.state === "denied" ? "denied" : "prompt");
-        });
-      }).catch(() => setLocStatus("prompt"));
-    } else {
-      setLocStatus("prompt");
-    }
+      };
+      result.addEventListener("change", onChange);
+    }).catch(() => {});
   }, []);
 
   function requestLocationPermission() {
-    setLocStatus("checking");
+    if (!navigator.geolocation) { setLocStatus("denied"); return; }
     navigator.geolocation.getCurrentPosition(
       () => setLocStatus("granted"),
       (err) => {
-        if (err.code === 1) setLocStatus("denied");
-        else setLocStatus("prompt");
-        toast("Location permission was denied. Please allow location in your browser settings.", "error");
+        if (err.code === 1) {
+          setLocStatus("denied");
+          toast("Location permission was denied. Please allow location in your browser settings.", "error");
+        } else {
+          setLocStatus("prompt");
+          toast("Could not get location. Please try again.", "error");
+        }
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
@@ -199,9 +206,12 @@ export default function AttendanceView({
       const loc = await getCurrentPosition();
       setGeoLoc(loc);
       if (loc.latitude == null || loc.longitude == null) {
-        toast("Location access is required. Please allow location permission in your browser and try again.", "error");
+        // Triggers native Allow dialog on first attempt; if denied, mark denied so banner appears.
+        setLocStatus("denied");
+        toast("Location access is required. Please allow location permission and try again.", "error");
         return;
       }
+      setLocStatus("granted");
       const res = await punchInAction(loc);
       if (res.error) { toast(res.error, "error"); return; }
       toast("Punched in successfully.", "success");
@@ -225,9 +235,11 @@ export default function AttendanceView({
       const loc = await getCurrentPosition();
       setGeoLoc(loc);
       if (loc.latitude == null || loc.longitude == null) {
-        toast("Location access is required. Please allow location permission in your browser and try again.", "error");
+        setLocStatus("denied");
+        toast("Location access is required. Please allow location permission and try again.", "error");
         return;
       }
+      setLocStatus("granted");
       const res = await punchOutAction(loc);
       if (res.error) { toast(res.error, "error"); return; }
       toast(`Punched out. ${res.hoursWorked}h worked.`, "success");
@@ -308,45 +320,23 @@ export default function AttendanceView({
         </div>
       </div>
 
-      {activeTab === "attendance" && locStatus !== "granted" && !isTodayOnLeave && (
-        <div className={`rounded-xl px-4 py-3 flex items-center gap-3 ${
-          locStatus === "denied"
-            ? "bg-rose-400/10 ring-1 ring-rose-400/20"
-            : locStatus === "checking"
-            ? "bg-amber-400/10 ring-1 ring-amber-400/20"
-            : "bg-amber-400/10 ring-1 ring-amber-400/20"
-        }`}>
+      {activeTab === "attendance" && locStatus === "denied" && !isTodayOnLeave && (
+        <div className="rounded-xl px-4 py-3 flex items-center gap-3 bg-rose-400/10 ring-1 ring-rose-400/20">
           <div className="shrink-0">
-            {locStatus === "denied" ? (
-              <AlertTriangle className="h-5 w-5 text-rose-400" />
-            ) : locStatus === "checking" ? (
-              <span className="block h-5 w-5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-            ) : (
-              <MapPin className="h-5 w-5 text-amber-400" />
-            )}
+            <AlertTriangle className="h-5 w-5 text-rose-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-white">
-              {locStatus === "denied"
-                ? "Location Access Blocked"
-                : locStatus === "checking"
-                ? "Requesting Location…"
-                : "Location Permission Required"}
-            </p>
+            <p className="text-xs font-semibold text-white">Location Access Blocked</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              {locStatus === "denied"
-                ? "You blocked location access. Please go to browser settings → Site Settings → Location → Allow this site."
-                : "Click the button to allow location access. Your location is used for attendance check-in/check-out."}
+              You blocked location access. Please go to browser settings → Site Settings → Location → Allow this site.
             </p>
           </div>
-          {(locStatus === "prompt" || locStatus === "denied") && (
-            <button
-              onClick={requestLocationPermission}
-              className="btn-primary !py-1.5 !px-3 text-xs shrink-0"
-            >
-              <MapPin className="h-3.5 w-3.5" /> {locStatus === "denied" ? "Try Again" : "Allow Location"}
-            </button>
-          )}
+          <button
+            onClick={requestLocationPermission}
+            className="btn-primary !py-1.5 !px-3 text-xs shrink-0"
+          >
+            <MapPin className="h-3.5 w-3.5" /> Try Again
+          </button>
         </div>
       )}
 
@@ -387,7 +377,7 @@ export default function AttendanceView({
               )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs"
-                disabled={pending || hasPunchedIn || locStatus !== "granted" || isTodayOnLeave}
+                disabled={pending || hasPunchedIn || isTodayOnLeave}
                 onClick={handlePunchIn}
               >
                 {isTodayOnLeave ? "On Leave" : hasPunchedIn ? "Punched In" : "Punch In"}
@@ -419,7 +409,7 @@ export default function AttendanceView({
                 onBreak ? (
                   <button
                     className="btn-primary mt-2 w-full !py-2 text-xs bg-amber-500 hover:bg-amber-600"
-                    disabled={pending || locStatus !== "granted"}
+                    disabled={pending}
                     onClick={handleEndBreak}
                   >
                     <Coffee className="h-3.5 w-3.5 inline mr-1" /> End Lunch Break
@@ -427,7 +417,7 @@ export default function AttendanceView({
                 ) : (
                   <button
                     className="btn-secondary mt-2 w-full !py-2 text-xs"
-                    disabled={pending || locStatus !== "granted"}
+                    disabled={pending}
                     onClick={handleStartBreak}
                   >
                     <Coffee className="h-3.5 w-3.5 inline mr-1" /> Start Lunch Break
@@ -451,7 +441,7 @@ export default function AttendanceView({
               )}
               <button
                 className="btn-primary mt-2 w-full !py-2 text-xs bg-emerald-600 hover:bg-emerald-700"
-                disabled={pending || !hasPunchedIn || hasPunchedOut || onBreak || locStatus !== "granted" || isTodayOnLeave}
+                disabled={pending || !hasPunchedIn || hasPunchedOut || onBreak || isTodayOnLeave}
                 onClick={handlePunchOut}
               >
                 {isTodayOnLeave ? "On Leave" : hasPunchedOut ? "Punched Out" : onBreak ? "End break first" : "Punch Out"}
