@@ -78,9 +78,33 @@ export async function deleteDailyLogAction(id: string): Promise<{ ok: boolean; e
   await ensureTable();
   const rows = await query<{ user_id: string }>(`SELECT user_id FROM daily_work_logs WHERE id = $1`, [id]);
   if (!rows[0]) return { ok: false, error: "Not found." };
-  if (rows[0].user_id !== session.sub) return { ok: false, error: "Not authorized." };
+  const isOwner = rows[0].user_id === session.sub;
+  const isSuperAdmin = session.role_key === "SUPER_ADMIN";
+  if (!isOwner && !isSuperAdmin) return { ok: false, error: "Not authorized." };
   await query(`DELETE FROM daily_work_logs WHERE id = $1`, [id]);
   revalidatePath("/daily");
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+export interface AdminDailyLog extends DailyLog {
+  full_name: string;
+  role_label: string | null;
+  email: string | null;
+}
+
+export async function getAllDailyLogsAction(): Promise<{ ok: boolean; logs: AdminDailyLog[]; error?: string }> {
+  const session = await getSession();
+  if (!session) return { ok: false, logs: [], error: "Not authorized." };
+  if (session.role_key !== "SUPER_ADMIN") return { ok: false, logs: [], error: "Only Super Admin can view all logs." };
+  await ensureTable();
+  const rows = await query<AdminDailyLog>(
+    `SELECT d.id, d.user_id, d.entry_date::text AS entry_date, d.content, d.created_at::text AS created_at, d.updated_at::text AS updated_at,
+            u.full_name, r.label AS role_label, u.email
+     FROM daily_work_logs d
+     JOIN users u ON u.id = d.user_id
+     LEFT JOIN roles r ON r.id = u.role_id
+     ORDER BY d.entry_date DESC, d.updated_at DESC`
+  );
+  return { ok: true, logs: rows };
 }
