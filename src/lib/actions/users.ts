@@ -6,6 +6,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { validateEmail, validateFullName, validatePassword } from "@/lib/validation";
+import { invalidateCache } from "@/lib/cache";
 
 export async function createUserAction(formData: FormData) {
   const session = await getSession();
@@ -47,6 +48,7 @@ export async function createUserAction(formData: FormData) {
 
   revalidatePath("/team");
   revalidatePath("/settings");
+  invalidateCache("team");
   return { ok: true };
 }
 
@@ -60,6 +62,7 @@ export async function toggleUserActiveAction(userId: string, active: boolean) {
   await query(`UPDATE users SET is_active = $2 WHERE id = $1`, [userId, active]);
   revalidatePath("/team");
   revalidatePath("/settings");
+  invalidateCache("team");
   return { ok: true };
 }
 
@@ -93,6 +96,7 @@ export async function changeRoleAction(userId: string, roleKey: string) {
   );
   revalidatePath("/team");
   revalidatePath("/settings");
+  invalidateCache("team");
   return { ok: true };
 }
 
@@ -131,6 +135,8 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
 
   revalidatePath("/team");
   revalidatePath("/settings");
+  invalidateCache("team");
+  invalidateCache("notif:");
   return {};
 }
 
@@ -146,5 +152,6 @@ export async function updateUserPhoneAction(userId: string, phone: string) {
   await query(`UPDATE users SET phone = $2 WHERE id = $1`, [userId, cleaned]);
   revalidatePath("/team");
   revalidatePath("/settings");
+  invalidateCache("team");
   return { ok: true };
 }

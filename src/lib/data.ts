@@ -1,4 +1,6 @@
 import { query } from "@/lib/db";
+import { attachTaskDetails } from "@/lib/taskEnrich";
+import { cached } from "@/lib/cache";
 import type {
   Assignment,
   Attendance,
@@ -258,9 +260,10 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
       );
     }
     const tasks = await query<Task>(
-      `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
+      `${TASK_SELECT_BASE} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
       [projectIds]
     );
+    await attachTaskDetails(tasks);
 
     const tasksByProject = new Map<string, Task[]>();
     for (const t of tasks) {
@@ -335,31 +338,12 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
   }
 }
 
-const TASK_SELECT = `
+const TASK_SELECT_BASE = `
   SELECT t.*, p.name AS project_name, c.id AS client_id, c.name AS client_name, c.company AS client_company,
          u.full_name AS assignee_name, r.label AS role_label,
          t.due_date::text AS due_date,
          t.brief_approved_at::text AS brief_approved_at,
-         t.current_step,
-         COALESCE((
-           SELECT json_agg(json_build_object(
-             'id', ta.user_id, 'name', ua.full_name, 'role_key', r2.key, 'role_label', r2.label
-           ) ORDER BY ta.position ASC, ta.added_at ASC)
-           FROM task_assignees ta
-           JOIN users ua ON ua.id = ta.user_id
-           LEFT JOIN roles r2 ON r2.id = ua.role_id
-           WHERE ta.task_id = t.id
-         ), '[]'::json) AS assignees,
-         COALESCE((
-           SELECT json_agg(json_build_object(
-             'id', tc.id, 'step', tc.step, 'user_id', tc.user_id, 'user_name', tc.user_name,
-             'role_label', tc.role_label, 'content', tc.content, 'status', tc.status,
-             'review_comment', tc.review_comment, 'reviewed_by', tc.reviewed_by,
-             'submitted_at', tc.submitted_at::text, 'reviewed_at', tc.reviewed_at::text
-           ) ORDER BY tc.step ASC, tc.submitted_at ASC)
-           FROM task_contributions tc
-           WHERE tc.task_id = t.id
-         ), '[]'::json) AS contributions
+         t.current_step
   FROM tasks t
   JOIN projects p ON p.id = t.project_id
   JOIN clients c ON c.id = p.client_id
@@ -442,9 +426,10 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
   if (!project) return null;
 
   const tasks = await query<Task>(
-    `${TASK_SELECT} WHERE t.project_id = $1 ORDER BY t.created_at ASC`,
+    `${TASK_SELECT_BASE} WHERE t.project_id = $1 ORDER BY t.created_at ASC`,
     [projectId]
   );
+  await attachTaskDetails(tasks);
 
   const groups: WorkflowGroup[] = [];
   for (const g of [...new Set(tasks.map((t) => t.group_key))]) {
@@ -471,8 +456,8 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
   // - Past members see handed-off tasks in History (position < current_step)
   // - Completed tasks: all participants see it in History/Done (via task_assignees)
   // - PM/Super Admin see all via getPipelineBoardAction (global scope), not this function
-  return query<Task>(
-    `${TASK_SELECT}
+  const rows = await query<Task>(
+    `${TASK_SELECT_BASE}
      WHERE t.assigned_to = $1
         OR (t.status = 'completed' AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))
         OR EXISTS (
@@ -482,6 +467,7 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
      ORDER BY t.created_at ASC`,
     [userId]
   );
+  return attachTaskDetails(rows);
 }
 
 /**
@@ -490,14 +476,15 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
  * in, and completed-family rows they contributed to.
  */
 export async function getMemberHistoryTasks(userId: string): Promise<Task[]> {
-  return query<Task>(
-    `${TASK_SELECT}
+  const rows = await query<Task>(
+    `${TASK_SELECT_BASE}
      WHERE t.assigned_to = $1
         OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1)
         OR EXISTS (SELECT 1 FROM task_contributions tc WHERE tc.task_id = t.id AND tc.user_id = $1)
      ORDER BY t.created_at DESC`,
     [userId]
   );
+  return attachTaskDetails(rows);
 }
 
 /** Tasks awaiting admin/PM review (submitted by producers). */
@@ -506,8 +493,8 @@ export async function getSubmittedTasks(pmScopeUserId: string | null = null): Pr
   const pmWhere = pmScopeUserId
     ? (params.push(pmScopeUserId), `AND c.assigned_pm_id = $${params.length}`)
     : "";
-  return query<Task>(
-    `${TASK_SELECT}
+  const rows = await query<Task>(
+    `${TASK_SELECT_BASE}
      WHERE t.status = 'submitted'
      ${pmWhere}
      ORDER BY COALESCE(
@@ -518,6 +505,7 @@ export async function getSubmittedTasks(pmScopeUserId: string | null = null): Pr
               COALESCE(t.due_date, '9999-12-31') ASC`,
     params
   );
+  return attachTaskDetails(rows);
 }
 
 export async function getBoard(): Promise<ProjectDetail[]> {
@@ -532,9 +520,10 @@ export async function getBoard(): Promise<ProjectDetail[]> {
   const projectIds = projects.map((p) => p.id);
 
   const allTasks = await query<Task>(
-    `${TASK_SELECT} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
+    `${TASK_SELECT_BASE} WHERE t.project_id = ANY($1) ORDER BY t.created_at ASC`,
     [projectIds]
   );
+  await attachTaskDetails(allTasks);
   const allDeliverables = await query<ProjectDeliverable>(
     `SELECT * FROM project_deliverables WHERE project_id = ANY($1) ORDER BY created_at`,
     [projectIds]
@@ -602,14 +591,18 @@ export async function getBoard(): Promise<ProjectDetail[]> {
   });
 }
 
+const TEAM_CACHE_TTL_MS = 15_000;
+
 export async function getTeam(): Promise<UserRow[]> {
-  return query<UserRow>(
-    `SELECT u.id, u.full_name, u.email, u.is_active, u.phone, u.designation,
-            u.permissions, u.created_at,
-            r.key AS role_key, r.label AS role_label
-     FROM users u JOIN roles r ON r.id = u.role_id
-     ORDER BY u.created_at ASC`
-  );
+  return cached("team", TEAM_CACHE_TTL_MS, async () => {
+    return query<UserRow>(
+      `SELECT u.id, u.full_name, u.email, u.is_active, u.phone, u.designation,
+              u.permissions, u.created_at,
+              r.key AS role_key, r.label AS role_label
+       FROM users u JOIN roles r ON r.id = u.role_id
+       ORDER BY u.created_at ASC`
+    );
+  });
 }
 
 export async function getTeamPaginated(params: PaginatedParams = {}): Promise<PaginatedResult<UserRow>> {

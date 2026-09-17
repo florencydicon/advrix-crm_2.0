@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
+import { invalidateCache } from "@/lib/cache";
 
 export interface RoleWithPerms {
   key: string;
@@ -157,6 +158,7 @@ export async function updateUserPermissionsAction(userId: string, permissions: s
 
   revalidatePath("/settings");
   revalidatePath("/team");
+  invalidateCache("team");
   return { ok: true };
 }
 
@@ -176,5 +178,6 @@ export async function updateUserDesignationAction(userId: string, designation: s
 
   revalidatePath("/settings");
   revalidatePath("/team");
+  invalidateCache("team");
   return { ok: true };
 }

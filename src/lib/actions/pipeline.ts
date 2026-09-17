@@ -9,6 +9,7 @@ import type { Task, TaskStatus, ContentStatus } from "@/lib/types";
 import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam, setTaskDeadline, flagOverdueTasks } from "@/lib/workflow";
 import { sanitizeRich, richToPlain } from "@/lib/rich";
 import { createNotification, notifyRoles } from "@/lib/notifications";
+import { attachTaskDetails } from "@/lib/taskEnrich";
 
 const PERM_PROJECTS_VIEW = "projects:view";
 const PERM_PROJECTS_MANAGE = "projects:manage";
@@ -49,25 +50,6 @@ const PIPELINE_TASK_SELECT = `
          t.due_date::text AS due_date,
          t.brief_approved_at::text AS brief_approved_at,
          t.current_step,
-         COALESCE((
-           SELECT json_agg(json_build_object(
-             'id', ta.user_id, 'name', ua.full_name, 'role_key', r2.key, 'role_label', r2.label
-           ) ORDER BY ta.position ASC, ta.added_at ASC)
-           FROM task_assignees ta
-           JOIN users ua ON ua.id = ta.user_id
-           LEFT JOIN roles r2 ON r2.id = ua.role_id
-           WHERE ta.task_id = t.id
-         ), '[]'::json) AS assignees,
-         COALESCE((
-           SELECT json_agg(json_build_object(
-             'id', tc.id, 'step', tc.step, 'user_id', tc.user_id, 'user_name', tc.user_name,
-             'role_label', tc.role_label, 'content', tc.content, 'status', tc.status,
-             'review_comment', tc.review_comment, 'reviewed_by', tc.reviewed_by,
-             'submitted_at', tc.submitted_at::text, 'reviewed_at', tc.reviewed_at::text
-           ) ORDER BY tc.step ASC, tc.submitted_at ASC)
-           FROM task_contributions tc
-           WHERE tc.task_id = t.id
-         ), '[]'::json) AS contributions,
           reu.id AS remarks_edited_by, reu.full_name AS remarks_edited_by_name,
           rer.label AS remarks_edited_by_role, t.remarks_edited_at::text AS remarks_edited_at,
           t.reference_links, t.client_feedback
@@ -119,6 +101,7 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
     `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
     params
   );
+  await attachTaskDetails(rows);
 
   const active: Task[] = [];
   const completed: Task[] = [];
@@ -1194,6 +1177,7 @@ export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
     `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} JOIN project_deliverables pd ON pd.id = t.deliverable_id JOIN deliverable_types dt ON dt.key = pd.category_key ${where} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
     params
   );
+  await attachTaskDetails(rows);
 
   const active: Task[] = [];
   const completed: Task[] = [];

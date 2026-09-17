@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/session";
 import { query } from "@/lib/db";
+import { invalidateCache } from "@/lib/cache";
 
 export async function markNotificationReadAction(notificationId: string) {
   const session = await getSession();
@@ -12,6 +13,7 @@ export async function markNotificationReadAction(notificationId: string) {
     `UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2`,
     [notificationId, session.sub]
   );
+  invalidateCache(`notif:${session.sub}`);
   revalidatePath("/updates");
   return { ok: true };
 }
@@ -24,6 +26,7 @@ export async function markAllNotificationsReadAction() {
     `UPDATE notifications SET read = true WHERE user_id = $1 AND read = false`,
     [session.sub]
   );
+  invalidateCache(`notif:${session.sub}`);
   revalidatePath("/updates");
   return { ok: true };
 }
@@ -73,6 +76,7 @@ export async function sendAnnouncementAction(input: {
     body: `${body} — ${session.name}`,
     link: "/updates",
   });
+  invalidateCache("notif:");
   revalidatePath("/updates");
   return {
     ok: true as const,

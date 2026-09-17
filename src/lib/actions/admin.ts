@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
+import { invalidateCache } from "@/lib/cache";
 
 export type FlushEntity =
   | "clients"
@@ -154,6 +155,7 @@ export async function flushDataAction(entities: FlushEntity[]) {
     revalidatePath("/dashboard");
     revalidatePath("/projects");
     revalidatePath("/clients");
+    invalidateCache();
     return { ok: true, flushed: clean, results };
   } catch (e: any) {
     console.error("flushDataAction failed:", e);
@@ -187,6 +189,7 @@ export async function flushEntireDatabaseAction() {
     revalidatePath("/dashboard");
     revalidatePath("/projects");
     revalidatePath("/clients");
+    invalidateCache();
     return { ok: true };
   } catch (e: any) {
     console.error("flushEntireDatabaseAction failed:", e);
