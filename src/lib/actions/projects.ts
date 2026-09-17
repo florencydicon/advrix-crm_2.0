@@ -12,6 +12,7 @@ import {
 } from "@/lib/workflow";
 import { createNotification, notifyRoles } from "@/lib/notifications";
 import { getClientDetail } from "@/lib/data";
+import { invalidateCache } from "@/lib/cache";
 import {
   validateEmail,
   validatePhone,
@@ -128,6 +129,8 @@ export async function createClientAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/content");
   revalidatePath("/leads");
+  invalidateCache("list:");
+  invalidateCache("dash:");
   return { ok: true, id: rows[0].id };
 }
 
@@ -161,6 +164,8 @@ export async function updateClientAction(formData: FormData) {
   if (!client[0]) return { error: "Client not found." };
 
   await query(`UPDATE clients SET name = $1, company = $2, email = $3, phone = $4 WHERE id = $5`, [name, company, email, phone, clientId]);
+  invalidateCache("list:");
+  invalidateCache("dash:");
   revalidatePath("/clients");
   revalidatePath("/projects");
   revalidatePath("/dashboard");
@@ -190,6 +195,8 @@ export async function assignClientPmAction(clientId: string, pmId: string | null
 
   await query(`UPDATE clients SET assigned_pm_id = $2 WHERE id = $1`, [clientId, resolvedPmId]);
 
+  invalidateCache("list:");
+  invalidateCache("dash:");
   revalidatePath("/clients");
   revalidatePath("/projects");
   revalidatePath("/dashboard");
@@ -278,6 +285,8 @@ export async function createProjectAction(formData: FormData) {
 
     revalidatePath("/projects");
     revalidatePath("/clients");
+    invalidateCache("list:");
+    invalidateCache("dash:");
     await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
       type: "project",
       title: "New project in production",
@@ -305,6 +314,8 @@ export async function deleteClientAction(clientId: string) {
 
   await query(`DELETE FROM clients WHERE id = $1`, [clientId]);
 
+  invalidateCache("list:");
+  invalidateCache("dash:");
   revalidatePath("/clients");
   revalidatePath("/projects");
   revalidatePath("/dashboard");
@@ -353,6 +364,8 @@ export async function updateProjectAction(projectId: string, data: { name?: stri
   }
   revalidatePath("/projects");
   revalidatePath("/clients");
+  invalidateCache("list:");
+  invalidateCache("dash:");
   return { ok: true };
 }
 
@@ -365,6 +378,8 @@ export async function deleteProjectAction(projectId: string) {
   const project = await query<{ name: string }>(`SELECT name FROM projects WHERE id = $1`, [projectId]);
   if (!project[0]) return { error: "Project not found." };
   await query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+  invalidateCache("list:");
+  invalidateCache("dash:");
   revalidatePath("/projects");
   revalidatePath("/clients");
   revalidatePath("/dashboard");
@@ -474,6 +489,8 @@ export async function addTasksToProjectAction(projectId: string, deliverablesJso
   await generateDeliverableTasks(projectId, taskTitles, priority && ["low", "medium", "high", "urgent"].includes(priority) ? priority : undefined);
   await syncApprovedTaskSequences(projectId);
   await computeSequentialDeadlines(projectId);
+  invalidateCache("list:");
+  invalidateCache("dash:");
   revalidatePath("/projects");
   revalidatePath("/clients");
   return { ok: true as const };

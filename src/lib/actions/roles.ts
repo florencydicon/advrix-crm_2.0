@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { getSession, invalidateSessionCache } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 import { invalidateCache } from "@/lib/cache";
@@ -149,6 +149,7 @@ export async function updateUserPermissionsAction(userId: string, permissions: s
   } else {
     await query(`UPDATE users SET permissions = $2 WHERE id = $1`, [userId, [...new Set(permissions)]]);
   }
+  invalidateSessionCache(userId);
   await logActivity({
     action: "user_permissions_updated",
     entityType: "user",

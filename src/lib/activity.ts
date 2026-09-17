@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { cached } from "@/lib/cache";
 
 /**
  * Best-effort permanent audit trail. Never throws — logging failures must
@@ -41,22 +42,24 @@ export interface ActivityLogRow {
 }
 
 export async function getRecentActivity(limit = 60): Promise<ActivityLogRow[]> {
-  const rows = await query<{
-    id: string;
-    actor_name: string;
-    action: string;
-    entity_type: string;
-    entity_id: string | null;
-    metadata: string;
-    created_at: string;
-  }>(
-    `SELECT id, actor_name, action, entity_type, entity_id, metadata::text AS metadata, created_at
-     FROM activity_log
-     ORDER BY created_at DESC
-     LIMIT $1`,
-    [limit]
-  );
-  return rows.map(parseActivityRow);
+  return cached(`act:feed:${limit}`, 6_000, async () => {
+    const rows = await query<{
+      id: string;
+      actor_name: string;
+      action: string;
+      entity_type: string;
+      entity_id: string | null;
+      metadata: string;
+      created_at: string;
+    }>(
+      `SELECT id, actor_name, action, entity_type, entity_id, metadata::text AS metadata, created_at
+       FROM activity_log
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    return rows.map(parseActivityRow);
+  });
 }
 
 /** Audit trail entry for a single member's employee timeline. */

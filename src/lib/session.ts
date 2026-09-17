@@ -50,8 +50,16 @@ export async function clearSessionCookie() {
   store.delete(SESSION_COOKIE);
 }
 
-const SESSION_CACHE_TTL_MS = 10_000;
+// Long-enough to skip the DB on most navigations/actions (each round trip here
+// is ~100ms), short-enough that deactivation enforcement stays tight. Admin
+// toggles also call invalidateSessionCache() explicitly for immediate effect.
+const SESSION_CACHE_TTL_MS = 30_000;
 const sessionCache = new Map<string, { active: boolean; permissions: string[]; at: number }>();
+
+/** Force a re-check of the live user row (deactivate, role/permission change). */
+export function invalidateSessionCache(userId: string): void {
+  sessionCache.delete(userId);
+}
 
 export async function getSession(): Promise<SessionPayload | null> {
   const store = await cookies();

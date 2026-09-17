@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { getSession, invalidateSessionCache } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { validateEmail, validateFullName, validatePassword } from "@/lib/validation";
 import { invalidateCache } from "@/lib/cache";
@@ -60,6 +60,7 @@ export async function toggleUserActiveAction(userId: string, active: boolean) {
   if (userId === session.sub) return { error: "You cannot deactivate your own account." };
 
   await query(`UPDATE users SET is_active = $2 WHERE id = $1`, [userId, active]);
+  invalidateSessionCache(userId);
   revalidatePath("/team");
   revalidatePath("/settings");
   invalidateCache("team");
@@ -94,6 +95,7 @@ export async function changeRoleAction(userId: string, roleKey: string) {
     `UPDATE users SET role_id = $2 WHERE id = $1`,
     [userId, roleExists[0].id]
   );
+  invalidateSessionCache(userId);
   revalidatePath("/team");
   revalidatePath("/settings");
   invalidateCache("team");
@@ -132,6 +134,7 @@ export async function deleteUserAction(userId: string): Promise<{ error?: string
 
   // Delete the user
   await query(`DELETE FROM users WHERE id = $1`, [userId]);
+  invalidateSessionCache(userId);
 
   revalidatePath("/team");
   revalidatePath("/settings");

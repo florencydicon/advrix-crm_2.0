@@ -35,18 +35,21 @@ function paginate<T>(items: T[], total: number, page: number, pageSize: number):
 }
 
 export async function getClients(pmScopeUserId: string | null = null): Promise<Client[]> {
-  const params: unknown[] = [];
-  const where = pmScopeUserId
-    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
-    : "";
-  return query<Client>(
-    `SELECT c.*, pmu.full_name AS assigned_pm_name
-     FROM clients c
-     LEFT JOIN users pmu ON pmu.id = c.assigned_pm_id
-     ${where}
-     ORDER BY c.created_at DESC`,
-    params
-  );
+  const scope = pmScopeUserId ?? "all";
+  return cached(`list:clients:${scope}`, READ_CACHE_TTL_MS, async () => {
+    const params: unknown[] = [];
+    const where = pmScopeUserId
+      ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+      : "";
+    return query<Client>(
+      `SELECT c.*, pmu.full_name AS assigned_pm_name
+       FROM clients c
+       LEFT JOIN users pmu ON pmu.id = c.assigned_pm_id
+       ${where}
+       ORDER BY c.created_at DESC`,
+      params
+    );
+  });
 }
 
 export async function getClientsPaginated(
@@ -124,17 +127,20 @@ export async function getClientCards(
 }
 
 export async function getProjects(pmScopeUserId: string | null = null): Promise<Project[]> {
-  const params: unknown[] = [];
-  const where = pmScopeUserId
-    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
-    : "";
-  return query<Project>(
-    `SELECT p.*, c.name AS client_name
-     FROM projects p JOIN clients c ON c.id = p.client_id
-     ${where}
-     ORDER BY p.created_at DESC`,
-    params
-  );
+  const scope = pmScopeUserId ?? "all";
+  return cached(`list:projects:${scope}`, READ_CACHE_TTL_MS, async () => {
+    const params: unknown[] = [];
+    const where = pmScopeUserId
+      ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+      : "";
+    return query<Project>(
+      `SELECT p.*, c.name AS client_name
+       FROM projects p JOIN clients c ON c.id = p.client_id
+       ${where}
+       ORDER BY p.created_at DESC`,
+      params
+    );
+  });
 }
 
 export async function getProjectsPaginated(
@@ -337,6 +343,12 @@ export async function getPipelineByClient(): Promise<PipelineClient[]> {
     return [];
   }
 }
+
+// Short TTL for frequently-re-read, low-churn lists and dashboard aggregates.
+// Long enough to skip redundant DB round trips on navigation (~100ms each here),
+// short enough (and invalidated by the CRUD actions that mutate them) that any
+// staleness is imperceptible — the app's own polls already run at 10-20s.
+const READ_CACHE_TTL_MS = 8_000;
 
 const TASK_SELECT_BASE = `
   SELECT t.*, p.name AS project_name, c.id AS client_id, c.name AS client_name, c.company AS client_company,
@@ -1072,95 +1084,103 @@ export async function getLeadStats(
   ownerId: string | null,
   clientScopeUserId: string | null = null
 ): Promise<LeadStats> {
-  const conditions: string[] = [];
-  const args: unknown[] = [];
-  if (ownerId) {
-    args.push(ownerId);
-    conditions.push(`owner_id = $${args.length}`);
-  }
-  if (clientScopeUserId) {
-    args.push(clientScopeUserId);
-    conditions.push(`converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
-  }
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const rows = await query<{
-    total: string;
-    new_count: string;
-    contacted: string;
-    follow_up: string;
-    proposal: string;
-    followups_due: string;
-    won: string;
-    lost: string;
-    pipeline_value: string | null;
-    won_value: string | null;
-  }>(
-    `SELECT
-       COUNT(*)::text AS total,
-       COUNT(*) FILTER (WHERE status = 'new')::text AS new_count,
-       COUNT(*) FILTER (WHERE status = 'contacted')::text AS contacted,
-       COUNT(*) FILTER (WHERE status = 'follow_up')::text AS follow_up,
-       COUNT(*) FILTER (WHERE status = 'proposal')::text AS proposal,
-       COUNT(*) FILTER (WHERE status = 'follow_up' AND next_follow_up <= CURRENT_DATE)::text AS followups_due,
-       COUNT(*) FILTER (WHERE status = 'won')::text AS won,
-       COUNT(*) FILTER (WHERE status = 'lost')::text AS lost,
-       COALESCE(SUM(deal_value) FILTER (WHERE status NOT IN ('won','lost')), 0)::text AS pipeline_value,
-       COALESCE(SUM(deal_value) FILTER (WHERE status = 'won'), 0)::text AS won_value
-     FROM leads ${where}`,
-    args
-  );
-  const r = rows[0];
-  return {
-    total: Number(r?.total || 0),
-    newCount: Number(r?.new_count || 0),
-    contacted: Number((r as any)?.contacted || 0),
-    followUp: Number((r as any)?.follow_up || 0),
-    proposal: Number((r as any)?.proposal || 0),
-    followUpsDue: Number(r?.followups_due || 0),
-    won: Number(r?.won || 0),
-    lost: Number(r?.lost || 0),
-    pipelineValue: Number(r?.pipeline_value || 0),
-    wonValue: Number(r?.won_value || 0),
-  };
+  const key = `dash:leadstats:${ownerId ?? "all"}:${clientScopeUserId ?? "all"}`;
+  return cached(key, READ_CACHE_TTL_MS, async () => {
+    const conditions: string[] = [];
+    const args: unknown[] = [];
+    if (ownerId) {
+      args.push(ownerId);
+      conditions.push(`owner_id = $${args.length}`);
+    }
+    if (clientScopeUserId) {
+      args.push(clientScopeUserId);
+      conditions.push(`converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = await query<{
+      total: string;
+      new_count: string;
+      contacted: string;
+      follow_up: string;
+      proposal: string;
+      followups_due: string;
+      won: string;
+      lost: string;
+      pipeline_value: string | null;
+      won_value: string | null;
+    }>(
+      `SELECT
+         COUNT(*)::text AS total,
+         COUNT(*) FILTER (WHERE status = 'new')::text AS new_count,
+         COUNT(*) FILTER (WHERE status = 'contacted')::text AS contacted,
+         COUNT(*) FILTER (WHERE status = 'follow_up')::text AS follow_up,
+         COUNT(*) FILTER (WHERE status = 'proposal')::text AS proposal,
+         COUNT(*) FILTER (WHERE status = 'follow_up' AND next_follow_up <= CURRENT_DATE)::text AS followups_due,
+         COUNT(*) FILTER (WHERE status = 'won')::text AS won,
+         COUNT(*) FILTER (WHERE status = 'lost')::text AS lost,
+         COALESCE(SUM(deal_value) FILTER (WHERE status NOT IN ('won','lost')), 0)::text AS pipeline_value,
+         COALESCE(SUM(deal_value) FILTER (WHERE status = 'won'), 0)::text AS won_value
+       FROM leads ${where}`,
+      args
+    );
+    const r = rows[0];
+    return {
+      total: Number(r?.total || 0),
+      newCount: Number(r?.new_count || 0),
+      contacted: Number((r as any)?.contacted || 0),
+      followUp: Number((r as any)?.follow_up || 0),
+      proposal: Number((r as any)?.proposal || 0),
+      followUpsDue: Number(r?.followups_due || 0),
+      won: Number(r?.won || 0),
+      lost: Number(r?.lost || 0),
+      pipelineValue: Number(r?.pipeline_value || 0),
+      wonValue: Number(r?.won_value || 0),
+    };
+  });
 }
-
 export async function getTaskStatusCounts(pmScopeUserId: string | null = null): Promise<Record<string, number>> {
-  const params: unknown[] = [];
-  const where = pmScopeUserId
-    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
-    : "";
-  const rows = await query<{ status: string; count: string }>(
-    `SELECT t.status, COUNT(*)::text AS count
-     FROM tasks t
-     JOIN projects p ON p.id = t.project_id
-     JOIN clients c ON c.id = p.client_id
-     ${where}
-     GROUP BY t.status`,
-    params
-  );
-  const map: Record<string, number> = {};
-  for (const r of rows) map[r.status] = Number(r.count);
-  return map;
+  const scope = pmScopeUserId ?? "all";
+  return cached(`dash:taskcounts:${scope}`, READ_CACHE_TTL_MS, async () => {
+    const params: unknown[] = [];
+    const where = pmScopeUserId
+      ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+      : "";
+    const rows = await query<{ status: string; count: string }>(
+      `SELECT t.status, COUNT(*)::text AS count
+       FROM tasks t
+       JOIN projects p ON p.id = t.project_id
+       JOIN clients c ON c.id = p.client_id
+       ${where}
+       GROUP BY t.status`,
+      params
+    );
+    const map: Record<string, number> = {};
+    for (const r of rows) map[r.status] = Number(r.count);
+    return map;
+  });
 }
 
 export async function getSubtaskStatusCounts(pmScopeUserId: string | null = null): Promise<Record<string, number>> {
-  const params: unknown[] = [];
-  const pmWhere = pmScopeUserId
-    ? (params.push(pmScopeUserId), `AND c.assigned_pm_id = $${params.length}`)
-    : "";
-  const rows = await query<{ status: string; count: string }>(
-    `SELECT t.status, COUNT(*)::text AS count
-     FROM tasks t
-     JOIN projects p ON p.id = t.project_id
-     JOIN clients c ON c.id = p.client_id
-     WHERE t.deliverable_id IS NOT NULL
-     ${pmWhere}
-     GROUP BY t.status`,
-    params
-  );
-  const map: Record<string, number> = {};
-  for (const r of rows) map[r.status] = Number(r.count);
-  return map;
+  const scope = pmScopeUserId ?? "all";
+  return cached(`dash:subtaskcounts:${scope}`, READ_CACHE_TTL_MS, async () => {
+    const params: unknown[] = [];
+    const pmWhere = pmScopeUserId
+      ? (params.push(pmScopeUserId), `AND c.assigned_pm_id = $${params.length}`)
+      : "";
+    const rows = await query<{ status: string; count: string }>(
+      `SELECT t.status, COUNT(*)::text AS count
+       FROM tasks t
+       JOIN projects p ON p.id = t.project_id
+       JOIN clients c ON c.id = p.client_id
+       WHERE t.deliverable_id IS NOT NULL
+       ${pmWhere}
+       GROUP BY t.status`,
+      params
+    );
+    const map: Record<string, number> = {};
+    for (const r of rows) map[r.status] = Number(r.count);
+    return map;
+  });
 }
 
 export interface ClientWorkload {
@@ -1177,29 +1197,32 @@ export interface ClientWorkload {
  * Scoped to a single PM's clients when `pmScopeUserId` is given.
  */
 export async function getClientWorkload(pmScopeUserId: string | null = null): Promise<ClientWorkload[]> {
-  const params: unknown[] = [];
-  const where = pmScopeUserId
-    ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
-    : "";
-  const rows = await query<ClientWorkload>(
-    `SELECT c.id AS client_id, c.company AS client_company, c.name AS client_name,
-            (SELECT COUNT(*)::int FROM tasks t JOIN projects p ON p.id = t.project_id
-             WHERE p.client_id = c.id AND t.status <> 'completed') AS open_tasks,
-            (SELECT COUNT(*)::int FROM tasks t JOIN projects p ON p.id = t.project_id
-             WHERE p.client_id = c.id AND t.status <> 'completed' AND t.deliverable_id IS NOT NULL) AS subtasks,
-            (SELECT COUNT(*)::int FROM projects p
-             WHERE p.client_id = c.id AND p.status = 'in_progress') AS active_projects
-     FROM clients c
-     ${where}
-     ORDER BY COALESCE(c.company, c.name) ASC`,
-    params
-  );
-  for (const r of rows) {
-    r.open_tasks = Number(r.open_tasks || 0);
-    r.subtasks = Number(r.subtasks || 0);
-    r.active_projects = Number(r.active_projects || 0);
-  }
-  return rows;
+  const scope = pmScopeUserId ?? "all";
+  return cached(`dash:workload:${scope}`, READ_CACHE_TTL_MS, async () => {
+    const params: unknown[] = [];
+    const where = pmScopeUserId
+      ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`)
+      : "";
+    const rows = await query<ClientWorkload>(
+      `SELECT c.id AS client_id, c.company AS client_company, c.name AS client_name,
+              (SELECT COUNT(*)::int FROM tasks t JOIN projects p ON p.id = t.project_id
+               WHERE p.client_id = c.id AND t.status <> 'completed') AS open_tasks,
+              (SELECT COUNT(*)::int FROM tasks t JOIN projects p ON p.id = t.project_id
+               WHERE p.client_id = c.id AND t.status <> 'completed' AND t.deliverable_id IS NOT NULL) AS subtasks,
+              (SELECT COUNT(*)::int FROM projects p
+               WHERE p.client_id = c.id AND p.status = 'in_progress') AS active_projects
+       FROM clients c
+       ${where}
+       ORDER BY COALESCE(c.company, c.name) ASC`,
+      params
+    );
+    for (const r of rows) {
+      r.open_tasks = Number(r.open_tasks || 0);
+      r.subtasks = Number(r.subtasks || 0);
+      r.active_projects = Number(r.active_projects || 0);
+    }
+    return rows;
+  });
 }
 
 // ---------- Attendance engine settings ----------

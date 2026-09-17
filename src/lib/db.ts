@@ -3,9 +3,15 @@ import { neon } from "@neondatabase/serverless";
 
 const connectionString = process.env.DATABASE_URL;
 
+// One client per instance instead of re-creating on every query. The dominant
+// cost is the network round trip to the Neon region; reusing the same function
+// avoids per-query setup overhead so warm queries stay on the fastest path.
+let client: ReturnType<typeof neon> | null = null;
+
 function getClient() {
   if (!connectionString) throw new Error("DATABASE_URL is not configured");
-  return neon(connectionString);
+  if (!client) client = neon(connectionString);
+  return client;
 }
 
 export async function query<T = any>(text: string, params: any[] = []): Promise<T[]> {
@@ -20,8 +26,8 @@ export async function query<T = any>(text: string, params: any[] = []): Promise<
 export async function transaction<T = void>(
   fn: (sql: any) => Promise<T>
 ): Promise<T> {
-  const client = getClient();
+  const c = getClient();
   // Neon's transaction callback expects a sync return of query array, but
   // the async callback pattern is supported at runtime. Cast to satisfy TS types.
-  return (client.transaction as any)(fn) as Promise<T>;
+  return (c.transaction as any)(fn) as Promise<T>;
 }

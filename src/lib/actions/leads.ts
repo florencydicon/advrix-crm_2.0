@@ -6,6 +6,7 @@ import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { createNotification } from "@/lib/notifications";
 import { validateEmail, validateFullName, validatePhone } from "@/lib/validation";
+import { invalidateCache } from "@/lib/cache";
 
 const LEAD_STATUSES = ["new", "contacted", "follow_up", "proposal", "won", "lost"];
 const LEAD_SOURCES = ["website", "referral", "instagram", "cold_outreach", "walk_in", "other"];
@@ -67,6 +68,7 @@ export async function createLeadAction(formData: FormData) {
     [f.name, f.company, f.email, f.phone, f.source, f.deal_value, f.notes, f.next_follow_up, access.session.sub]
   );
 
+  invalidateCache("dash:");
   revalidatePath("/leads");
   return { ok: true };
 }
@@ -104,6 +106,7 @@ export async function updateLeadAction(leadId: string, formData: FormData) {
   }
 
   await query(sqlTxt, args);
+  invalidateCache("dash:");
   revalidatePath("/leads");
   return { ok: true };
 }
@@ -120,6 +123,7 @@ export async function updateLeadStatusAction(leadId: string, status: string) {
     args.push(access.ownerId);
   }
   await query(sqlTxt, args);
+  invalidateCache("dash:");
   revalidatePath("/leads");
   return { ok: true };
 }
@@ -135,6 +139,7 @@ export async function setFollowUpAction(leadId: string, date: string) {
     args.push(access.ownerId);
   }
   await query(sqlTxt, args);
+  invalidateCache("dash:");
   revalidatePath("/leads");
   return { ok: true };
 }
@@ -150,6 +155,7 @@ export async function deleteLeadAction(leadId: string) {
     args.push(access.ownerId);
   }
   await query(sqlTxt, args);
+  invalidateCache("dash:");
   revalidatePath("/leads");
   return { ok: true };
 }
@@ -201,5 +207,7 @@ export async function convertLeadAction(leadId: string) {
 
   revalidatePath("/leads");
   revalidatePath("/clients");
+  invalidateCache("dash:");
+  invalidateCache("list:");
   return { ok: true, clientId };
 }
