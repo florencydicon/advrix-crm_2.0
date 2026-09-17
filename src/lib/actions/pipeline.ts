@@ -18,9 +18,9 @@ const PERM_TASKS_REVIEW = "tasks:review";
 
 /**
  * Overdue auto-flag fused into the board's SELECT via a data-modifying CTE, so
- * the whole board load is ONE statement / one DB round-trip (no separate
- * UPDATE first). Idempotent: only touches open tasks with an already-passed
- * deadline that are not yet urgent.
+ * a full board load is ONE statement / one DB round-trip (no separate UPDATE
+ * first). Idempotent: only touches open tasks with an already-passed deadline
+ * that are not yet urgent.
  */
 const PIPELINE_OVERDUE_CTE = `
 WITH _overdue_flag AS (
@@ -33,6 +33,37 @@ WITH _overdue_flag AS (
 )
 `;
 
+/** Standalone version of the overdue flag used by the quick-sync path. */
+const PIPELINE_OVERDUE_UPDATE = `
+UPDATE tasks SET priority = 'urgent'
+ WHERE status <> 'completed'
+   AND due_date IS NOT NULL
+   AND due_date < (now() AT TIME ZONE 'UTC')::date
+   AND priority <> 'urgent'
+`;
+
+/**
+ * Tiny aggregate "signature" of everything the board renders, scoped exactly
+ * like the board itself. Two cheap queries let a poll decide it has nothing
+ * new instead of re-selecting / re-serializing the whole board.
+ */
+const PIPELINE_FINGERPRINT = `
+WITH scoped AS (
+  SELECT t.id, t.updated_at
+    FROM tasks t
+    JOIN projects p ON p.id = t.project_id
+    JOIN clients c ON c.id = p.client_id
+  {scope}
+)
+SELECT
+  (SELECT COUNT(*)::text FROM scoped) AS n,
+  (SELECT COALESCE(MAX(scoped.updated_at)::text, '') FROM scoped) AS m,
+  (SELECT COUNT(*)::text FROM task_contributions tc WHERE tc.task_id IN (SELECT id FROM scoped)) AS cn,
+  (SELECT COALESCE(MAX(GREATEST(tc.submitted_at, tc.reviewed_at))::text, '') FROM task_contributions tc WHERE tc.task_id IN (SELECT id FROM scoped)) AS cm,
+  (SELECT COUNT(*)::text FROM task_assignees ta WHERE ta.task_id IN (SELECT id FROM scoped)) AS an,
+  (SELECT COALESCE(MAX(ta.added_at)::text, '') FROM task_assignees ta WHERE ta.task_id IN (SELECT id FROM scoped)) AS am
+`;
+
 export interface PipelineBoardPayload {
   active: Task[];
   completed: Task[];
@@ -42,6 +73,10 @@ export interface PipelineBoardPayload {
   roleKey: string | null;
   userId: string | null;
   isBroad: boolean;
+  /** Aggregated change signature for this scope (present on quick-sync loads). */
+  fingerprint?: string;
+  /** true when the poll found nothing changed and `active`/`completed` are empty. */
+  skipped?: boolean;
 }
 
 const PIPELINE_TASK_SELECT = `
@@ -83,7 +118,9 @@ function boardScope(session: { sub: string; permissions?: string[] }, scope: Dat
     return `WHERE (t.assigned_to = $1 OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))`;
   return "";
 }
-export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
+export async function getPipelineBoardAction(opts?: {
+  sinceFingerprint?: string | null;
+}): Promise<PipelineBoardPayload> {
   const session = await getSession();
   if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
 
@@ -96,7 +133,38 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const scope = boardScope(session, dataScope);
   const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
 
-  // Overdue flagging + board data in a SINGLE statement (CTE) — one round-trip.
+  // Quick-sync path: a cheap fingerprint decides whether ANYTHING in this
+  // scope changed since the last poll. Overdue flagging still runs so urgent
+  // flags stay fresh, then either we bail with an empty payload (skipped) or
+  // fall through to a normal board load carrying the fresh fingerprint.
+  if (opts?.sinceFingerprint) {
+    await query(PIPELINE_OVERDUE_UPDATE);
+    const fpRow = (
+      await query<{ n: string; m: string; cn: string; cm: string; an: string; am: string }>(
+        PIPELINE_FINGERPRINT.replace("{scope}", scope),
+        params
+      )
+    )[0];
+    const fingerprint = `${fpRow.n}|${fpRow.an}|${fpRow.cn}|${fpRow.m}|${fpRow.am}|${fpRow.cm}`;
+    if (opts.sinceFingerprint === fingerprint) {
+      return { active: [], completed: [], canManage, canReopen, canApprove, roleKey: session.role_key, userId: session.sub, isBroad, fingerprint, skipped: true };
+    }
+    const rows = await query<Task>(
+      `${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
+      params
+    );
+    await attachTaskDetails(rows);
+    const qsActive: Task[] = [];
+    const qsCompleted: Task[] = [];
+    for (const r of rows) {
+      if (r.status === "completed") qsCompleted.push(r);
+      else qsActive.push(r);
+    }
+    return { active: qsActive, completed: qsCompleted, canManage, canReopen, canApprove, roleKey: session.role_key, userId: session.sub, isBroad, fingerprint };
+  }
+
+  // Explicit load (navigation, task modal refreshes, post-action reloads):
+  // overdue flagging + board data in a SINGLE statement — one round-trip.
   const rows = await query<Task>(
     `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
     params

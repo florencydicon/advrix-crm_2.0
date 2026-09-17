@@ -312,7 +312,7 @@ export default function SmmDashboard({
       if (data === null) throw new Error("unchanged"); // 304 → keep current arrays
       return data;
     },
-    12000
+    20000
   );
   tasks = live.tasks;
   team = live.team;

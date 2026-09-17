@@ -213,7 +213,7 @@ export default function ContentHub({
       if (data === null) throw new Error("unchanged"); // 304 → keep current rows
       return data.items;
     },
-    12000
+    20000
   );
   items = pollItems;
 

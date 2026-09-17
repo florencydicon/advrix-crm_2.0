@@ -383,10 +383,13 @@ export default function ProjectPipeline({
 }) {
   const [tab, setTab] = useState<"active" | "history">("active");
   const [board, setBoard] = useState(initial);
-  // Equal-data short-circuit: the 20s background poll rebuilds the whole board
+  // Equal-data short-circuit: the 45s background poll rebuilds the whole board
   // object; if the payload is unchanged (JSON-equal) we skip setBoard so the
   // table/cards/kanban are not re-rendered at all. Client-side ETag equivalent.
   const boardDataRef = useRef<string>("");
+  // Server-side change fingerprint: the quick-sync poll asks the server whether
+  // anything changed for THIS scope; when nothing did, no payload is transferred.
+  const boardFpRef = useRef<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
 
@@ -484,10 +487,20 @@ export default function ProjectPipeline({
     }
   }, [searchParams, board]);
 
-  const reload = useCallback(async () => {
-    const next = await getPipelineBoardAction();
+  const reload = useCallback(async (useSince = false) => {
+    // Background polls send the last fingerprint so the server can answer with
+    // a nearly-free "skipped" (nothing changed) instead of the full board.
+    const next =
+      useSince && boardFpRef.current
+        ? await getPipelineBoardAction({ sinceFingerprint: boardFpRef.current })
+        : await getPipelineBoardAction();
+    if (next.skipped) {
+      if (next.fingerprint) boardFpRef.current = next.fingerprint;
+      return;
+    }
+    if (next.fingerprint) boardFpRef.current = next.fingerprint;
     // Equal-data short-circuit: skip the state update (and the whole re-render)
-    // when the 20s poll returns an identical payload.
+    // when the poll returns an identical payload.
     const key = JSON.stringify(next);
     if (key === boardDataRef.current) return;
     boardDataRef.current = key;
@@ -530,18 +543,18 @@ export default function ProjectPipeline({
     setProjectTask(null);
   }, [openProject?.projectId]);
 
-  // Silent 12s background sync of the board arrays (+ instant refetch on tab
+  // Silent 45s background sync of the board arrays (+ instant refetch on tab
   // refocus/visibility). Fetches via the same Server Action the manual reload
-  // uses; only the derived table/card data changes, so the open TaskModal
-  // (draft remarks/content) is never remounted or cleared.
+  // uses, but passes the change fingerprint so unchanged polls transfer nothing
+  // and the open TaskModal (draft remarks/content) is never remounted/cleared.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const id = window.setInterval(() => {
       if (document.hidden) return;
-      reload().catch(() => {});
-    }, 20000);
+      reload(true).catch(() => {});
+    }, 45000);
     const onVisible = () => {
-      if (!document.hidden) reload().catch(() => {});
+      if (!document.hidden) reload(true).catch(() => {});
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);

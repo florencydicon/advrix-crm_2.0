@@ -267,7 +267,7 @@ export default function AppShell({
   }, [toast]);
   useEffect(() => {
     cancelledRef.current = false;
-    const id = window.setInterval(pollNotifs, 10000);
+    const id = window.setInterval(pollNotifs, 20000);
     // also poll once shortly after mount so HR events appear within seconds
     const once = window.setTimeout(pollNotifs, 2500);
     return () => {
