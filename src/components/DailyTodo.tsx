@@ -109,7 +109,7 @@ export default function DailyTodo({ initialLogs, userName }: { initialLogs: Dail
   }, [filtered]);
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-5">
+    <div className="w-full max-w-none space-y-5">
       {/* Editor — auto today's date, no date picker */}
       <div className="rounded-2xl border border-white/10 bg-night-850 overflow-hidden shadow-sm">
         <div className="px-4 sm:px-5 py-4 border-b border-white/[0.06] bg-white/[0.02] flex flex-col sm:flex-row sm:items-center gap-2">

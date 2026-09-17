@@ -168,47 +168,79 @@ export default function AttendanceView({
   const [locStatus, setLocStatus] = useState<"granted" | "denied" | "prompt">("prompt");
 
   // Only track denied/granted to show a banner. Prompt = no banner.
-  // Location is requested lazily on Punch In/Out — the browser's native Allow dialog
-  // appears then. If already granted, it resolves instantly without any prompt.
-  // If denied or later removed, we flip to denied and show guidance.
+  // Location is requested lazily on Punch In/Out — the native Allow dialog appears then.
+  // We also re-check on visibility/focus (user returns from system Settings) and via Capacitor fallback.
   useEffect(() => {
     if (!navigator.permissions) return;
-    navigator.permissions.query({ name: "geolocation" } as PermissionDescriptor).then((result) => {
-      if (result.state === "denied") setLocStatus("denied");
-      else if (result.state === "granted") setLocStatus("granted");
+    let perm: any = null;
+    const update = (state: string) => {
+      if (state === "denied") setLocStatus("denied");
+      else if (state === "granted") setLocStatus("granted");
       else setLocStatus("prompt");
-      const onChange = () => {
-        setLocStatus(result.state === "granted" ? "granted" : result.state === "denied" ? "denied" : "prompt");
-      };
+    };
+    navigator.permissions.query({ name: "geolocation" } as PermissionDescriptor).then((result: any) => {
+      perm = result;
+      update(result.state);
+      const onChange = () => update(result.state);
       result.addEventListener("change", onChange);
     }).catch(() => {});
+    const onVisible = () => {
+      if (document.hidden) return;
+      if (perm) update(perm.state);
+      else if (navigator.permissions) {
+        navigator.permissions.query({ name: "geolocation" } as PermissionDescriptor).then((r: any) => update(r.state)).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, []);
 
-  function requestLocationPermission() {
-    if (!navigator.geolocation) { setLocStatus("denied"); return; }
-    navigator.geolocation.getCurrentPosition(
-      () => setLocStatus("granted"),
-      (err) => {
-        if (err.code === 1) {
-          setLocStatus("denied");
-          toast("Location permission was denied. Please allow location in your browser settings.", "error");
-        } else {
-          setLocStatus("prompt");
-          toast("Could not get location. Please try again.", "error");
-        }
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+  async function requestLocationPermission() {
+    const res: any = await getCurrentPosition();
+    if (res.latitude != null && res.longitude != null) {
+      setLocStatus("granted");
+      toast("Location access granted!", "success");
+      return;
+    }
+    const code = res.errorCode;
+    if (code === 1) {
+      setLocStatus("denied");
+      toast("Location permission denied. On Android: App Settings → Permissions → Location → Allow. On Web: Site Settings → Location → Allow, then Try Again.", "error");
+    } else if (code === 2) {
+      setLocStatus("prompt");
+      toast("GPS unavailable. Please enable Location/GPS on your device and try again.", "error");
+    } else if (code === 3) {
+      setLocStatus("prompt");
+      toast("Location request timed out. Ensure GPS is on and try again.", "error");
+    } else {
+      setLocStatus("prompt");
+      toast("Could not get location. Please ensure GPS is enabled and try again.", "error");
+    }
   }
 
   function handlePunchIn() {
     start(async () => {
-      const loc = await getCurrentPosition();
+      const loc: any = await getCurrentPosition();
       setGeoLoc(loc);
       if (loc.latitude == null || loc.longitude == null) {
-        // Triggers native Allow dialog on first attempt; if denied, mark denied so banner appears.
-        setLocStatus("denied");
-        toast("Location access is required. Please allow location permission and try again.", "error");
+        const code = loc.errorCode;
+        if (code === 1) {
+          setLocStatus("denied");
+          toast("Location permission denied. Please allow Location (Site Settings → Allow or App Settings → Allow) and Try Again.", "error");
+        } else if (code === 2) {
+          setLocStatus("prompt");
+          toast("GPS unavailable. Enable GPS/Location on device and try again.", "error");
+        } else if (code === 3) {
+          setLocStatus("prompt");
+          toast("Location timed out. Check GPS signal and try again.", "error");
+        } else {
+          setLocStatus("prompt");
+          toast("Could not get location. Please enable GPS and allow permission, then try again.", "error");
+        }
         return;
       }
       setLocStatus("granted");
@@ -232,11 +264,23 @@ export default function AttendanceView({
 
   function handlePunchOut() {
     start(async () => {
-      const loc = await getCurrentPosition();
+      const loc: any = await getCurrentPosition();
       setGeoLoc(loc);
       if (loc.latitude == null || loc.longitude == null) {
-        setLocStatus("denied");
-        toast("Location access is required. Please allow location permission and try again.", "error");
+        const code = loc.errorCode;
+        if (code === 1) {
+          setLocStatus("denied");
+          toast("Location permission denied. Please allow Location and Try Again.", "error");
+        } else if (code === 2) {
+          setLocStatus("prompt");
+          toast("GPS unavailable. Enable GPS and try again.", "error");
+        } else if (code === 3) {
+          setLocStatus("prompt");
+          toast("Location timed out. Try again.", "error");
+        } else {
+          setLocStatus("prompt");
+          toast("Could not get location. Enable GPS and allow permission.", "error");
+        }
         return;
       }
       setLocStatus("granted");
