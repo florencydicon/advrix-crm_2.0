@@ -1226,16 +1226,13 @@ export default function ProjectPipeline({
                     canDelete
                     canStage={canBulkStage}
                     canDeadline={isManager}
-                    canBulkEdit={isManager}
+                    canBulkEdit={false}
                     statusOptions={[]}
                     onAssign={bulkAssign}
                     onDelete={bulkDelete}
                     onStatus={async () => {}}
                     onStage={bulkStage}
                     onDeadline={bulkDeadline}
-                    onBulkTitles={bulkTitles}
-                    onBulkContents={bulkContents}
-                    onBulkLinks={bulkLinks}
                     stageOptions={stageCandidates}
                     onClear={() => setSelected([])}
                   />

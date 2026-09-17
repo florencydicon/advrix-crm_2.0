@@ -21,6 +21,7 @@ import {
   Download,
   Smartphone,
   FileText,
+  ListTodo,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -45,6 +46,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/attendance", label: "Attendance", icon: Clock },
+  { href: "/daily", label: "Daily Log", icon: ListTodo },
   { href: "/updates", label: "Updates", icon: Bell },
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },

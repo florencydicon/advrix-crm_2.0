@@ -86,6 +86,14 @@ export default async function DashboardPage() {
           </p>
         </div>
         <PushNotificationPrompt />
+        <Link href="/daily" className="card p-3 flex items-center gap-3 hover:bg-white/[0.06] transition-colors">
+          <span className="h-8 w-8 rounded-lg bg-brand-300/15 flex items-center justify-center"><ListTodo className="h-4 w-4 text-brand-300" /></span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white">Daily Work Log</p>
+            <p className="text-xs text-slate-400">Record what you did today — date-wise, Copy / Share to WhatsApp</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-slate-500 ml-auto" />
+        </Link>
         {session.role_key === "SMM" ? (
           <SmmDashboard tasks={tasks} team={team} userId={session.sub} roleKey={session.role_key} permissions={session.permissions} />
         ) : (
@@ -110,6 +118,11 @@ export default async function DashboardPage() {
           </Link>
         </div>
         <PushNotificationPrompt />
+        <Link href="/daily" className="card p-3 flex items-center gap-3 hover:bg-white/[0.06] transition-colors">
+          <span className="h-8 w-8 rounded-lg bg-brand-300/15 flex items-center justify-center"><ListTodo className="h-4 w-4 text-brand-300" /></span>
+          <div className="min-w-0"><p className="text-sm font-semibold text-white">Daily Work Log</p><p className="text-xs text-slate-400">Date-wise notes — Copy / Share to WhatsApp</p></div>
+          <ChevronRight className="h-4 w-4 text-slate-500 ml-auto" />
+        </Link>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           <Stat label="My Projects" value={mine.length} />
@@ -216,6 +229,11 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </div>
         </div>
         <PushNotificationPrompt />
+        <Link href="/daily" className="card p-3 flex items-center gap-3 hover:bg-white/[0.06] transition-colors">
+          <span className="h-8 w-8 rounded-lg bg-brand-300/15 flex items-center justify-center"><ListTodo className="h-4 w-4 text-brand-300" /></span>
+          <div className="min-w-0"><p className="text-sm font-semibold text-white">Daily Work Log</p><p className="text-xs text-slate-400">For everyone — date-wise notes, Copy / Share to WhatsApp</p></div>
+          <ChevronRight className="h-4 w-4 text-slate-500 ml-auto" />
+        </Link>
 
         {/* ── Row 1: project + client stat cards ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
@@ -367,6 +385,11 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         </div>
       </div>
       <PushNotificationPrompt />
+      <Link href="/daily" className="card p-3 flex items-center gap-3 hover:bg-white/[0.06] transition-colors">
+        <span className="h-8 w-8 rounded-lg bg-brand-300/15 flex items-center justify-center"><ListTodo className="h-4 w-4 text-brand-300" /></span>
+        <div className="min-w-0"><p className="text-sm font-semibold text-white">Daily Work Log</p><p className="text-xs text-slate-400">Date-wise notes — Copy / Share to WhatsApp</p></div>
+        <ChevronRight className="h-4 w-4 text-slate-500 ml-auto" />
+      </Link>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <Link href="/projects" className="card card-hover p-3 md:p-5 block hover:bg-white/[0.06] transition-colors">
