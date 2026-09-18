@@ -665,10 +665,13 @@ export default function ProjectPipeline({
   const sortedActive = useMemo(
     () =>
       [...board.active].sort((a, b) => {
-        // Tasks awaiting QC review float to the top so the gatekeeper sees them,
-        // latest submitted first, nearest due date first as tiebreaker.
-        if (a.status === "submitted" && b.status !== "submitted") return -1;
-        if (b.status === "submitted" && a.status !== "submitted") return 1;
+        // Urgent review tasks float to the very top for EVERY role (super admin, PM, employee):
+        // client_feedback (client waiting) > submitted (awaiting review/QC) > everything else
+        // Inside same priority, nearest deadline first — then newest created.
+        const pri = (s: string) => (s === "client_feedback" ? 0 : s === "submitted" ? 1 : 2);
+        const pa = pri(a.status);
+        const pb = pri(b.status);
+        if (pa !== pb) return pa - pb;
         const ka = new Date(`${a.due_date}T00:00:00`).getTime();
         const kb = new Date(`${b.due_date}T00:00:00`).getTime();
         if (ka !== kb) {
