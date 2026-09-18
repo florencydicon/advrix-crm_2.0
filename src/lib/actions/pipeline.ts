@@ -857,32 +857,25 @@ export async function bulkSetPipelineStageAction(
       await query(`INSERT INTO task_assignees (task_id, user_id, position) VALUES ($1, $2, $3)`, [tid, targetUserId, maxPos]);
       idx = seq.length;
     }
-    // The FINAL assigned member is the last stage — moving a task there means
-    // the whole sequence is done, so it completes instead of lingering as an
-    // active row (this was the reported "shows in the middle but completed" bug).
-    const isLastMember = idx >= 0 && idx === seq.length - 1 && seq.length > 0;
-    if (isLastMember) {
-      await query(
-        `UPDATE tasks SET status = 'completed', completed_at = now(), assigned_to = $2, role_key = $3, current_step = $4 WHERE id = $1`,
-        [tid, targetUserId, roleKey, idx]
+    // Direct stage assignment never auto-completes — it just parks the task at
+    // the chosen stage. The assignee must Start -> Submit -> PM/Super Admin
+    // Approves to advance. If 3 members A->B->C and PM directly assigns to B,
+    // approval will auto-advance to C (advanceTaskStep). Even assigning
+    // directly to the last member (C) stays Active with status 'approved' —
+    // completion only via the final Approve. This fixes the "direct assign to
+    // last stage completes immediately & goes to History" bug.
+    let deadline: string | null = null;
+    try {
+      const dr = await query<{ allotment_deadline: string | null }>(
+        `SELECT allotment_deadline::text AS allotment_deadline FROM assignments WHERE project_id = $1 AND user_id = $2 ORDER BY position ASC LIMIT 1`,
+        [trow[0].project_id, targetUserId]
       );
-      // Final stage reached — also runs the project-completion check.
-      await markTaskComplete(tid);
-    } else {
-      // Use assignment deadline if one is configured for this project/member
-      let deadline: string | null = null;
-      try {
-        const dr = await query<{ allotment_deadline: string | null }>(
-          `SELECT allotment_deadline::text AS allotment_deadline FROM assignments WHERE project_id = $1 AND user_id = $2 ORDER BY position ASC LIMIT 1`,
-          [trow[0].project_id, targetUserId]
-        );
-        deadline = dr[0]?.allotment_deadline ?? null;
-      } catch {}
-      await query(
-        `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = 'approved', due_date = COALESCE($5, due_date), reviewed_at = NULL WHERE id = $1`,
-        [tid, idx, targetUserId, roleKey, deadline]
-      );
-    }
+      deadline = dr[0]?.allotment_deadline ?? null;
+    } catch {}
+    await query(
+      `UPDATE tasks SET current_step = $2, assigned_to = $3, role_key = $4, status = 'approved', due_date = COALESCE($5, due_date), reviewed_at = NULL, completed_at = NULL WHERE id = $1`,
+      [tid, idx, targetUserId, roleKey, deadline]
+    );
     count++;
   }
   revalidate();
