@@ -1,4 +1,4 @@
-const CACHE = "advrix-v5";
+const CACHE = "advrix-v6";
 const CORE = ["/", "/dashboard", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -16,27 +16,39 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
+  // Never cache API, RSC, or Next data — always go network for fresh pipeline/notifications
+  if (url.pathname.startsWith("/api/") || url.searchParams.has("_rsc") || url.pathname.startsWith("/_next/")) {
+    return;
+  }
   if (req.headers.get("accept")?.includes("text/html")) {
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: "no-store" })
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+          // Only cache successful navigations for offline fallback; clone after
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
           return res;
         })
         .catch(() => caches.match(req).then((r) => r || caches.match("/dashboard")))
     );
     return;
   }
-  e.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-      if (res.ok && req.url.startsWith("http")) {
-        const c = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(req, c));
-      }
-      return res;
-    }))
-  );
+  // Cache-first for static assets only (images, fonts, css, js)
+  // Do not cache JSON/fetch for data endpoints
+  const dest = req.destination;
+  if (dest === "image" || dest === "style" || dest === "script" || dest === "font") {
+    e.respondWith(
+      caches.match(req).then((cached) => cached || fetch(req).then((res) => {
+        if (res.ok) {
+          const c = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, c));
+        }
+        return res;
+      }))
+    );
+  }
 });
 
 // --- Web Push: OS-level notifications (background, lock screen) ---

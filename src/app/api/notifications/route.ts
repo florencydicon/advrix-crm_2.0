@@ -3,6 +3,9 @@ import { getSession } from "@/lib/session";
 import { getNotifications, getUnreadNotificationCount } from "@/lib/notifications";
 import { etagJsonResponse } from "@/lib/http";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) {
