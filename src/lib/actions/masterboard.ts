@@ -8,7 +8,7 @@ import { hasPermission } from "@/lib/permissions";
 import { sanitizeRich, richToPlain, isEmptyRich } from "@/lib/rich";
 import { markTaskComplete, setTaskTeam, setTaskDeadline } from "@/lib/workflow";
 import { createNotification } from "@/lib/notifications";
-import { requireAuth } from "@/lib/actions/pipeline";
+import { requireAuth, taskOf } from "@/lib/actions/pipeline";
 
 const PERM_PROJECTS_VIEW = "projects:view";
 const PERM_TASKS_MANAGE = "tasks:manage";

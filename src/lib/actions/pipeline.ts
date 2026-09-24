@@ -135,7 +135,7 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   return session;
 }
 
-async function taskOf(taskId: string) {
+export async function taskOf(taskId: string) {
   const t = (
     await query<{ assigned_to: string | null; status: string; title: string }>(
       `SELECT assigned_to, status, title FROM tasks WHERE id = $1`,
