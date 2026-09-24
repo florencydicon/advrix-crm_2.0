@@ -668,7 +668,17 @@ export default function ProjectPipeline({
         // Urgent review tasks float to the very top for EVERY role (super admin, PM, employee):
         // client_feedback (client waiting) > submitted (awaiting review/QC) > everything else
         // Inside same priority, nearest deadline first — then newest created.
-        const pri = (s: string) => (s === "client_feedback" ? 0 : s === "submitted" ? 1 : 2);
+        // Everyone EXCEPT PM & Super Admin sees the board rows reordered:
+      //   Awaiting Review (submitted) > In Progress (in_progress) > Ready to Start (approved).
+      // PM & Super Admin keep the urgent-review-first order
+      //   (client_feedback (client waiting) > submitted > everything else).
+      const keepPmOrder = ["SUPER_ADMIN", "PROJECT_MANAGER", "PM"].includes(
+        (board.roleKey || "").toUpperCase()
+      );
+      const pri = (s: string) =>
+        keepPmOrder
+          ? s === "client_feedback" ? 0 : s === "submitted" ? 1 : 2
+          : s === "submitted" ? 0 : s === "in_progress" ? 1 : s === "approved" ? 2 : 3;
         const pa = pri(a.status);
         const pb = pri(b.status);
         if (pa !== pb) return pa - pb;
