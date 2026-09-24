@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
@@ -130,7 +130,7 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   return { active, completed, canManage, canReopen, canApprove, roleKey: session.role_key, userId: session.sub, isBroad };
 }
 
-async function requireAuth() {
+  export async function requireAuth() {
   const session = await getSession();
   return session;
 }
