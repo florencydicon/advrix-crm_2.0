@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
@@ -88,7 +88,7 @@ const PIPELINE_TASK_SELECT = `
  *  - Project Managers see ONLY their assigned clients (`clients.assigned_pm_id`),
  *    never the whole company (strict PM data isolation).
  *  - Everyone else only ever sees the tasks they are directly assigned to
- *    (or members of the task's assignees) — strictly filtered to their own work.
+ *    (or members of the task's assignees) â€” strictly filtered to their own work.
  *
  * Completed tasks (status = 'completed') go to History; everything else lands on
  * the Active Board.
@@ -114,7 +114,7 @@ export async function getPipelineBoardAction(): Promise<PipelineBoardPayload> {
   const scope = boardScope(session, dataScope);
   const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
 
-  // Overdue flagging + board data in a SINGLE statement (CTE) — one round-trip.
+  // Overdue flagging + board data in a SINGLE statement (CTE) â€” one round-trip.
   const rows = await query<Task>(
     `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
     params
@@ -181,17 +181,17 @@ function isContentEditor(session: {
   return hasPermission(session.permissions, PERM_TASKS_MANAGE);
 }
 
-/** Notification deep-links — unified Project Pipeline with the TaskModal auto-opened. */
+/** Notification deep-links â€” unified Project Pipeline with the TaskModal auto-opened. */
 function taskPipelineLink(taskId: string) {
   return `/projects?taskId=${encodeURIComponent(taskId)}`;
 }
 
-/** Notification deep-links — unified Employee Dashboard with the TaskModal auto-opened. */
+/** Notification deep-links â€” unified Employee Dashboard with the TaskModal auto-opened. */
 function taskDashboardLink(taskId: string) {
   return `/dashboard?taskId=${encodeURIComponent(taskId)}`;
 }
 
-/** QC Gatekeeper — only Admins/PMs (tasks:manage or tasks:review) may approve or reject work. */
+/** QC Gatekeeper â€” only Admins/PMs (tasks:manage or tasks:review) may approve or reject work. */
 function isGatekeeper(session: { permissions?: string[] } | null): boolean {
   return (
     !!session &&
@@ -207,7 +207,7 @@ function revalidate() {
 }
 
 /**
- * Submit for Review (Employee) — flags the task as `submitted` for the QC
+ * Submit for Review (Employee) â€” flags the task as `submitted` for the QC
  * gatekeeper. It does NOT advance the stageIndex or change the assignee: the
  * task stays with the employee until an Admin/PM approves or rejects it.
  */
@@ -249,8 +249,8 @@ export async function submitPipelineTaskAction(
 }
 
 /**
- * Approve & Advance (Admin/PM gatekeeper) — the ONLY action that pushes a task
- * down its sequence (A→B→C): marks the current stage approved, auto-assigns the
+ * Approve & Advance (Admin/PM gatekeeper) â€” the ONLY action that pushes a task
+ * down its sequence (Aâ†’Bâ†’C): marks the current stage approved, auto-assigns the
  * next member with status `approved`, or completes the task after the final stage.
  */
 export async function approvePipelineTaskAction(
@@ -265,7 +265,7 @@ export async function approvePipelineTaskAction(
   const prevAssignee = task.assigned_to;
   const next = await advanceTaskStep(taskId);
   if (next === null) {
-    // Reached the end of the sequence — mark fully complete.
+    // Reached the end of the sequence â€” mark fully complete.
     await markTaskComplete(taskId);
   }
   const after = await taskOf(taskId);
@@ -276,7 +276,7 @@ export async function approvePipelineTaskAction(
       title: after?.status === "completed" ? "Task completed" : "Stage approved",
       body: after?.status === "completed"
         ? `"${task.title || "Your task"}" was approved and completed.`
-        : `"${task.title || "Your task"}" was approved — it moves to the next stage.`,
+        : `"${task.title || "Your task"}" was approved â€” it moves to the next stage.`,
       link: taskDashboardLink(taskId),
     });
   }
@@ -294,12 +294,12 @@ export async function approvePipelineTaskAction(
 }
 
 /**
- * Send Back (Admin/PM gatekeeper) — rejects the submitted work. Keeps the
+ * Send Back (Admin/PM gatekeeper) â€” rejects the submitted work. Keeps the
  * current assignee on the task and flips the status to `needs_improvement` for
  * rework, WITHOUT changing the stageIndex or moving the sequence backward.
  *
- * The current Remarks/Content text is prepended with the author's signature —
- * `[Feedback by {FirstName} - {Role}]` — and any prior remarks are preserved
+ * The current Remarks/Content text is prepended with the author's signature â€”
+ * `[Feedback by {FirstName} - {Role}]` â€” and any prior remarks are preserved
  * below, so the assignee always knows who requested the fix and what to do.
  */
 export async function sendBackPipelineTaskAction(
@@ -353,7 +353,7 @@ export async function sendBackPipelineTaskAction(
 }
 
 /**
- * Re-open (Super Admin only) — pulls a completed History task back onto the
+ * Re-open (Super Admin only) â€” pulls a completed History task back onto the
  * Active Board so its pipeline can resume.
  */
 export async function reopenPipelineTaskAction(
@@ -373,7 +373,7 @@ export async function reopenPipelineTaskAction(
 }
 
 /**
- * Move Back — retreats a task one stage backward (for mistaken completions or
+ * Move Back â€” retreats a task one stage backward (for mistaken completions or
  * advances). PM and Super Admin only. Works for both active and completed
  * tasks; for completed it reopens at the previous stage.
  */
@@ -488,7 +488,7 @@ export async function setPipelineTaskRemarksAction(
 }
 
 /**
- * Task Title — renames the sub-task in the database. Only content editors
+ * Task Title â€” renames the sub-task in the database. Only content editors
  * (WRITER/CONTENT_WRITER) and managers (PM/ADMIN/SUPER_ADMIN) may edit it.
  */
 export async function setPipelineTaskTitleAction(
@@ -513,7 +513,7 @@ export async function setPipelineTaskTitleAction(
 const PRIORITY_KEYS = ["low", "medium", "high", "urgent"];
 
 /**
- * Task Priority — updates the priority of a sub-task. Managers (Super Admin /
+ * Task Priority â€” updates the priority of a sub-task. Managers (Super Admin /
  * Admin / Project Manager / PM, or anyone with `tasks:manage`) only.
  */
 export async function setPipelineTaskPriorityAction(
@@ -537,7 +537,7 @@ export async function setPipelineTaskPriorityAction(
 }
 
 /**
- * Content / Copy — the draft work body. Persists the working text for the
+ * Content / Copy â€” the draft work body. Persists the working text for the
  * current stage. Only content editors and managers may edit it.
  */
 export async function setPipelineTaskContentAction(
@@ -557,7 +557,7 @@ export async function setPipelineTaskContentAction(
 }
 
 /**
- * Ultra-lean Team Assignment — replaces the sequential team (order preserved)
+ * Ultra-lean Team Assignment â€” replaces the sequential team (order preserved)
  * for one task. Manager / reviewer only. Auto-points the task at the first
  * member if it is not yet started.
  */
@@ -618,7 +618,7 @@ function cleanIdList(ids: string[] | null | undefined): string[] {
 }
 
 /**
- * Content Status (single) — independent content-hub lifecycle, never touches
+ * Content Status (single) â€” independent content-hub lifecycle, never touches
  * the ultra-lean task status flow. Content team (WRITER/CONTENT_WRITER) and
  * managers may update it.
  */
@@ -642,7 +642,7 @@ export async function setPipelineTaskContentStatusAction(
 }
 
 /**
- * Task Deadline — sets (or clears) the due date. Managers (Super Admin / Admin /
+ * Task Deadline â€” sets (or clears) the due date. Managers (Super Admin / Admin /
  * Project Manager / PM, or anyone with `tasks:manage`) only; regular employees
  * read the deadline but cannot move it. Overdue re-flagging runs immediately so
  * a deadline pushed into the past flips the task to urgent right away.
@@ -671,7 +671,7 @@ export interface UpcomingDeadlineAlert {
 
 /**
  * Due-soon alerts (called on app load / tab refocus).
- *  - Auto-flags overdue tasks app-wide (priority → urgent).
+ *  - Auto-flags overdue tasks app-wide (priority â†’ urgent).
  *  - Finds the current user's open tasks whose deadline is within the next 24
  *    hours (with date-only deadlines and "due today" already overdue semantics,
  *    that is exactly `due_date == tomorrow (UTC)`).
@@ -746,7 +746,7 @@ export async function bulkAssignPipelineTeamAction(
 }
 
 /**
- * Bulk: delete every selected task. Managers only — writers can never delete.
+ * Bulk: delete every selected task. Managers only â€” writers can never delete.
  * Dependents cascade automatically.
  */
 export async function bulkDeletePipelineTasksAction(
@@ -766,7 +766,7 @@ export async function bulkDeletePipelineTasksAction(
 
 /**
  * Bulk: move every selected task to a target status (same direct-move
- * semantics as the board drag & drop — no stage advance, no snapshots).
+ * semantics as the board drag & drop â€” no stage advance, no snapshots).
  * Managers only.
  */
 export async function bulkSetPipelineStatusAction(
@@ -824,7 +824,7 @@ export async function bulkSetPipelineDeadlineAction(
 
 /**
  * Bulk: change the current stage (assignee) for multiple subtasks at once.
- * Only PM and Super Admin may use it — updates current_step, assigned_to,
+ * Only PM and Super Admin may use it â€” updates current_step, assigned_to,
  * role_key and applies the stage's due date. Tasks already completed are
  * skipped.
  */
@@ -857,11 +857,11 @@ export async function bulkSetPipelineStageAction(
       await query(`INSERT INTO task_assignees (task_id, user_id, position) VALUES ($1, $2, $3)`, [tid, targetUserId, maxPos]);
       idx = seq.length;
     }
-    // Direct stage assignment never auto-completes — it just parks the task at
+    // Direct stage assignment never auto-completes â€” it just parks the task at
     // the chosen stage. The assignee must Start -> Submit -> PM/Super Admin
     // Approves to advance. If 3 members A->B->C and PM directly assigns to B,
     // approval will auto-advance to C (advanceTaskStep). Even assigning
-    // directly to the last member (C) stays Active with status 'approved' —
+    // directly to the last member (C) stays Active with status 'approved' â€”
     // completion only via the final Approve. This fixes the "direct assign to
     // last stage completes immediately & goes to History" bug.
     let deadline: string | null = null;
@@ -934,7 +934,7 @@ export async function bulkMoveBackToStageAction(
 
 /**
  * Bulk: set the content-lifecycle status on every selected task. Content team
- * and managers (writers included — they can change status but never delete).
+ * and managers (writers included â€” they can change status but never delete).
  */
 export async function bulkSetPipelineContentStatusAction(
   taskIds: string[],
@@ -1011,7 +1011,7 @@ export async function bulkSetPipelineContentsAction(
 }
 
 /**
- * Reference / Drive links per subtask — free-form text (URLs, one per line).
+ * Reference / Drive links per subtask â€” free-form text (URLs, one per line).
  */
 export async function setPipelineTaskReferenceLinksAction(
   taskId: string,
@@ -1051,7 +1051,7 @@ export async function bulkSetPipelineReferenceLinksAction(
 }
 
 /**
- * Client feedback variant of send-back — tags feedback as client feedback and shows pill.
+ * Client feedback variant of send-back â€” tags feedback as client feedback and shows pill.
  */
 export async function startPipelineTaskAction(taskId: string): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
@@ -1120,7 +1120,7 @@ export async function sendBackWithClientFeedbackAction(
   const share = typed || "Client requested rework.";
   const newRemarks = `${signature}: ${share}` + (existing ? `\n\n${existing}` : "");
 
-  // Move task back to previous stage (Designer/Video Editor) — mandatory A←B
+  // Move task back to previous stage (Designer/Video Editor) â€” mandatory Aâ†B
   const trow = await query<{ project_id: string; current_step: number }>(`SELECT project_id, current_step FROM tasks WHERE id = $1`, [taskId]);
   const seq = await query<{ user_id: string; position: number }>(`SELECT user_id, position FROM task_assignees WHERE task_id = $1 ORDER BY position ASC, added_at ASC`, [taskId]);
   let targetIdx = (trow[0]?.current_step ?? 0) - 1;
@@ -1140,8 +1140,8 @@ export async function sendBackWithClientFeedbackAction(
       await createNotification({
         userId: target.user_id,
         type: "task",
-        title: "Client feedback — rework needed",
-        body: `${session.name} sent client feedback on "${task.title || "your task"}" — you are up for redesign.`,
+        title: "Client feedback â€” rework needed",
+        body: `${session.name} sent client feedback on "${task.title || "your task"}" â€” you are up for redesign.`,
         link: taskDashboardLink(taskId),
       });
     }
@@ -1156,7 +1156,7 @@ export async function sendBackWithClientFeedbackAction(
       await createNotification({
         userId: task.assigned_to,
         type: "task",
-        title: "Client feedback — rework needed",
+        title: "Client feedback â€” rework needed",
         body: `${session.name} added client feedback on "${task.title || "your task"}".`,
         link: taskDashboardLink(taskId),
       });
@@ -1166,34 +1166,3 @@ export async function sendBackWithClientFeedbackAction(
   return { ok: true };
 }
 
-/** Content Hub board — existing tasks whose deliverable type carries a content_role (Client -> Project/Task -> Content Hub; no orphans by construction). Same RBAC scoping as the pipeline: global viewers see everything, PMs only their assigned clients, everyone else only their own tasks. */
-export async function getContentBoardAction(): Promise<PipelineBoardPayload> {
-  const session = await getSession();
-  if (!session) return { active: [], completed: [], canManage: false, canReopen: false, canApprove: false, roleKey: null, userId: null, isBroad: false };
-
-  const perms = session.permissions || [];
-  const dataScope = resolveDataScope(session);
-  const isBroad = dataScope.kind === "global";
-  const canManage = hasPermission(perms, PERM_TASKS_MANAGE);
-  const canApprove = hasPermission(perms, PERM_TASKS_MANAGE) || hasPermission(perms, PERM_TASKS_REVIEW);
-  const canReopen = session.role_key === "SUPER_ADMIN";
-  const scope = boardScope(session, dataScope);
-  const params: (string | null)[] = dataScope.kind === "global" ? [] : [session.sub];
-  const where = scope
-    ? `${scope} AND dt.content_role IS NOT NULL`
-    : `WHERE dt.content_role IS NOT NULL`;
-
-  const rows = await query<Task>(
-    `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} JOIN project_deliverables pd ON pd.id = t.deliverable_id JOIN deliverable_types dt ON dt.key = pd.category_key ${where} ORDER BY c.name ASC, p.name ASC, t.created_at DESC`,
-    params
-  );
-
-  const active: Task[] = [];
-  const completed: Task[] = [];
-  for (const r of rows) {
-    if (r.status === "completed") completed.push(r);
-    else active.push(r);
-  }
-
-  return { active, completed, canManage, canReopen, canApprove, roleKey: session.role_key, userId: session.sub, isBroad };
-}

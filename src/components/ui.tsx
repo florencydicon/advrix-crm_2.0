@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect } from "react";
 import { X, CircleCheck, Clock, PauseCircle, PlayCircle, Send, Undo2, Users, Upload, AlertTriangle } from "lucide-react";
@@ -46,30 +46,12 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const CONTENT_STATUS_META: Record<string, { label: string; cls: string; Icon: any }> = {
-  pending: { label: "Pending", cls: "bg-white/10 text-slate-300", Icon: PauseCircle },
-  in_process: { label: "In Process", cls: "bg-brand-300/10 text-brand-300", Icon: PlayCircle },
-  approval: { label: "Approval", cls: "bg-violet-400/10 text-violet-300", Icon: Send },
-  designer_completed: { label: "Designer Completed", cls: "bg-cyan-400/10 text-cyan-300", Icon: CircleCheck },
-  uploaded_scheduled: { label: "Uploaded/Scheduled", cls: "bg-emerald-400/10 text-emerald-300", Icon: Upload },
-};
-
-export function ContentStatusBadge({ status }: { status: string | null | undefined }) {
-  const meta = CONTENT_STATUS_META[status || "pending"] || CONTENT_STATUS_META.pending;
-  const Icon = meta.Icon;
-  return (
-    <span className={`badge ${meta.cls} whitespace-nowrap`}>
-      <Icon className="h-3 w-3" />
-      {meta.label}
-    </span>
-  );
-}
 
 export const PLATFORMS = [
-  { key: "instagram", label: "Instagram", icon: "📸" },
-  { key: "facebook", label: "Facebook", icon: "📘" },
-  { key: "youtube", label: "YouTube", icon: "🎬" },
-  { key: "twitter", label: "Twitter / X", icon: "🐦" },
+  { key: "instagram", label: "Instagram", icon: "ðŸ“¸" },
+  { key: "facebook", label: "Facebook", icon: "ðŸ“˜" },
+  { key: "youtube", label: "YouTube", icon: "ðŸŽ¬" },
+  { key: "twitter", label: "Twitter / X", icon: "ðŸ¦" },
 ];
 
 export function PlatformBadges({ platforms }: { platforms: string[] }) {
@@ -112,7 +94,7 @@ export function PriorityBadge({ priority }: { priority: string }) {
   return <span className={`badge ${meta.cls} whitespace-nowrap`}>{meta.label}</span>;
 }
 
-/** ⚠ Auto-flagged overdue: deadline passed and the task is still open. */
+/** âš  Auto-flagged overdue: deadline passed and the task is still open. */
 export function OverdueBadge() {
   return (
     <span className="badge bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30 whitespace-nowrap">
@@ -121,7 +103,7 @@ export function OverdueBadge() {
   );
 }
 
-/** ⏳ Approaching deadline: due within the next 24 hours. */
+/** â³ Approaching deadline: due within the next 24 hours. */
 export function DueSoonBadge() {
   return (
     <span className="badge bg-amber-400/10 text-amber-300 ring-1 ring-amber-400/30 whitespace-nowrap">
@@ -179,20 +161,20 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:justify-center md:p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative flex w-full max-h-[calc(92dvh-60px)] md:max-h-[75vh] flex-col overflow-hidden rounded-t-2xl bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 md:w-full md:max-w-lg md:rounded-2xl mb-16 md:mb-0">
-        {/* Drag handle — mobile only */}
+        {/* Drag handle â€” mobile only */}
         <div className="flex justify-center pt-3 pb-1 md:hidden">
           <div className="h-1 w-10 rounded-full bg-white/20" />
         </div>
         <h3 className="shrink-0 flex items-center justify-between px-5 py-3 md:py-4 border-b border-white/[0.06] text-base font-semibold text-white">
           <span className="pr-2 truncate">{title}</span>
-          {/* Header X — desktop only, mobile uses bottom FAB only */}
+          {/* Header X â€” desktop only, mobile uses bottom FAB only */}
           <button onClick={onClose} className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors" aria-label="Close dialog">
             <X className="h-4 w-4" />
           </button>
         </h3>
         <div className="flex-1 overflow-y-auto px-5 py-4 pb-24 md:pb-4">{children}</div>
       </div>
-      {/* Mobile close FAB — only visible on mobile, above bottom nav */}
+      {/* Mobile close FAB â€” only visible on mobile, above bottom nav */}
       <button
         onClick={onClose}
         aria-label="Close dialog"
