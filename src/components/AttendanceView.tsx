@@ -329,36 +329,43 @@ export default function AttendanceView({
             <LiveClock />
           </p>
         </div>
-        <div className="flex gap-1 bg-white/5 rounded-xl p-1 ring-1 ring-white/10">
-          <button
-            onClick={() => setActiveTab("attendance")}
-            className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-              activeTab === "attendance" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
-            }`}
-          >
-            <Clock className="h-3.5 w-3.5 inline mr-1" />
-            Attendance
-          </button>
-          <button
-            onClick={() => setActiveTab("leaves")}
-            className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-              activeTab === "leaves" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
-            }`}
-          >
-            <Calendar className="h-3.5 w-3.5 inline mr-1" />
-            Leaves
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab("reports")}
-              className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                activeTab === "reports" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
-              }`}
-            >
-              <TrendingUp className="h-3.5 w-3.5 inline mr-1" />
-              Reports
+        <div className="flex items-center gap-2 justify-end flex-wrap sm:flex-nowrap min-w-0">
+          {activeTab === "leaves" && (
+            <button className="btn-primary !py-2 !px-3 text-xs shrink-0 whitespace-nowrap" onClick={() => setShowLeaveModal(true)}>
+              <Plus className="h-3.5 w-3.5" /> Apply Leave
             </button>
           )}
+          <div className="flex gap-1 bg-white/5 rounded-xl p-1 ring-1 ring-white/10 min-w-0">
+            <button
+              onClick={() => setActiveTab("attendance")}
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                activeTab === "attendance" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
+              }`}
+            >
+              <Clock className="h-3.5 w-3.5 inline mr-1" />
+              Attendance
+            </button>
+            <button
+              onClick={() => setActiveTab("leaves")}
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                activeTab === "leaves" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
+              }`}
+            >
+              <Calendar className="h-3.5 w-3.5 inline mr-1" />
+              Leaves
+            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab("reports")}
+                className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                  activeTab === "reports" ? "bg-night-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-200"
+                }`}
+              >
+                <TrendingUp className="h-3.5 w-3.5 inline mr-1" />
+                Reports
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -637,12 +644,6 @@ export default function AttendanceView({
 
       {activeTab === "leaves" && (
         <>
-          <div className="flex sm:justify-end">
-            <button className="btn-primary !py-2 !px-3 text-xs" onClick={() => setShowLeaveModal(true)}>
-              <Plus className="h-3.5 w-3.5" /> Apply Leave
-            </button>
-          </div>
-
           {isAdmin && pendingLeaves.length > 0 && (
             <div className="card">
               <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
