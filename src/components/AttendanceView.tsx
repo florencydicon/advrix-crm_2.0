@@ -90,7 +90,6 @@ export default function AttendanceView({
   stats,
   isAdmin,
   myLeaves,
-  leaveBalance,
   pendingLeaves,
   allLeaves,
   reportMonth,
@@ -107,7 +106,6 @@ export default function AttendanceView({
   stats: AttendanceStats;
   isAdmin: boolean;
   myLeaves: LeaveWithUser[];
-  leaveBalance: Record<string, { used: number; total: number }>;
   pendingLeaves: LeaveWithUser[];
   allLeaves: LeaveWithUser[];
   reportMonth: number;
@@ -639,25 +637,10 @@ export default function AttendanceView({
 
       {activeTab === "leaves" && (
         <>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="font-semibold text-sm">Leave Balance</h2>
+          <div className="flex sm:justify-end">
             <button className="btn-primary !py-2 !px-3 text-xs" onClick={() => setShowLeaveModal(true)}>
               <Plus className="h-3.5 w-3.5" /> Apply Leave
             </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
-            {Object.entries(leaveBalance).map(([type, bal]) => (
-              <div key={type} className="card p-3 text-center">
-                <span className={`badge text-[10px] md:text-xs ${LEAVE_TYPE_META[type]?.cls || "bg-white/10 text-slate-300"}`}>
-                  {LEAVE_TYPE_META[type]?.label || type}
-                </span>
-                <p className="mt-1 text-lg font-bold text-white">
-                  {bal.total - bal.used}
-                  <span className="text-xs text-slate-500 font-normal">/{bal.total}</span>
-                </p>
-              </div>
-            ))}
           </div>
 
           {isAdmin && pendingLeaves.length > 0 && (
