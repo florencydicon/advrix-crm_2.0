@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { getMyTasks, getTeam } from "@/lib/data";
 import { etagJsonResponse } from "@/lib/http";
+import { recordUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +13,18 @@ export const dynamic = "force-dynamic";
  * ETagged so unchanged payloads return 304 and transfer nothing.
  */
 export async function GET(req: NextRequest) {
+  const started = Date.now();
   const session = await getSession();
   if (!session) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
   }
   const [tasks, team] = await Promise.all([getMyTasks(session.sub), getTeam()]);
+  // Usage instrumentation (best-effort, never throws).
+  await recordUsage({
+    endpoint: "/api/poll/data",
+    rows: tasks.length + team.length,
+    bytes: JSON.stringify({ tasks, team }).length,
+    durationMs: Date.now() - started,
+  });
   return etagJsonResponse(req, { tasks, team });
 }

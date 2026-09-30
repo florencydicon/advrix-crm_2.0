@@ -410,3 +410,70 @@ export interface LeadStats {
   pipelineValue: number;
   wonValue: number;
 }
+
+/* ---------------- Usage & analytics ----------------
+ * Client-safe: imported by both the server data layer (src/lib/usage.ts) and
+ * the client report UI, so it must not pull in any server-only imports.
+ */
+
+export type ActivityMetricKey =
+  | "activity_events"
+  | "notifications"
+  | "tasks_created"
+  | "tasks_completed"
+  | "projects_created"
+  | "clients_created"
+  | "leaves_requested"
+  | "attendance_days"
+  | "daily_logs";
+
+export const ACTIVITY_METRICS: { key: ActivityMetricKey; label: string }[] = [
+  { key: "activity_events", label: "Actions logged" },
+  { key: "notifications", label: "Notifications" },
+  { key: "tasks_created", label: "Tasks created" },
+  { key: "tasks_completed", label: "Tasks completed" },
+  { key: "projects_created", label: "Projects created" },
+  { key: "clients_created", label: "Clients created" },
+  { key: "leaves_requested", label: "Leaves requested" },
+  { key: "attendance_days", label: "Attendance days" },
+  { key: "daily_logs", label: "Daily work logs" },
+];
+
+export interface ActivityDayRow {
+  day: string;
+  counts: Record<ActivityMetricKey, number>;
+}
+
+export interface ActivityReport {
+  byDay: ActivityDayRow[];
+  totals: Record<ActivityMetricKey, number>;
+  activeUsers: number;
+  dayCount: number;
+  /** Report sources present in the connected database / expected. */
+  sourcesFound?: number;
+  sourcesTotal?: number;
+}
+
+export interface ResourceUsage {
+  storage: { used: number; limit: number };
+  transfer: { used: number; limit: number; trackedFrom: string | null };
+  /** Days in the window where the app queried the DB at least once. */
+  activeDays: number;
+  totalDays: number;
+}
+
+export interface UsageEndpointRow {
+  endpoint: string;
+  requests: number;
+  rows_returned: number;
+  approx_bytes: number;
+  avg_ms: number;
+}
+
+export interface UsageDayRow {
+  day: string;
+  requests: number;
+  rows_returned: number;
+  approx_bytes: number;
+}
+

@@ -22,6 +22,7 @@ import {
   Smartphone,
   FileText,
   ListTodo,
+  Gauge,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -52,6 +53,7 @@ const NAV: NavItem[] = [
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
   { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
+  { href: "/usage", label: "Usage & Analytics", icon: Gauge, permission: "reports:view" },
   {
     href: "/settings",
     label: "Settings",
