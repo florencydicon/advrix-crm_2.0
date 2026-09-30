@@ -93,37 +93,32 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
     } catch {}
   }, []);
 
-  // Poll the same source as the bell — the server prop goes stale otherwise
-  // (new notifications arrive while the page is open) and counts mismatch.
-  // Uses ETag/304 so an unchanged feed transfers nothing; cadence is slower
-  // than the bell poll to avoid two concurrent fetchers on the same endpoint.
+  // Updates page syncs from the SAME source as the bell, but never runs its
+  // own interval (was a 15s limit=200 poll PLUS a re-fetch per bell tick —
+  // ~20 requests/min). Now: piggyback on the bell's "advrix:notifications-polled"
+  // event (every 30s) + refetch instantly on tab focus/visibility. Cuts DB
+  // egress on this page ~90% while the feed still stays live.
   useEffect(() => {
     let cancelled = false;
     const fetchJson = createEtagFetcher();
-    async function poll() {
-      if (document.hidden) return;
+    async function sync() {
+      if (document.hidden || cancelled) return;
       const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications?limit=200");
       if (data === null || cancelled || !Array.isArray(data.items)) return;
       setLive(data.items);
     }
-    const id = window.setInterval(poll, 15000);
-    const once = window.setTimeout(poll, 2500);
-    // The bell dropdown (AppShell) re-fetches on a 2.5s+10s cadence from every
-    // page; sync our list the instant its poll lands instead of waiting out the
-    // full interval here.
-    const onBellSync = async () => {
-      if (!document.hidden && !cancelled) {
-        const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications?limit=200");
-        if (data === null || cancelled || !Array.isArray(data.items)) return;
-        setLive(data.items);
-      }
-    };
+    const once = window.setTimeout(sync, 2500);
+    const onBellSync = () => { sync(); };
+    const onVisible = () => { if (!document.hidden) sync(); };
     window.addEventListener("advrix:notifications-polled", onBellSync);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
       window.clearTimeout(once);
       window.removeEventListener("advrix:notifications-polled", onBellSync);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, []);
 

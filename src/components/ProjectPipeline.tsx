@@ -530,16 +530,18 @@ export default function ProjectPipeline({
     setProjectTask(null);
   }, [openProject?.projectId]);
 
-  // Silent 12s background sync of the board arrays (+ instant refetch on tab
-  // refocus/visibility). Fetches via the same Server Action the manual reload
-  // uses; only the derived table/card data changes, so the open TaskModal
-  // (draft remarks/content) is never remounted or cleared.
+  // Silent 40s background sync of the board arrays (was 20s — the board is
+  // the heaviest payload in the app; 40s + instant refetch on tab
+  // refocus/visibility keeps it fresh while halving DB egress). Fetches via
+  // the same Server Action the manual reload uses; only the derived
+  // table/card data changes, so the open TaskModal (draft remarks/content)
+  // is never remounted or cleared.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const id = window.setInterval(() => {
       if (document.hidden) return;
       reload().catch(() => {});
-    }, 20000);
+    }, 40000);
     const onVisible = () => {
       if (!document.hidden) reload().catch(() => {});
     };

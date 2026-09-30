@@ -267,13 +267,22 @@ export default function AppShell({
   }, [toast]);
   useEffect(() => {
     cancelledRef.current = false;
-    const id = window.setInterval(pollNotifs, 10000);
+    // 30s cadence (was 10s) — DB-egress quota friendly; focus/visibility
+    // refetch below keeps toasts instant when the user actually returns.
+    const id = window.setInterval(pollNotifs, 30000);
     // also poll once shortly after mount so HR events appear within seconds
     const once = window.setTimeout(pollNotifs, 2500);
+    const onVisible = () => {
+      if (!document.hidden) pollNotifs();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
       cancelledRef.current = true;
       window.clearInterval(id);
       window.clearTimeout(once);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, [pollNotifs]);
   // Instant sync when the Updates page (or anything else) marks reads —

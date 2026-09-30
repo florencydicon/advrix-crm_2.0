@@ -305,10 +305,10 @@ export default function StaffDashboard({
     { tasks, team },
     async () => {
       const data = await etagFetch<{ tasks: Task[]; team: UserRow[] }>("/api/poll/data");
-      if (data === null) throw new Error("unchanged"); // 304 → keep current arrays
+      if (data === null) throw new Error("unchanged"); // 304  keep current arrays
       return data;
     },
-    12000
+    30000
   );
   tasks = live.tasks;
   team = live.team;
