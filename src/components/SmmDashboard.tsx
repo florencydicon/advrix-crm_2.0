@@ -7,6 +7,7 @@ import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
 import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import Pagination, { clampPageSize } from "@/components/Pagination";
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
 import { isOverdue } from "@/lib/deadlines";
@@ -296,19 +297,31 @@ export default function SmmDashboard({
   userId,
   roleKey,
   permissions,
+  total = 0,
+  page = 1,
+  pageSize = 25,
+  tab: initialTab = "active",
+  counts,
 }: {
   tasks: Task[];
   team: UserRow[];
   userId: string;
   roleKey: string;
   permissions?: string[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  tab?: "active" | "history";
+  counts?: { active: number; ready: number; done: number };
 }) {
   // Silent 12s background sync: cache-busted for mobile where fetch cache is aggressive.
   const etagFetch = useRef(createEtagFetcher()).current;
   const live = useSilentPoll(
     { tasks, team },
     async () => {
-      const data = await etagFetch<{ tasks: Task[]; team: UserRow[] }>("/api/poll/data");
+      // Same tab/page the user is viewing, so a refresh never widens the list.
+      const qs = new URLSearchParams({ tab: initialTab, page: String(page), size: String(pageSize) });
+      const data = await etagFetch<{ tasks: Task[]; team: UserRow[] }>(`/api/poll/data?${qs.toString()}`);
       if (data === null) throw new Error("unchanged"); // 304  keep current arrays
       return data;
     },
@@ -348,7 +361,32 @@ export default function SmmDashboard({
   // Split into Active (current stage holder) and History (completed / handed-off)
   const activeTasks = useMemo(() => tasks.filter((t) => t.assigned_to === userId && t.status !== "completed"), [tasks, userId]);
   const historyTasks = useMemo(() => tasks.filter((t) => t.assigned_to !== userId || t.status === "completed"), [tasks, userId]);
-  const [tab, setTab] = useState<"active" | "history">("active");
+  const [tab, setTab] = useState<"active" | "history">(initialTab);
+
+  /** Navigate the dashboard to a different tab/page/page-size. */
+  const goTo = useCallback(
+    (next: { tab?: "active" | "history"; page?: number; size?: number }) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      if (next.tab) {
+        if (next.tab === "active") sp.delete("tab");
+        else sp.set("tab", next.tab);
+        sp.delete("page");
+        setTab(next.tab);
+      }
+      if (next.page !== undefined) {
+        if (next.page <= 1) sp.delete("page");
+        else sp.set("page", String(next.page));
+      }
+      if (next.size !== undefined) {
+        if (next.size === 25) sp.delete("size");
+        else sp.set("size", String(next.size));
+        sp.delete("page");
+      }
+      const qs = sp.toString();
+      router.push(`/dashboard${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   const af = useAdvancedFilters(tab === "history" ? historyTasks : activeTasks, {
     client: {
@@ -457,14 +495,14 @@ export default function SmmDashboard({
       <div className="flex items-center gap-1.5">
         {(
           [
-            { key: "active", label: "Active", count: activeTasks.length },
-            { key: "history", label: "History", count: historyTasks.length },
+            { key: "active", label: "Active", count: counts ? counts.active : activeTasks.length },
+            { key: "history", label: "History", count: counts ? counts.done : historyTasks.length },
           ] as const
         ).map((tb) => (
           <button
             key={tb.key}
             type="button"
-            onClick={() => setTab(tb.key)}
+            onClick={() => goTo({ tab: tb.key })}
             aria-pressed={tab === tb.key}
             className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               tab === tb.key
@@ -611,6 +649,20 @@ export default function SmmDashboard({
             </>
           )}
         </>
+      )}
+
+{/* Server-side pager — only the visible window of tasks is fetched. */}
+      {total > 0 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            page={page}
+            pageSize={clampPageSize(pageSize)}
+            total={total}
+            itemLabel={tab === "active" ? "active tasks" : "history tasks"}
+            onPage={(p) => goTo({ page: p })}
+            onPageSize={(s) => goTo({ size: s })}
+          />
+        </div>
       )}
 
       {openTask && (

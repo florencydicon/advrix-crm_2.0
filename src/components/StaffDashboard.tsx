@@ -7,6 +7,7 @@ import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
 import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import Pagination, { clampPageSize } from "@/components/Pagination";
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
 import { isOverdue } from "@/lib/deadlines";
@@ -289,12 +290,24 @@ export default function StaffDashboard({
   roleKey,
   userId,
   permissions,
+  total = 0,
+  page = 1,
+  pageSize = 25,
+  tab: initialTab = "active",
+  counts,
 }: {
   tasks: Task[];
   team: UserRow[];
   roleKey: string;
   userId: string;
   permissions?: string[];
+  /** Server-side total for the active tab currently being viewed. */
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  tab?: "active" | "history";
+  /** Whole-set totals for the header stat cards. */
+  counts?: { active: number; ready: number; done: number };
 }) {
   // Silent 12s background sync: refreshes only the task/team arrays feeding the
   // table & cards (refocus/visibility re-polls instantly). Pages are never
@@ -304,7 +317,13 @@ export default function StaffDashboard({
   const live = useSilentPoll(
     { tasks, team },
     async () => {
-      const data = await etagFetch<{ tasks: Task[]; team: UserRow[] }>("/api/poll/data");
+      // Same tab/page the user is viewing, so a refresh never widens the list.
+      const qs = new URLSearchParams({
+        tab: initialTab,
+        page: String(page),
+        size: String(pageSize),
+      });
+      const data = await etagFetch<{ tasks: Task[]; team: UserRow[] }>(`/api/poll/data?${qs.toString()}`);
       if (data === null) throw new Error("unchanged"); // 304  keep current arrays
       return data;
     },
@@ -344,7 +363,33 @@ export default function StaffDashboard({
   // Active = tasks currently held by this user AND not completed; History = completed (even if still assigned) OR moved past.
   const activeTasks = useMemo(() => tasks.filter((t) => t.assigned_to === userId && t.status !== "completed"), [tasks, userId]);
   const historyTasks = useMemo(() => tasks.filter((t) => t.assigned_to !== userId || t.status === "completed"), [tasks, userId]);
-  const [tab, setTab] = useState<"active" | "history">("active");
+  // Tab is server-driven (?tab=): the server sends only that tab's page, so
+  // switching tabs is a navigation, not a client-side filter.
+  const tab = initialTab;
+
+  /** Navigate the dashboard to a different tab/page/page-size. */
+  const goTo = useCallback(
+    (next: { tab?: "active" | "history"; page?: number; size?: number }) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      if (next.tab) {
+        if (next.tab === "active") sp.delete("tab");
+        else sp.set("tab", next.tab);
+        sp.delete("page");
+      }
+      if (next.page !== undefined) {
+        if (next.page <= 1) sp.delete("page");
+        else sp.set("page", String(next.page));
+      }
+      if (next.size !== undefined) {
+        if (next.size === 25) sp.delete("size");
+        else sp.set("size", String(next.size));
+        sp.delete("page");
+      }
+      const qs = sp.toString();
+      router.push(`/dashboard${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   const af = useAdvancedFilters(activeTasks, {
     client: {
@@ -373,11 +418,19 @@ export default function StaffDashboard({
       ].join(" "),
   });
 
-  const metrics = [
-    { label: "Active", value: activeTasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
-    { label: "Ready", value: activeTasks.filter((t) => t.status === "approved").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
-    { label: "Done", value: historyTasks.length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
-  ];
+  // Stat cards read whole-set counts from the server so they stay correct
+  // regardless of which page is on screen.
+  const metrics = counts
+    ? [
+        { label: "Active", value: counts.active, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
+        { label: "Ready", value: counts.ready, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
+        { label: "Done", value: counts.done, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+      ]
+    : [
+        { label: "Active", value: activeTasks.filter((t) => activeStatuses.includes(t.status)).length, Icon: PlayCircle, cls: "text-brand-300 bg-brand-300/[0.07]" },
+        { label: "Ready", value: activeTasks.filter((t) => t.status === "approved").length, Icon: Clock, cls: "text-amber-300 bg-amber-400/10" },
+        { label: "Done", value: historyTasks.length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
+      ];
 
   // Nearest deadline first (nulls last) so the most urgent tasks surface on top.
   const filtered = useMemo(() => {
@@ -461,14 +514,14 @@ export default function StaffDashboard({
       <div className="flex items-center gap-1.5">
         {(
           [
-            { key: "active", label: "Active", count: activeTasks.length },
-            { key: "history", label: "History", count: historyTasks.length },
+            { key: "active", label: "Active", count: counts ? counts.active : activeTasks.length },
+            { key: "history", label: "History", count: counts ? counts.done : historyTasks.length },
           ] as const
         ).map((tb) => (
           <button
             key={tb.key}
             type="button"
-            onClick={() => setTab(tb.key)}
+            onClick={() => goTo({ tab: tb.key })}
             aria-pressed={tab === tb.key}
             className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               tab === tb.key
@@ -616,6 +669,20 @@ export default function StaffDashboard({
         </>
         )}
         </>
+      )}
+
+{/* Server-side pager — only the visible window of tasks is fetched. */}
+      {total > 0 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            page={page}
+            pageSize={clampPageSize(pageSize)}
+            total={total}
+            itemLabel={tab === "active" ? "active tasks" : "history tasks"}
+            onPage={(p) => goTo({ page: p })}
+            onPageSize={(s) => goTo({ size: s })}
+          />
+        </div>
       )}
 
       {openTask && (

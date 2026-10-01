@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { getSession } from "@/lib/session";
 import {
-  getMyTasks, getProjects, getLeadStats, getTaskStatusCounts, getSubtaskStatusCounts,
+  getMyTasks, getMyTasksPage, getProjects, getLeadStats, getTaskStatusCounts, getSubtaskStatusCounts,
   getTeam, getClients,
 } from "@/lib/data";
 import { getRecentActivity, type ActivityLogRow } from "@/lib/activity";
@@ -25,15 +25,30 @@ import { Greeting, TodayBadge } from "@/components/DashboardHeader";
 
 const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM", "VIDEOGRAPHER"];
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
   const firstName = session.name.split(" ")[0];
+  const sp = await searchParams;
+  const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
 
   if (STAFF_ROLES.includes(session.role_key) || session.dashboard === "staff") {
-    const tasks = await getMyTasks(session.sub).catch(() => [] as import("@/lib/types").Task[]);
+    // Staff dashboard is server-paginated (?tab=&page=&size=) so only the
+    // visible window of tasks is ever fetched.
+    const tab = one("tab") === "history" ? "history" : "active";
+    const pageSize = Math.max(1, Math.min(100, Number(one("size")) || 25));
+    const requestedPage = Math.max(1, Number(one("page")) || 1);
+    const { items: myTasks, total: myTotal, counts } = await getMyTasksPage(session.sub, {
+      tab,
+      limit: pageSize,
+      offset: (requestedPage - 1) * pageSize,
+    }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 } }));
     const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
-    const open = tasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
+    const open = myTasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
       <div className="w-full max-w-none space-y-4 md:space-y-6 overflow-x-hidden">
         <div className="rounded-2xl bg-gradient-to-br from-brand-300 to-brand-500 p-5 md:p-6 text-night-950 shadow-lg shadow-brand-300/20">
@@ -58,9 +73,31 @@ export default async function DashboardPage() {
           <ChevronRight className="h-4 w-4 text-slate-500 ml-auto" />
         </Link>
         {session.role_key === "SMM" ? (
-          <SmmDashboard tasks={tasks} team={team} userId={session.sub} roleKey={session.role_key} permissions={session.permissions} />
+          <SmmDashboard
+            tasks={myTasks}
+            team={team}
+            userId={session.sub}
+            roleKey={session.role_key}
+            permissions={session.permissions}
+            total={myTotal}
+            page={requestedPage}
+            pageSize={pageSize}
+            tab={tab}
+            counts={counts}
+          />
         ) : (
-          <StaffDashboard tasks={tasks} team={team} roleKey={session.role_key} userId={session.sub} permissions={session.permissions} />
+          <StaffDashboard
+            tasks={myTasks}
+            team={team}
+            roleKey={session.role_key}
+            userId={session.sub}
+            permissions={session.permissions}
+            total={myTotal}
+            page={requestedPage}
+            pageSize={pageSize}
+            tab={tab}
+            counts={counts}
+          />
         )}
       </div>
     );

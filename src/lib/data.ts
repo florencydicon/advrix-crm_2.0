@@ -606,6 +606,91 @@ export async function getBoard(): Promise<ProjectDetail[]> {
   });
 }
 
+export interface MyTasksPageOpts {
+  /** Which dashboard list to page through. */
+  tab?: "active" | "history";
+  limit?: number;
+  offset?: number;
+}
+
+export interface MyTasksPage {
+  items: Task[];
+  /** Total rows in that tab (before LIMIT/OFFSET). */
+  total: number;
+  /** Totals for the header stat cards, computed across the whole visible set. */
+  counts: { active: number; ready: number; done: number };
+}
+
+/** Shared visibility predicate: tasks this member currently holds or has held. */
+const MY_TASK_VISIBILITY = `(
+     t.assigned_to = $1
+     OR (t.status = 'completed' AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))
+     OR EXISTS (
+       SELECT 1 FROM task_assignees ta
+       WHERE ta.task_id = t.id AND ta.user_id = $1 AND ta.position < t.current_step
+     )
+   )`;
+
+/**
+ * One page of the staff dashboard list, paged in SQL.
+ *
+ * The dashboard previously loaded every visible task and rendered them in one
+ * endless scroll. Paging server-side keeps only the visible window on the wire
+ * and lets the page-size picker (25/50/100) actually bound the payload.
+ */
+export async function getMyTasksPage(
+  userId: string,
+  opts: MyTasksPageOpts = {}
+): Promise<MyTasksPage> {
+  const tab: "active" | "history" = opts.tab === "history" ? "history" : "active";
+  const limit = Math.max(1, Math.min(100, Number(opts.limit) || 25));
+  const offset = Math.max(0, Number(opts.offset) || 0);
+
+  // Active = currently held AND not completed.
+  // History = everything else in the visible set (completed, or moved past).
+  const tabWhere =
+    tab === "active"
+      ? `AND t.assigned_to = $1 AND t.status <> 'completed'`
+      : `AND (t.assigned_to IS DISTINCT FROM $1 OR t.status = 'completed')`;
+  const activeWhere = `AND t.assigned_to = $1 AND t.status <> 'completed'`;
+
+  const [rows, tabCount, activeCount, readyCount, doneCount] = await Promise.all([
+    query<Task>(
+      `${TASK_SELECT} WHERE ${MY_TASK_VISIBILITY} ${tabWhere}
+        ORDER BY t.due_date ASC NULLS LAST, t.created_at ASC
+        LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    ),
+    query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM tasks t WHERE ${MY_TASK_VISIBILITY} ${tabWhere}`,
+      [userId]
+    ),
+    query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM tasks t WHERE ${MY_TASK_VISIBILITY} ${activeWhere}`,
+      [userId]
+    ),
+    query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM tasks t WHERE ${MY_TASK_VISIBILITY} ${activeWhere} AND t.status = 'approved'`,
+      [userId]
+    ),
+    query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM tasks t WHERE ${MY_TASK_VISIBILITY}
+        AND (t.assigned_to IS DISTINCT FROM $1 OR t.status = 'completed')`,
+      [userId]
+    ),
+  ]);
+
+  return {
+    items: rows,
+    total: tabCount[0]?.n ?? 0,
+    counts: {
+      active: activeCount[0]?.n ?? 0,
+      ready: readyCount[0]?.n ?? 0,
+      done: doneCount[0]?.n ?? 0,
+    },
+  };
+}
+
 export async function getTeam(): Promise<UserRow[]> {
   return query<UserRow>(
     `SELECT u.id, u.full_name, u.email, u.is_active, u.phone, u.designation,
