@@ -34,6 +34,10 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "roles:manage", label: "Manage roles & permissions", group: "Admin" },
   { key: "settings:manage", label: "Access settings & flush data", group: "Admin" },
   { key: "reports:view", label: "View analytics & reports", group: "Admin" },
+  // Dashboard widgets — currently not rendered anywhere. Retained here so they
+  // can be re-enabled per-role/user from the Roles & Permissions tab.
+  { key: "dashboard:client_workload", label: "Show Active Workload by Client", group: "Dashboard" },
+  { key: "dashboard:review_submitted", label: "Show Review Submitted Tasks", group: "Dashboard" },
 ];
 
 export const PERMISSION_GROUPS = [...new Set(PERMISSION_CATALOG.map((p) => p.group))];

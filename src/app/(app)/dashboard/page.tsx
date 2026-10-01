@@ -11,60 +11,19 @@ import {
 import { getSession } from "@/lib/session";
 import {
   getMyTasks, getProjects, getLeadStats, getTaskStatusCounts, getSubtaskStatusCounts,
-  getSubmittedTasks, getTeam, getClients, getClientWorkload,
-  type ClientWorkload,
+  getTeam, getClients,
 } from "@/lib/data";
 import { getRecentActivity, type ActivityLogRow } from "@/lib/activity";
 import { DashboardActivityLogTrigger } from "@/components/DashboardActivityLog";
 import PushNotificationPrompt from "@/components/PushNotificationPrompt";
 import StaffDashboard from "@/components/StaffDashboard";
 import SmmDashboard from "@/components/SmmDashboard";
-import SubmittedTaskReview from "@/components/SubmittedTaskReview";
 import AnnouncementComposer from "@/components/AnnouncementComposer";
 import { Stat, ProjectStatusBadge, EmptyState } from "@/components/ui";
 import { LEAD_STATUSES } from "@/lib/types";
 import { Greeting, TodayBadge } from "@/components/DashboardHeader";
 
 const STAFF_ROLES = ["WRITER", "DESIGNER", "EDITOR", "SMM", "VIDEOGRAPHER"];
-
-/** Per-client workload tiles that deep-link into a pre-filtered Project Pipeline. */
-function ClientWorkloadWidget({ workload }: { workload: ClientWorkload[] }) {
-  const active = workload.filter((w) => w.open_tasks > 0 || w.active_projects > 0);
-  return (
-    <div className="card p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="h-7 w-7 rounded-lg bg-brand-300/15 flex items-center justify-center">
-          <Briefcase className="h-3.5 w-3.5 text-brand-300" />
-        </span>
-        <h2 className="text-sm font-semibold text-white">Active Workload by Client</h2>
-        <Link href="/projects" className="ml-auto text-[11px] text-brand-300 hover:text-brand-200">View all →</Link>
-      </div>
-      {active.length === 0 ? (
-        <EmptyState title="No active client work" subtitle="Clients with open tasks or in-progress projects will appear here." />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-          {active.map((w) => (
-            <Link
-              key={w.client_id}
-              href={`/projects?clientId=${w.client_id}`}
-              className="rounded-xl bg-white/[0.03] border border-white/10 p-3 block hover:bg-white/[0.06] hover:border-brand-300/30 transition-colors"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-white truncate">{w.client_company || w.client_name}</p>
-                <ChevronRight className="h-3.5 w-3.5 text-slate-600 shrink-0" />
-              </div>
-              <div className="flex items-center gap-2 mt-2 text-[11px]">
-                <span className="badge bg-amber-400/10 text-amber-300">{w.open_tasks} open tasks</span>
-                <span className="badge bg-sky-400/10 text-sky-300">{w.subtasks} subtasks</span>
-                {w.active_projects > 0 && <span className="badge bg-brand-300/10 text-brand-300">{w.active_projects} active</span>}
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -161,18 +120,14 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
   let leadStats: any = null;
   let taskCounts: Record<string, number> = {};
   let subtaskCounts: Record<string, number> = {};
-  let submittedTasks: any[] = [];
-  let workload: ClientWorkload[] = [];
   let activity: ActivityLogRow[] = [];
   try {
-    [projects, clients, leadStats, taskCounts, subtaskCounts, submittedTasks, workload] = await Promise.all([
+    [projects, clients, leadStats, taskCounts, subtaskCounts] = await Promise.all([
       getProjects(pmScope).catch(() => [] as any),
       getClients(pmScope).catch(() => [] as any),
       isSuperAdmin ? getLeadStats(null).catch(() => null as any) : Promise.resolve(null as any),
       showTaskMetrics ? getTaskStatusCounts(pmScope).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
       showTaskMetrics ? getSubtaskStatusCounts(pmScope).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
-      getSubmittedTasks(pmScope).catch(() => [] as any),
-      getClientWorkload(pmScope).catch(() => [] as any),
     ]);
     if (isSuperAdmin) {
       activity = await getRecentActivity(60).catch(() => [] as ActivityLogRow[]);
@@ -193,13 +148,6 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
     } catch {}
   }
   const active = projects.filter((p) => p.status === "in_progress");
-
-  const reviewTasks = submittedTasks.map((t: any): { id: string; title: string; subtitle: string; href: string } => ({
-    id: `task-${t.id}`,
-    title: t.title,
-    subtitle: `${t.project_name} — ${t.role_label || t.role_key}`,
-    href: `/projects?taskId=${t.id}`,
-  }));
 
   // Super Admin — Command Center dashboard
   if (isSuperAdmin) {
@@ -352,20 +300,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
           </div>
         </div>
 
-        {/* ── Row 3: Active Workload by Client ── */}
-        <ClientWorkloadWidget workload={workload} />
-
-        {/* ── Row 4: Review submitted tasks ── */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">
-            <ListTodo className="h-4 w-4 text-sky-400" />
-            <h2 className="font-semibold text-sm">Review Submitted Tasks</h2>
-            <span className="badge bg-sky-400/10 text-sky-300 ml-auto">{reviewTasks.length}</span>
-          </div>
-          <SubmittedTaskReview tasks={reviewTasks} />
-        </div>
-
-        {/* ── Row 5: Broadcast announcement (web + mobile push) ── */}
+        {/* ── Row 3: Broadcast announcement (web + mobile push) ── */}
         <AnnouncementComposer members={announcementMembers} />
       </div>
     );
@@ -414,17 +349,7 @@ const isSuperAdmin = session.role_key === "SUPER_ADMIN";
         </Link>
       </div>
 
-      {/* ── Active Workload by Client ── */}
-      <ClientWorkloadWidget workload={workload} />
-
-      <div className="card overflow-hidden">
-        <div className="flex items-center gap-2 px-4 md:px-5 py-3 md:py-4 border-b border-white/[0.06]">
-          <ListTodo className="h-4 w-4 text-sky-400" />
-          <h2 className="font-semibold text-sm">Review Submitted Tasks</h2>
-          <span className="badge bg-sky-400/10 text-sky-300 ml-auto">{reviewTasks.length}</span>
-        </div>
-        <SubmittedTaskReview tasks={reviewTasks} />
-      </div>
+      {/* ── Active Workload by Client + Review Submitted Tasks removed ── */}
     </div>
   );
 }
