@@ -65,12 +65,15 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     "reports:view",
   ],
   SALES: ["projects:view", "projects:create", "leads:view", "leads:manage"],
-  WRITER: ["tasks:execute"],
+  // Staff roles get `projects:view` so they can open the Project Pipeline.
+  // Their data stays strictly self-scoped (resolveDataScope → "self"), so this
+  // exposes only their OWN assigned tasks, not company-wide data.
+  WRITER: ["projects:view", "tasks:execute"],
   CONTENT_WRITER: ["projects:view", "tasks:execute"],
-  DESIGNER: ["tasks:execute"],
-  EDITOR: ["tasks:execute"],
-  SMM: ["tasks:execute"],
-  VIDEOGRAPHER: ["tasks:execute"],
+  DESIGNER: ["projects:view", "tasks:execute"],
+  EDITOR: ["projects:view", "tasks:execute"],
+  SMM: ["projects:view", "tasks:execute"],
+  VIDEOGRAPHER: ["projects:view", "tasks:execute"],
 };
 
 /** Universal checker — `admin:*` grants everything. */

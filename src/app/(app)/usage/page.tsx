@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { hasPermission } from "@/lib/permissions";
 import {
   getActivityReport,
   getResourceUsage,
@@ -23,7 +22,9 @@ export default async function UsagePage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (!hasPermission(session.permissions, "reports:view")) redirect("/dashboard");
+  // Super Admin only. Nav hides this for everyone else, and this guard stops a
+  // direct URL / prefetch from reaching the usage queries.
+  if (session.role_key !== "SUPER_ADMIN") redirect("/dashboard");
 
   const params = await searchParams;
   const today = new Date();
