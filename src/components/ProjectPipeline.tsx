@@ -20,6 +20,7 @@ import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
 import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import Pagination, { clampPageSize, type PageSize } from "@/components/Pagination";
 import { isOverdue } from "@/lib/deadlines";
 import {
   getPipelineBoardAction,
@@ -442,6 +443,16 @@ export default function ProjectPipeline({
     },
     status: { value: (t) => t.status, order: STATUS_ORDER },
     priority: { value: (t) => t.priority },
+    // Board is paginated server-side, so dropdown options come from the
+    // server facets rather than the current page's rows.
+    facetOptions: useMemo(
+      () => ({
+        client: (board.facets?.clients || []).map((c) => ({ value: c.id, label: c.label })),
+        project: (board.facets?.projects || []).map((p) => ({ value: p, label: p })),
+        stage: (board.facets?.stages || []).map((s) => ({ value: s, label: s })),
+      }),
+      [board.facets]
+    ),
     searchText: (t) =>
       [
         clientName(t),
@@ -484,14 +495,30 @@ export default function ProjectPipeline({
     }
   }, [searchParams, board]);
 
-  const reload = useCallback(async () => {
-    const next = await getPipelineBoardAction();
+  // Server-side pagination. The board query fetches ONE page of rows, so paging
+  // transfers only that page instead of the entire pipeline.
+  const [page, setPage] = useState(initial.page || 1);
+  const [pageSize, setPageSize] = useState<PageSize>(clampPageSize(initial.pageSize || 25));
+
+  // Mirror page/pageSize into a ref so `reload` stays referentially stable and
+  // the 40s background poll isn't torn down/recreated on every page change.
+  const pageRef = useRef(page);
+  const sizeRef = useRef(pageSize);
+  pageRef.current = page;
+  sizeRef.current = pageSize;
+
+  const reload = useCallback(async (nextPage?: number, nextSize?: number) => {
+    const p = nextPage ?? pageRef.current;
+    const s = nextSize ?? sizeRef.current;
+    const next = await getPipelineBoardAction({ page: p, pageSize: s });
     // Equal-data short-circuit: skip the state update (and the whole re-render)
-    // when the 20s poll returns an identical payload.
+    // when the poll returns an identical payload.
     const key = JSON.stringify(next);
     if (key === boardDataRef.current) return;
     boardDataRef.current = key;
     setBoard(next);
+    setPage(next.page);
+    setPageSize(clampPageSize(next.pageSize));
     // Prune bulk selection to rows that still exist.
     setSelected((prev) => prev.filter((id) => next.active.some((t) => t.id === id)));
   }, []);
@@ -1292,6 +1319,27 @@ export default function ProjectPipeline({
               <div className="md:hidden">{historyMobile}</div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Server-side pager — only the current page's rows are ever fetched. */}
+      {board.total > 0 && (
+        <div className="shrink-0 rounded-b-2xl border-t border-white/[0.06] bg-night-900/40">
+          <Pagination
+            page={board.page}
+            pageSize={clampPageSize(board.pageSize)}
+            total={board.total}
+            busy={isPending}
+            itemLabel={tab === "active" ? "tasks" : "completed tasks"}
+            onPage={(p) => {
+              setPage(p);
+              reload(p);
+            }}
+            onPageSize={(s) => {
+              setPageSize(s);
+              reload(1, s);
+            }}
+          />
         </div>
       )}
 

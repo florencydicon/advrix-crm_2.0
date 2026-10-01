@@ -465,12 +465,15 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
   return { ...project, groups, deliverables_list: deliverables, assignments };
 }
 
-export async function getMyTasks(userId: string): Promise<Task[]> {
+export async function getMyTasks(userId: string, limit = 50): Promise<Task[]> {
   // Strict Sequential Visibility (as per requirement):
   // - Active tasks: ONLY current holder (assigned_to) sees it — next/future stage members hidden until advanced
   // - Past members see handed-off tasks in History (position < current_step)
   // - Completed tasks: all participants see it in History/Done (via task_assignees)
   // - PM/Super Admin see all via getPipelineBoardAction (global scope), not this function
+  //
+  // Capped: the dashboard poll hits this on an interval, and each row carries
+  // assignees/contributions JSON. Unbounded it was ~139 KB per call.
   return query<Task>(
     `${TASK_SELECT}
      WHERE t.assigned_to = $1
@@ -479,8 +482,9 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
           SELECT 1 FROM task_assignees ta
           WHERE ta.task_id = t.id AND ta.user_id = $1 AND ta.position < t.current_step
         )
-     ORDER BY t.created_at ASC`,
-    [userId]
+     ORDER BY t.created_at ASC
+     LIMIT $2`,
+    [userId, Math.max(1, Math.min(200, limit))]
   );
 }
 

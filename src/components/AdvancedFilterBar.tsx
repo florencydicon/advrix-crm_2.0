@@ -65,6 +65,13 @@ export interface AdvancedFilterConfig<T> {
   searchText: (row: T) => string;
   /** Per-field dropdown labels (override the defaults, e.g. Stage → Assignee). */
   labels?: Partial<Record<FilterKey, string>>;
+  /**
+   * Server-supplied option lists. Used when the view is paginated: `rows` only
+   * holds the current page, so deriving options from it would hide values that
+   * exist on other pages. When provided for a field, it wins over the values
+   * derived from `rows`.
+   */
+  facetOptions?: Partial<Pick<FilterOptions, "client" | "project" | "stage">>;
 }
 
 export interface AdvancedFilterApi<T> {
@@ -258,12 +265,17 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
       }
     }
 
+    // Paginated views pass server-computed facets so dropdowns keep listing
+    // every option, not just the ones present on the current page.
+    const facets = cfg.facetOptions || {};
+    const clientOpts = facets.client || [...client.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+    const projectOpts = facets.project || [...project].map((value) => ({ value, label: value })).sort((a, b) => a.label.localeCompare(b.label));
+    const stageOpts = facets.stage || [...stage].map((value) => ({ value, label: value })).sort((a, b) => a.label.localeCompare(b.label));
+
     return {
-      client: [...client.entries()]
-        .map(([value, label]) => ({ value, label }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-      project: [...project].map((value) => ({ value, label: value })).sort((a, b) => a.label.localeCompare(b.label)),
-      stage: [...stage].map((value) => ({ value, label: value })).sort((a, b) => a.label.localeCompare(b.label)),
+      client: clientOpts,
+      project: projectOpts,
+      stage: stageOpts,
       deadline: cfg.deadline ? DEADLINE_OPTIONS : [],
       status: statusToOptions(status, statusLabel, cfg.status?.order),
       priority: priorityToOptions(priority),

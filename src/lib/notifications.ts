@@ -72,6 +72,74 @@ export async function getNotifications(userId: string, limit = 50): Promise<Noti
   );
 }
 
+export interface NotificationPageOpts {
+  limit?: number;
+  offset?: number;
+  /** Restrict to one notification type (task/project/leave/attendance/system). */
+  type?: string;
+  /** true → unread only, false → read only, undefined → both. */
+  unread?: boolean | null;
+}
+
+export interface NotificationPage {
+  items: Notification[];
+  /** Total rows matching the filter (before LIMIT/OFFSET). */
+  total: number;
+}
+
+/**
+ * One page of notifications for a user, filtered + counted server-side.
+ *
+ * The Updates page previously pulled 200 rows on every poll and filtered in the
+ * browser; paging here means only the visible window crosses the wire.
+ */
+export async function getNotificationsPage(
+  userId: string,
+  opts: NotificationPageOpts = {}
+): Promise<NotificationPage> {
+  const limit = Math.max(1, Math.min(100, Number(opts.limit) || 25));
+  const offset = Math.max(0, Number(opts.offset) || 0);
+
+  const where: string[] = ["user_id = $1"];
+  const params: (string | number)[] = [userId];
+
+  if (opts.type && opts.type !== "all") {
+    params.push(opts.type);
+    where.push(`type = $${params.length}`);
+  }
+  if (opts.unread === true) where.push("read = false");
+  else if (opts.unread === false) where.push("read = true");
+
+  const whereSql = where.join(" AND ");
+
+  const [rows, countRows] = await Promise.all([
+    query<Notification>(
+      `SELECT * FROM notifications WHERE ${whereSql} ORDER BY created_at DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    ),
+    query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM notifications WHERE ${whereSql}`,
+      params
+    ),
+  ]);
+
+  return { items: rows, total: Number(countRows[0]?.count || 0) };
+}
+
+/** Per-type unread/total counts for the Updates stats row (one cheap grouped query). */
+export async function getNotificationTypeCounts(
+  userId: string
+): Promise<Record<string, { total: number; unread: number }>> {
+  const rows = await query<{ type: string; total: number; unread: number }>(
+    `SELECT type, COUNT(*)::int AS total, COUNT(*) FILTER (WHERE read = false)::int AS unread
+       FROM notifications WHERE user_id = $1 GROUP BY type`,
+    [userId]
+  );
+  const out: Record<string, { total: number; unread: number }> = {};
+  for (const r of rows) out[r.type] = { total: r.total, unread: r.unread };
+  return out;
+}
+
 export async function getUnreadNotifications(userId: string, limit = 10): Promise<Notification[]> {
   return query<Notification>(
     `SELECT * FROM notifications WHERE user_id = $1 AND read = false ORDER BY created_at DESC LIMIT $2`,

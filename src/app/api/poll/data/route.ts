@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (!session) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
   }
-  const [tasks, team] = await Promise.all([getMyTasks(session.sub), getTeam()]);
+  const [tasks, team] = await Promise.all([getMyTasks(session.sub, 50), getTeam()]);
   // Usage instrumentation (best-effort, never throws).
   await recordUsage({
     endpoint: "/api/poll/data",

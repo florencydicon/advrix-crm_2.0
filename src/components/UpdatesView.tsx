@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bell, CheckCheck, Inbox, Clock, FileText, Briefcase, CalendarOff, Settings } from "lucide-react";
+import { Bell, CheckCheck, Inbox, Clock, FileText, Briefcase, CalendarOff, Settings, ListFilter } from "lucide-react";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
 import type { Notification } from "@/lib/types";
 import { createEtagFetcher } from "@/lib/clientFetch";
+import Pagination, { clampPageSize, type PageSize } from "@/components/Pagination";
 
 const TYPE_META: Record<string, { label: string; icon: React.ReactNode; bg: string; ring: string }> = {
   task:       { label: "Task",       icon: <FileText      className="h-4 w-4" />, bg: "bg-brand-300/10",   ring: "ring-brand-300/30" },
@@ -38,14 +39,12 @@ function parseDate(dateStr: string | Date | null | undefined): Date | null {
   const d = new Date(s);
   if (!isNaN(d.getTime())) return d;
   const d2 = new Date(dateStr);
-  if (!isNaN(d2.getTime())) return d2;
-  return null;
+  return isNaN(d2.getTime()) ? null : d2;
 }
 function timeAgo(dateStr: string | Date | null | undefined) {
   const d = parseDate(dateStr as any);
   if (!d) return String(dateStr ?? "");
   const diff = Math.round((Date.now() - d.getTime()) / 1000);
-  if (diff < 0) return "just now";
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -60,19 +59,35 @@ function formatIST(dateStr: string | Date | null | undefined) {
   } catch { return String(dateStr ?? ""); }
 }
 
-export default function UpdatesView({ notifications }: { notifications: Notification[] }) {
+export default function UpdatesView({
+  initialItems,
+  initialTotal,
+  initialPage,
+  initialPageSize,
+  typeCounts = {},
+}: {
+  initialItems: Notification[];
+  initialTotal: number;
+  initialPage: number;
+  initialPageSize: number;
+  typeCounts?: Record<string, { total: number; unread: number }>;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filter = searchParams.get("filter") || "all";
   const typeFilter = searchParams.get("type") || "all";
+
+  const [page, setPage] = useState(initialPage || 1);
+  const [pageSize, setPageSize] = useState<PageSize>(clampPageSize(initialPageSize || 25));
+  const [total, setTotal] = useState(initialTotal || 0);
+  const [items, setItems] = useState<Notification[]>(initialItems);
+  const [loading, setLoading] = useState(false);
+
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
-  // Live list seeded from the server prop — refreshed by polling below so the
-  // page, the bell dropdown, and the sidebar badge always agree.
-  const [live, setLive] = useState<Notification[]>(notifications);
   // Force re-render every minute so timeAgo stays accurate without hard refresh
   const [, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setTick(v => v + 1), 60000);
+    const id = setInterval(() => setTick((v) => v + 1), 60000);
     return () => clearInterval(id);
   }, []);
   const TOASTED_KEY = "advrix.toastedIds";
@@ -93,19 +108,27 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
     } catch {}
   }, []);
 
-  // Updates page syncs from the SAME source as the bell, but never runs its
-  // own interval (was a 15s limit=200 poll PLUS a re-fetch per bell tick —
-  // ~20 requests/min). Now: piggyback on the bell's "advrix:notifications-polled"
-  // event (every 30s) + refetch instantly on tab focus/visibility. Cuts DB
-  // egress on this page ~90% while the feed still stays live.
+  const isRead = (n: any) => (n.read === true || (n as any).isRead === true) || readIds.has(n.id);
+  const unreadOnPage = items.filter((n) => !isRead(n)).length;
+
+  // Live sync: refresh ONLY the current window (same size as the visible page)
+  // instead of the previous limit=200 full dump. Piggybacks on the bell's
+  // 30s "advrix:notifications-polled" event + refetch on tab focus.
   useEffect(() => {
     let cancelled = false;
     const fetchJson = createEtagFetcher();
     async function sync() {
-      if (document.hidden || cancelled) return;
-      const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications?limit=200");
+      if (document.hidden || cancelled || loading) return;
+      const qs = new URLSearchParams({
+        limit: String(pageSize),
+        offset: String((page - 1) * pageSize),
+      });
+      if (typeFilter !== "all") qs.set("type", typeFilter);
+      if (filter === "unread") qs.set("unread", "true");
+      const data = await fetchJson<{ items: Notification[]; total: number }>(`/api/notifications?${qs.toString()}`);
       if (data === null || cancelled || !Array.isArray(data.items)) return;
-      setLive(data.items);
+      setItems(data.items);
+      setTotal(data.total ?? 0);
     }
     const once = window.setTimeout(sync, 2500);
     const onBellSync = () => { sync(); };
@@ -120,32 +143,60 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, []);
+  }, [page, pageSize, filter, typeFilter, loading]);
 
-  const isRead = (n: any) => (n.read === true || (n as any).isRead === true) || readIds.has(n.id);
-  const unreadCount = live.filter((n: any) => !isRead(n)).length;
-
-  const filtered = live.filter((n) => {
-    if (filter === "unread" && isRead(n)) return false;
-    if (typeFilter !== "all" && n.type !== typeFilter) return false;
-    return true;
-  });
+  /** Navigate with new query params — server re-renders only the new window. */
+  function pushParams(mutate: (sp: URLSearchParams) => void) {
+    const sp = new URLSearchParams(searchParams.toString());
+    mutate(sp);
+    const qs = sp.toString();
+    router.push(`/updates${qs ? `?${qs}` : ""}`, { scroll: false });
+  }
 
   function setFilter(value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value === "all") params.delete("filter");
-    else params.set("filter", value);
-    router.push(`/updates?${params.toString()}`);
+    setPage(1);
+    pushParams((sp) => {
+      if (value === "all") sp.delete("filter");
+      else sp.set("filter", value);
+      sp.delete("page");
+    });
   }
 
   function setTypeFilter(value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value === "all") params.delete("type");
-    else params.set("type", value);
-    router.push(`/updates?${params.toString()}`);
+    setPage(1);
+    pushParams((sp) => {
+      if (value === "all") sp.delete("type");
+      else sp.set("type", value);
+      sp.delete("page");
+    });
   }
 
-  // Tell the AppShell bell to re-sync immediately (it also polls every 7s).
+  /** Clear every filter and show the full, unfiltered list from page 1. */
+  function clearFilters() {
+    setPage(1);
+    router.push("/updates", { scroll: false });
+  }
+
+  function goToPage(p: number, size?: PageSize) {
+    const s = size ?? pageSize;
+    setLoading(true);
+    setPage(p);
+    if (size) setPageSize(size);
+    pushParams((sp) => {
+      if (p <= 1) sp.delete("page");
+      else sp.set("page", String(p));
+      if (s === 25) sp.delete("size");
+      else sp.set("size", String(s));
+    });
+  }
+
+  function changePageSize(s: PageSize) {
+    goToPage(1, s);
+  }
+
+  const hasFilters = filter !== "all" || typeFilter !== "all";
+
+  // Tell the AppShell bell to re-sync immediately.
   function broadcastRead() {
     try { window.dispatchEvent(new Event("advrix:notifications-updated")); } catch {}
   }
@@ -165,8 +216,7 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
   }
 
   async function handleMarkAll() {
-    // Persist immediately so even starring employees / super admins see no re-toast after reload
-    const unreadIds = live.filter((n) => !isRead(n)).map((n) => n.id);
+    const unreadIds = items.filter((n) => !isRead(n)).map((n) => n.id);
     const nextSet = new Set([...readIds, ...unreadIds]);
     try { localStorage.setItem(TOASTED_KEY, JSON.stringify([...nextSet])); } catch {}
     setReadIds(nextSet);
@@ -176,8 +226,8 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
   }
 
   const tabs = [
-    { key: "all", label: "All", count: live.length },
-    { key: "unread", label: "Unread", count: unreadCount },
+    { key: "all", label: "All" },
+    { key: "unread", label: "Unread" },
   ];
 
   const typeTabs = [
@@ -197,22 +247,33 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
           <h1 className="text-xl font-bold tracking-tight">Updates</h1>
           <p className="text-sm text-slate-400">Activity, tasks, projects, and approvals.</p>
         </div>
-        {live.length > 0 && (
-          <button
-            onClick={handleMarkAll}
-            disabled={unreadCount === 0}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors ${unreadCount === 0 ? "bg-white/5 text-slate-500 border border-white/10 cursor-not-allowed" : "bg-brand-300 text-night-950 hover:bg-brand-200 shadow-sm"}`}
-            title={unreadCount === 0 ? "All caught up" : `Mark ${unreadCount} unread as read`}
-          >
-            <CheckCheck className="h-4 w-4" /> {unreadCount === 0 ? "All caught up" : `Mark all as read (${unreadCount})`}
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {hasFilters && (
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors"
+              title="Clear all filters and show every notification"
+            >
+              <ListFilter className="h-4 w-4" /> Clear filters &amp; show all
+            </button>
+          )}
+          {items.length > 0 && (
+            <button
+              onClick={handleMarkAll}
+              disabled={unreadOnPage === 0}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors ${unreadOnPage === 0 ? "bg-white/5 text-slate-500 border border-white/10 cursor-not-allowed" : "bg-brand-300 text-night-950 hover:bg-brand-200 shadow-sm"}`}
+              title={unreadOnPage === 0 ? "All caught up" : `Mark ${unreadOnPage} unread on this page as read`}
+            >
+              <CheckCheck className="h-4 w-4" /> {unreadOnPage === 0 ? "All caught up" : `Mark all as read (${unreadOnPage})`}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats row — counts come from a grouped query, not the loaded page */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {Object.entries(TYPE_META).map(([key, meta]) => {
-          const count = live.filter((n) => n.type === key).length;
+          const count = typeCounts[key]?.total ?? 0;
           return (
             <button
               key={key}
@@ -235,28 +296,32 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
       </div>
 
       {/* Read / Unread tabs */}
-      <div className="flex gap-1.5">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setFilter(t.key)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              filter === t.key
-                ? "bg-brand-300 text-night-950"
-                : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10 hover:text-slate-200"
-            }`}
-          >
-            {t.label}
-            <span className={`ml-1.5 text-[10px] ${filter === t.key ? "opacity-70" : "opacity-60"}`}>
-              {t.count}
-            </span>
-          </button>
-        ))}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-1.5">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setFilter(t.key)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filter === t.key
+                  ? "bg-brand-300 text-night-950"
+                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10 hover:text-slate-200"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {filter === "unread" && (
+          <span className="text-[11px] text-slate-500">
+            Showing unread only · {total} result{total === 1 ? "" : "s"}
+          </span>
+        )}
       </div>
 
-      {/* Notification list */}
+      {/* Notification list — only this page's rows are ever rendered */}
       <div className="space-y-1.5">
-        {filtered.length === 0 ? (
+        {items.length === 0 ? (
           <div className="card flex flex-col items-center justify-center py-14 text-center">
             <div className="h-14 w-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4 ring-1 ring-white/10">
               <Inbox className="h-7 w-7 text-slate-500" />
@@ -269,9 +334,14 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
                 ? `No ${TYPE_META[typeFilter]?.label.toLowerCase() || typeFilter} notifications yet.`
                 : "Updates will appear here as activity happens."}
             </p>
+            {hasFilters && (
+              <button type="button" onClick={clearFilters} className="mt-3 btn-ghost !py-1.5 text-xs">
+                Clear filters &amp; show all
+              </button>
+            )}
           </div>
         ) : (
-          filtered.map((n, i) => {
+          items.map((n) => {
             const read = isRead(n);
             const meta = TYPE_META[n.type] || TYPE_META.system;
             return (
@@ -324,6 +394,21 @@ export default function UpdatesView({ notifications }: { notifications: Notifica
           })
         )}
       </div>
+
+      {/* Server-side pager */}
+      {total > 0 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            busy={loading}
+            itemLabel="notifications"
+            onPage={goToPage}
+            onPageSize={changePageSize}
+          />
+        </div>
+      )}
     </div>
   );
 }

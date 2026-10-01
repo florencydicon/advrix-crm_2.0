@@ -244,7 +244,7 @@ export default function AppShell({
   const fetchJson = useRef(createEtagFetcher()).current;
   const pollNotifs = useCallback(async () => {
     if (typeof document !== "undefined" && document.hidden) return;
-    const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications");
+    const data = await fetchJson<{ items: Notification[]; unread: number }>("/api/notifications?limit=25");
     if (data === null || cancelledRef.current) return;
     // Strict filter: unread only + not already toasted in this session/persisted
     const fresh = data.items.filter((n: any) => isUnread(n) && !toastedIds.current.has(n.id));
