@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Activity, Download, Gauge, Printer, Server, TrendingUp } from "lucide-react";
 import type {
   ActivityReport,
@@ -103,6 +103,40 @@ export default function UsageView({
   const storageStatus = statusOf(storage.used, storage.limit);
   const transferStatus = statusOf(transfer.used, transfer.limit);
 
+  // ---- Network transfer rate -------------------------------------------------
+  // Derived from the per-day tracked bytes. Three useful numbers:
+  //  - daily rate over the trailing 7 tracked days (what the app is doing NOW)
+  //  - projected 30-day total at that rate (extrapolated, not billed)
+  //  - days of headroom left against the reference cap at that rate
+  const rate = useMemo(() => {
+    const days = tracked.byDay
+      .map((d) => ({ day: String(d.day).slice(0, 10), bytes: Number(d.approx_bytes) || 0 }))
+      .filter((d) => d.bytes >= 0)
+      .sort((a, b) => a.day.localeCompare(b.day));
+
+    const activeDays = days.filter((d) => d.bytes > 0);
+    const totalBytes = days.reduce((a, d) => a + d.bytes, 0);
+    const recent = activeDays.slice(-7);
+    const recentBytes = recent.reduce((a, d) => a + d.bytes, 0);
+    // Fall back to the whole range when fewer than 7 tracked days exist.
+    const perDay = recent.length > 0 ? recentBytes / recent.length : 0;
+    const projected30 = perDay * 30;
+    const limit = transfer.limit || 0;
+    const headroom = limit > 0 ? Math.max(0, limit - transfer.used) : 0;
+    const daysToCap = perDay > 0 && limit > 0 ? Math.floor(headroom / perDay) : null;
+
+    return {
+      days,
+      activeDayCount: activeDays.length,
+      totalBytes,
+      perDay,
+      projected30,
+      headroom,
+      daysToCap,
+      peak: days.reduce((m, d) => (d.bytes > m.bytes ? d : m), { day: "", bytes: 0 }),
+    };
+  }, [tracked.byDay, transfer.limit, transfer.used]);
+
   const metricTotals = ACTIVITY_METRICS.map((m) => ({ ...m, value: activity.totals[m.key] ?? 0 }));
   const totalActions = activity.totals.activity_events ?? 0;
 
@@ -113,6 +147,16 @@ export default function UsageView({
     lines.push("Resource,Used,Limit,Status");
     lines.push(`Storage,${fmtBytes(storage.used)},${fmtBytes(storage.limit)},${storageStatus.label}`);
     lines.push(`App-measured payload,${fmtBytes(transfer.used)},${fmtBytes(transfer.limit)},${transferStatus.label}`);
+    lines.push("");
+    lines.push("Network transfer rate,Value");
+    lines.push(`Avg per day,${rate.perDay}`);
+    lines.push(`Projected 30d,${rate.projected30}`);
+    lines.push(`Headroom vs cap,${rate.headroom}`);
+    lines.push(`Days to cap,${rate.daysToCap === null ? "n/a" : rate.daysToCap}`);
+    lines.push(`Tracked days,${rate.activeDayCount}`);
+    lines.push("");
+    lines.push("Daily network transfer,Day,Approx bytes");
+    for (const d of rate.days) lines.push(`,${d.day},${d.bytes}`);
     lines.push("");
     lines.push("Traffic by endpoint,Requests,Rows,Approx bytes,Avg ms");
     for (const r of tracked.byEndpoint) {
@@ -234,6 +278,99 @@ export default function UsageView({
             </p>
           )}
         </div>
+      </div>
+
+      {/* ---- Network transfer rate ---- */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-brand-300" />
+            <h2 className="font-semibold text-sm">Network transfer rate</h2>
+          </div>
+          <span className="badge bg-white/5 text-slate-400">
+            {rate.activeDayCount} tracked day{rate.activeDayCount === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        {rate.activeDayCount === 0 ? (
+          <p className="text-sm text-slate-500">
+            No tracked traffic in this period, so no rate can be calculated. Tracking began{" "}
+            {rate.days.length > 0 ? rate.days[0].day : "with this feature"}.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide">Avg per day</p>
+                <p className="text-lg font-bold text-white mt-1">{fmtBytes(rate.perDay)}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">trailing 7 tracked days</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide">Projected 30d</p>
+                <p
+                  className={`text-lg font-bold mt-1 ${
+                    transfer.limit > 0 && rate.projected30 > transfer.limit ? "text-rose-300" : "text-white"
+                  }`}
+                >
+                  {fmtBytes(rate.projected30)}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5">at the current rate</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide">Headroom</p>
+                <p className="text-lg font-bold text-white mt-1">{fmtBytes(rate.headroom)}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  left of the {fmtBytes(transfer.limit)} cap
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide">Days to cap</p>
+                <p
+                  className={`text-lg font-bold mt-1 ${
+                    rate.daysToCap !== null && rate.daysToCap <= 7 ? "text-rose-300" : "text-white"
+                  }`}
+                >
+                  {rate.daysToCap === null ? "—" : rate.daysToCap >= 999 ? "999+" : rate.daysToCap}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5">at the current rate</p>
+              </div>
+            </div>
+
+            {/* Daily bar chart — only tracked days carry a bar. */}
+            {rate.days.length > 0 && (
+              <div>
+                <div className="flex items-end gap-[3px] h-20" role="img" aria-label="Daily network transfer by day">
+                  {rate.days.map((d) => {
+                    const h = rate.peak.bytes > 0 ? Math.max(2, Math.round((d.bytes / rate.peak.bytes) * 76)) : 2;
+                    return (
+                      <div
+                        key={d.day}
+                        className="flex-1 rounded-t bg-brand-300/70 hover:bg-brand-300 transition-colors"
+                        style={{ height: `${h}px` }}
+                        title={`${d.day} — ${fmtBytes(d.bytes)}`}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1.5">
+                  <span>{rate.days[0]?.day}</span>
+                  <span>
+                    peak {fmtBytes(rate.peak.bytes)}
+                    {rate.peak.day ? ` on ${rate.peak.day}` : ""}
+                  </span>
+                  <span>{rate.days[rate.days.length - 1]?.day}</span>
+                </div>
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Rate is <span className="text-slate-400">app-measured</span> — it counts the bytes this
+              app pulls from Neon, which is what drives the billable network transfer. Neon counts a
+              little protocol overhead on top, so the console figure is marginally higher. Projection
+              assumes the current rate continues for 30 days.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="card p-4 flex items-start gap-3">
