@@ -20,6 +20,7 @@ import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
 import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import type { TaskFilterState } from "@/lib/taskFilters";
 import Pagination, { clampPageSize, type PageSize } from "@/components/Pagination";
 import { isOverdue } from "@/lib/deadlines";
 import {
@@ -426,9 +427,10 @@ export default function ProjectPipeline({
   // Audit log modal (completed task in History)
   const [historyTask, setHistoryTask] = useState<Task | null>(null);
 
-  // Filters: global search + per-column dropdowns (client-side, instant).
-  // The shared hook owns the select/search state, mirrors selects to the URL
-  // (incl. ?clientId= deep links from the workload widget) and exposes `matches`.
+  // Filters: global search + per-column dropdowns, instant from local state.
+  // silentUrl: the URL is synced without a server re-render (that would only
+  // duplicate the server-action fetch below). Deep-links (?clientId=, ?q=)
+  // still work — the hook initialises from the URL and the server prefetches.
   const allTaskRows = useMemo(() => [...board.active, ...board.completed], [board]);
   const af = useAdvancedFilters(allTaskRows, {
     client: {
@@ -466,7 +468,8 @@ export default function ProjectPipeline({
         t.due_date ? fmtDate(t.due_date) : "",
         (t.due_date || "").slice(0, 10),
       ].join(" "),
-  });
+  },
+  { silentUrl: true });
 
   // Multi-select bulk actions (active board only).
   const [selected, setSelected] = useState<string[]>([]);
@@ -479,26 +482,21 @@ export default function ProjectPipeline({
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
 
-  // Server-side filter state derived from the URL (?q=&clientId=&project=
-  // &stage=&deadline=&status=&priority=). The AdvancedFilterBar writes these
-  // params, and we send them back to the server so search/filter matches the
-  // WHOLE dataset — not just the rows already loaded on this page.
+  // Server-side filter snapshot derived from the hook's LOCAL state — never a
+  // stale navigation snapshot. The fetch effect below keys on `filtersKey`.
   // "Je search karu e search ma batavu joie" — bija page par javu na pade.
-  const urlFilters = useMemo(
-    () => ({
-      q: searchParams.get("q") || "",
-      clientId: searchParams.get("clientId") || "",
-      project: searchParams.get("project") || "",
-      stage: searchParams.get("stage") || "",
-      deadline: searchParams.get("deadline") || "",
-      status: searchParams.get("status") || "",
-      priority: searchParams.get("priority") || "",
-    }),
-    [searchParams]
-  );
-  const filtersRef = useRef(urlFilters);
-  filtersRef.current = urlFilters;
-  const filtersKey = JSON.stringify(urlFilters);
+  const committedFilters: TaskFilterState = {
+    q: af.search,
+    clientId: af.filters.client,
+    project: af.filters.project,
+    stage: af.filters.stage,
+    deadline: af.filters.deadline,
+    status: af.filters.status,
+    priority: af.filters.priority,
+  };
+  const filtersKey = JSON.stringify(committedFilters);
+  const filtersRef = useRef<TaskFilterState>(committedFilters);
+  filtersRef.current = committedFilters;
 
   // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
   const openedLinkId = useRef<string | null>(null);
@@ -528,7 +526,7 @@ export default function ProjectPipeline({
   pageRef.current = page;
   sizeRef.current = pageSize;
 
-  const reload = useCallback(async (nextPage?: number, nextSize?: number, nextFilters?: typeof urlFilters, skipFacets?: boolean) => {
+  const reload = useCallback(async (nextPage?: number, nextSize?: number, nextFilters?: TaskFilterState, skipFacets?: boolean) => {
     const p = nextPage ?? pageRef.current;
     const s = nextSize ?? sizeRef.current;
     const f = nextFilters ?? filtersRef.current;
@@ -561,11 +559,11 @@ export default function ProjectPipeline({
     }
     setPage(1);
     pageRef.current = 1;
-    reload(1, undefined, urlFilters, true).catch(() => {
+    reload(1, undefined, committedFilters, true).catch(() => {
       // Never leave a stale unfiltered board silently (looks like "results
       // are on another page"): retry once (cold DB), then tell the user.
       window.setTimeout(() => {
-        reload(1, undefined, urlFilters, true).catch(() =>
+        reload(1, undefined, committedFilters, true).catch(() =>
           notify("Search failed to load — check connection and try again.")
         );
       }, 1200);

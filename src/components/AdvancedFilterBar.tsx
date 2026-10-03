@@ -217,15 +217,110 @@ function priorityToOptions(values: Set<string>): SelectOption[] {
  * deep-linkable, and exposes a `matches` predicate for client-side filtering.
  * Only the provided config fields are shown and matched.
  */
-export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>): AdvancedFilterApi<T> {
+export function useAdvancedFilters<T>(
+  rows: T[],
+  config: AdvancedFilterConfig<T>,
+  opts?: { silentUrl?: boolean }
+): AdvancedFilterApi<T> {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
+  // silentUrl: sync the URL via history.replaceState (no server re-render).
+  // The Project Pipeline uses this — it fetches through a server action, so a
+  // router navigation would only trigger a second, wasted full-board fetch.
+  // Default (dashboards): router.replace, the server re-render does the fetch.
+  const silent = opts?.silentUrl === true;
 
   const configRef = useRef(config);
   configRef.current = config;
 
   const visible = (ALL_KEYS.filter((k) => !!config[k]) as FilterKey[]);
+
+  // Local filter/search state = instant UI. The URL is synced silently on
+  // every change (deep-links/bookmarks keep working), but components react to
+  // THIS state — never to a possibly-stale navigation snapshot. That kills two
+  // bugs at once: laggy inputs waiting on slow server renders, and rapid
+  // successive selections losing each other.
+  const [filters, setFiltersState] = useState<FilterState>(() => {
+    const next: FilterState = { ...EMPTY_FILTERS };
+    for (const key of ALL_KEYS) {
+      const raw = searchParams.get(PARAM_BY_KEY[key]);
+      if (raw) next[key] = raw;
+    }
+    return next;
+  });
+  const [search, setSearchState] = useState<string>(() => searchParams.get("q") || "");
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const searchRef = useRef(search);
+  searchRef.current = search;
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+
+  // Back/forward buttons: re-adopt the URL state.
+  useEffect(() => {
+    const onPop = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const next: FilterState = { ...EMPTY_FILTERS };
+      for (const key of ALL_KEYS) {
+        const raw = sp.get(PARAM_BY_KEY[key]);
+        if (raw) next[key] = raw;
+      }
+      const q = sp.get("q") || "";
+      filtersRef.current = next;
+      searchRef.current = q;
+      setFiltersState(next);
+      setSearchState(q);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Write the filter state into the URL. Filter values always come from the
+  // explicit arguments (current by construction) — never from a navigation
+  // snapshot that may still be catching up. Other params (page/tab/size/…)
+  // are preserved; a new search/filter restarts at page 1.
+  const pushUrl = useCallback((nextFilters: FilterState, nextSearch: string) => {
+    const sp = new URLSearchParams(searchParams.toString());
+    for (const key of ALL_KEYS) sp.delete(PARAM_BY_KEY[key]);
+    sp.delete("q");
+    sp.delete("page");
+    for (const key of ALL_KEYS) {
+      const v = nextFilters[key];
+      if (v) sp.set(PARAM_BY_KEY[key], v);
+    }
+    if (nextSearch) sp.set("q", nextSearch);
+    const qs = sp.toString();
+    const url = `${pathname}${qs ? `?${qs}` : ""}`;
+    if (silent) window.history.replaceState(null, "", url);
+    else router.replace(url, { scroll: false });
+  }, [searchParams, pathname, router, silent]);
+
+  const setSearch = useCallback((value: string) => {
+    if (value === searchRef.current) return;
+    searchRef.current = value;
+    setSearchState(value);
+    pushUrl(filtersRef.current, value);
+  }, [pushUrl]);
+
+  const setFilter = useCallback((key: FilterKey, value: string) => {
+    const cur = filtersRef.current;
+    if (cur[key] === value) return;
+    const next = { ...cur, [key]: value };
+    filtersRef.current = next;
+    setFiltersState(next);
+    pushUrl(next, searchRef.current);
+  }, [pushUrl]);
+
+  const clearAll = useCallback(() => {
+    const next = { ...filtersRef.current };
+    for (const k of visibleRef.current) next[k] = "";
+    filtersRef.current = next;
+    searchRef.current = "";
+    setFiltersState(next);
+    setSearchState("");
+    pushUrl(next, "");
+  }, [pushUrl]);
 
   const labels: Record<FilterKey, string> = { ...DEFAULT_LABELS, ...config.labels };
 
@@ -283,59 +378,6 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
       priority: priorityToOptions(priority),
     };
   }, [rows]);
-
-  // Search lives in the URL (?q=) like the selects, so the SERVER can filter on
-  // it and a search finds rows on any page instead of only the loaded ones.
-  const search = searchParams.get("q") || "";
-
-  const setSearch = useCallback((value: string) => {
-    const sp = new URLSearchParams(searchParams.toString());
-    if (value) sp.set("q", value);
-    else sp.delete("q");
-    // A new search always restarts at page 1.
-    sp.delete("page");
-    const qs = sp.toString();
-    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [searchParams, pathname, router]);
-
-  // Filters are now derived directly from the URL — single source of truth.
-  // This eliminates the previous two-way sync (state↔URL) that caused the
-  // Venus glitch: ?clientId=venus would briefly show Vikas's task, then flip
-  // to "No active" and back every 3s poll. Now the URL is the truth.
-  const filters: FilterState = useMemo(() => {
-    const next: FilterState = { ...EMPTY_FILTERS };
-    for (const key of visible) {
-      const raw = searchParams.get(PARAM_BY_KEY[key]);
-      if (raw) next[key] = raw;
-    }
-    return next;
-  }, [searchParams, visible]);
-
-  const setFilter = useCallback((key: FilterKey, value: string) => {
-    const sp = new URLSearchParams(searchParams.toString());
-    const param = PARAM_BY_KEY[key];
-    if (value) sp.set(param, value);
-    else sp.delete(param);
-    // A new filter always restarts at page 1 so results come from every page.
-    sp.delete("page");
-    const qs = sp.toString();
-    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [searchParams, pathname, router]);
-
-  const clearAll = useCallback(() => {
-    const sp = new URLSearchParams(searchParams.toString());
-    let dirty = false;
-    for (const key of visible) {
-      const p = PARAM_BY_KEY[key];
-      if (sp.has(p)) { sp.delete(p); dirty = true; }
-    }
-    if (sp.has("q")) { sp.delete("q"); dirty = true; }
-    if (sp.has("page")) { sp.delete("page"); dirty = true; }
-    if (dirty) {
-      const qs = sp.toString();
-      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-    }
-  }, [searchParams, pathname, router, visible]);
 
   const matches = useCallback(
     (row: T): boolean => {
