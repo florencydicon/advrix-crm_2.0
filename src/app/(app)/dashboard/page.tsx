@@ -43,7 +43,8 @@ export default async function DashboardPage({
     const pageSize = Math.max(1, Math.min(100, Number(one("size")) || 25));
     const requestedPage = Math.max(1, Number(one("page")) || 1);
     // Server-side search/filters (?q=&clientId=&project=&stage=&deadline=
-    // &status=&priority=) — applied in SQL across the whole set.
+    // &status=&priority=) — applied in SQL across the whole set. With any
+    // filter active the server returns EVERY match (unpaged), same as pipeline.
     const filters = {
       q: one("q") || "",
       clientId: one("clientId") || "",
@@ -53,12 +54,12 @@ export default async function DashboardPage({
       status: one("status") || "",
       priority: one("priority") || "",
     };
-    const { items: myTasks, total: myTotal, counts } = await getMyTasksPage(session.sub, {
+    const { items: myTasks, total: myTotal, counts, unpaged } = await getMyTasksPage(session.sub, {
       tab,
       limit: pageSize,
       offset: (requestedPage - 1) * pageSize,
       filters,
-    }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 } }));
+    }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 }, unpaged: false }));
     const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
     const open = myTasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
@@ -96,6 +97,7 @@ export default async function DashboardPage({
             pageSize={pageSize}
             tab={tab}
             counts={counts}
+            unpaged={unpaged}
           />
         ) : (
           <StaffDashboard
@@ -109,6 +111,7 @@ export default async function DashboardPage({
             pageSize={pageSize}
             tab={tab}
             counts={counts}
+            unpaged={unpaged}
           />
         )}
       </div>

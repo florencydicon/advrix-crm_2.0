@@ -25,8 +25,6 @@ export default async function ProjectsPage({
   // when it sits on another page (no need to visit each page manually).
   const sp = await searchParams;
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
-  const page = Number(one("page")) || 1;
-  const pageSize = Number(one("size")) || 25;
 
   const filters = {
     q: one("q") || "",
@@ -37,6 +35,11 @@ export default async function ProjectsPage({
     status: one("status") || "",
     priority: one("priority") || "",
   };
+
+  const page = Number(one("page")) || 1;
+  // Explicit ?size= is honoured for plain browsing. A filtered view always
+  // returns every match (server-side fetch-all), so no size juggling is needed.
+  const pageSize = Number(one("size")) || 25;
 
   const [board, team] = await Promise.all([
     getPipelineBoardAction({ page, pageSize, filters }),

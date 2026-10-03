@@ -302,6 +302,8 @@ export default function SmmDashboard({
   pageSize = 25,
   tab: initialTab = "active",
   counts,
+  /** True when a filter/search is active and `tasks` holds EVERY match. */
+  unpaged = false,
 }: {
   tasks: Task[];
   team: UserRow[];
@@ -313,6 +315,8 @@ export default function SmmDashboard({
   pageSize?: number;
   tab?: "active" | "history";
   counts?: { active: number; ready: number; done: number };
+  /** True when a filter/search is active and `tasks` holds EVERY match. */
+  unpaged?: boolean;
 }) {
   // Silent 12s background sync: cache-busted for mobile where fetch cache is aggressive.
   const etagFetch = useRef(createEtagFetcher()).current;
@@ -659,9 +663,18 @@ export default function SmmDashboard({
         </>
       )}
 
-{/* Server-side pager — only the visible window of tasks is fetched. */}
+{/* Filter/search active: every match is loaded — no pager, no Rows needed. */}
+{/* Plain browsing: server-side pager — only the visible window is fetched. */}
       {total > 0 && (
         <div className="card overflow-hidden">
+          {unpaged ? (
+            <div className="flex items-center justify-center px-4 py-3 text-xs text-slate-400">
+              <span>
+                Showing <span className="text-white font-medium">all {total}</span>{" "}
+                {tab === "active" ? "active tasks" : "history tasks"} — every match on one page
+              </span>
+            </div>
+          ) : (
           <Pagination
             page={page}
             pageSize={clampPageSize(pageSize)}
@@ -670,6 +683,7 @@ export default function SmmDashboard({
             onPage={(p) => goTo({ page: p })}
             onPageSize={(s) => goTo({ size: s })}
           />
+          )}
         </div>
       )}
 

@@ -52,6 +52,11 @@ export interface PipelineBoardPayload {
   facets: PipelineFacets;
   /** True when any search/filter is active. */
   filtered?: boolean;
+  /**
+   * True when the payload holds EVERY matching row (no LIMIT/OFFSET) because a
+   * search/filter is active. The UI hides the pager and shows all results.
+   */
+  unpaged?: boolean;
 }
 
 export interface PipelineFacets {
@@ -232,20 +237,31 @@ export async function getPipelineBoardAction(opts?: {
     [...params, ...filter.params]
   );
   const total = countRow[0]?.n ?? 0;
+
+  // A search/filter shows EVERY match on one page (never make the user hunt
+  // across pages or touch the Rows dropdown) — for every role. Unfiltered
+  // browsing stays paginated as before.
+  const fetchAll = hasActiveTaskFilter(opts?.filters || {});
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(requestedPage, totalPages);
+  const page = fetchAll ? 1 : Math.min(requestedPage, totalPages);
   const offset = (page - 1) * pageSize;
 
-  // ONLY this page's rows cross the wire. Overdue flagging + board data in a
-  // SINGLE statement (CTE) â€” one round-trip.
+  // Overdue flagging + board data in a SINGLE statement (CTE) — one round-trip.
+  // With a filter active there is no LIMIT/OFFSET: every match crosses the wire.
   const base = params.length + filter.params.length;
   const limitIdx = base + 1;
   const offsetIdx = base + 2;
-  const rows = await query<Task>(
-    `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope}${filter.sql} ORDER BY c.name ASC, p.name ASC, t.created_at DESC
+  const orderSql = `ORDER BY c.name ASC, p.name ASC, t.created_at DESC`;
+  const rows = fetchAll
+    ? await query<Task>(
+        `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope}${filter.sql} ${orderSql}`,
+        [...params, ...filter.params]
+      )
+    : await query<Task>(
+        `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope}${filter.sql} ${orderSql}
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-    [...params, ...filter.params, pageSize, offset]
-  );
+        [...params, ...filter.params, pageSize, offset]
+      );
 
   const active: Task[] = [];
   const completed: Task[] = [];
@@ -266,6 +282,7 @@ export async function getPipelineBoardAction(opts?: {
     roleKey: session.role_key, userId: session.sub, isBroad,
     total, page, pageSize, facets,
     filtered: hasActiveTaskFilter(opts?.filters || {}),
+    unpaged: fetchAll,
   };
 }
 

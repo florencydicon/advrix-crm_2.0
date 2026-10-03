@@ -295,6 +295,8 @@ export default function StaffDashboard({
   pageSize = 25,
   tab: initialTab = "active",
   counts,
+  /** True when a filter/search is active and `tasks` holds EVERY match. */
+  unpaged = false,
 }: {
   tasks: Task[];
   team: UserRow[];
@@ -308,6 +310,8 @@ export default function StaffDashboard({
   tab?: "active" | "history";
   /** Whole-set totals for the header stat cards. */
   counts?: { active: number; ready: number; done: number };
+  /** True when a filter/search is active and `tasks` holds EVERY match. */
+  unpaged?: boolean;
 }) {
   // Silent 12s background sync: refreshes only the task/team arrays feeding the
   // table & cards (refocus/visibility re-polls instantly). Pages are never
@@ -679,9 +683,18 @@ export default function StaffDashboard({
         </>
       )}
 
-{/* Server-side pager — only the visible window of tasks is fetched. */}
+{/* Filter/search active: every match is loaded — no pager, no Rows needed. */}
+{/* Plain browsing: server-side pager — only the visible window is fetched. */}
       {total > 0 && (
         <div className="card overflow-hidden">
+          {unpaged ? (
+            <div className="flex items-center justify-center px-4 py-3 text-xs text-slate-400">
+              <span>
+                Showing <span className="text-white font-medium">all {total}</span>{" "}
+                {tab === "active" ? "active tasks" : "history tasks"} — every match on one page
+              </span>
+            </div>
+          ) : (
           <Pagination
             page={page}
             pageSize={clampPageSize(pageSize)}
@@ -690,6 +703,7 @@ export default function StaffDashboard({
             onPage={(p) => goTo({ page: p })}
             onPageSize={(s) => goTo({ size: s })}
           />
+          )}
         </div>
       )}
 

@@ -621,6 +621,8 @@ export interface MyTasksPage {
   total: number;
   /** Totals for the header stat cards, computed across the whole visible set. */
   counts: { active: number; ready: number; done: number };
+  /** True when a filter/search is active and `items` holds EVERY match. */
+  unpaged?: boolean;
 }
 
 /** Shared visibility predicate: tasks this member currently holds or has held. */
@@ -658,19 +660,29 @@ export async function getMyTasksPage(
 
   // Search + select filters match the WHOLE set in SQL so a search finds a
   // task on any page — no need to visit each page manually.
-  const { buildTaskFilterSql } = await import("@/lib/taskFilters");
+  // With any filter/search active, EVERY match is returned at once (no
+  // LIMIT/OFFSET) — same rule for every user. Plain browsing stays paginated.
+  const { buildTaskFilterSql, hasActiveTaskFilter } = await import("@/lib/taskFilters");
+  const fetchAll = hasActiveTaskFilter(opts.filters || {});
   const filter = buildTaskFilterSql(opts.filters || {}, 2);
   const joinSql = `JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id`;
   const limIdx = 2 + filter.params.length;
   const offIdx = 3 + filter.params.length;
+  const orderSql = `ORDER BY t.due_date ASC NULLS LAST, t.created_at ASC`;
 
   const [rows, tabCount, activeCount, readyCount, doneCount] = await Promise.all([
-    query<Task>(
-      `${TASK_SELECT} WHERE ${MY_TASK_VISIBILITY} ${tabWhere} ${filter.sql}
-        ORDER BY t.due_date ASC NULLS LAST, t.created_at ASC
+    fetchAll
+      ? query<Task>(
+          `${TASK_SELECT} WHERE ${MY_TASK_VISIBILITY} ${tabWhere} ${filter.sql}
+        ${orderSql}`,
+          [userId, ...filter.params]
+        )
+      : query<Task>(
+          `${TASK_SELECT} WHERE ${MY_TASK_VISIBILITY} ${tabWhere} ${filter.sql}
+        ${orderSql}
         LIMIT $${limIdx} OFFSET $${offIdx}`,
-      [userId, ...filter.params, limit, offset]
-    ),
+          [userId, ...filter.params, limit, offset]
+        ),
     query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM tasks t ${joinSql} WHERE ${MY_TASK_VISIBILITY} ${tabWhere} ${filter.sql}`,
       [userId, ...filter.params]
@@ -698,6 +710,7 @@ export async function getMyTasksPage(
       ready: readyCount[0]?.n ?? 0,
       done: doneCount[0]?.n ?? 0,
     },
+    unpaged: fetchAll,
   };
 }
 

@@ -551,7 +551,8 @@ export default function ProjectPipeline({
   }, []);
 
   // Refetch from the server whenever the URL search/filters change.
-  // A new search always restarts at page 1, so results come from every page.
+  // A new search always restarts at page 1. The server returns EVERY match at
+  // once while a filter is active, so all results are visible together.
   const firstFilterRun = useRef(true);
   useEffect(() => {
     if (firstFilterRun.current) {
@@ -560,7 +561,15 @@ export default function ProjectPipeline({
     }
     setPage(1);
     pageRef.current = 1;
-    reload(1, undefined, urlFilters, true).catch(() => {});
+    reload(1, undefined, urlFilters, true).catch(() => {
+      // Never leave a stale unfiltered board silently (looks like "results
+      // are on another page"): retry once (cold DB), then tell the user.
+      window.setTimeout(() => {
+        reload(1, undefined, urlFilters, true).catch(() =>
+          notify("Search failed to load — check connection and try again.")
+        );
+      }, 1200);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtersKey]);
 
@@ -1363,9 +1372,18 @@ export default function ProjectPipeline({
         </div>
       )}
 
-      {/* Server-side pager — only the current page's rows are ever fetched. */}
+      {/* Filter/search active: every match is loaded — no pager, no Rows needed. */}
+      {/* Plain browsing: server-side pager — only the current page is fetched. */}
       {board.total > 0 && (
         <div className="shrink-0 rounded-b-2xl border-t border-white/[0.06] bg-night-900/40">
+          {board.unpaged ? (
+            <div className="flex items-center justify-center px-4 py-3 text-xs text-slate-400">
+              <span>
+                Showing <span className="text-white font-medium">all {board.total}</span>{" "}
+                {tab === "active" ? "tasks" : "completed tasks"} — every match on one page
+              </span>
+            </div>
+          ) : (
           <Pagination
             page={board.page}
             pageSize={clampPageSize(board.pageSize)}
@@ -1381,6 +1399,7 @@ export default function ProjectPipeline({
               reload(1, s);
             }}
           />
+          )}
         </div>
       )}
 
