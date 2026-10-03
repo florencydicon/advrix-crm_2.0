@@ -85,6 +85,7 @@ export default function SmartTable<T>({
   }, [searchParams, searchParam]);
 
   // Live search across ALL pages (server-side) with a short debounce.
+  // Uses router.replace (no history spam, no scroll jump) so typing stays lag-free.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -94,10 +95,17 @@ export default function SmartTable<T>({
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         const current = searchParams.get(searchParam) || "";
-        if (value.trim() !== current) navigate({ [searchParam]: value.trim() || null });
+        if (value.trim() !== current) {
+          const newParams = new URLSearchParams(searchParams);
+          if (value.trim()) newParams.set(searchParam, value.trim());
+          else newParams.delete(searchParam);
+          newParams.delete("page");
+          const qs = newParams.toString();
+          router.replace(`${basePath}${qs ? `?${qs}` : ""}`, { scroll: false });
+        }
       }, 500);
     },
-    [navigate, searchParams, searchParam]
+    [router, searchParams, searchParam, basePath]
   );
 
   const clearSearch = useCallback(() => {

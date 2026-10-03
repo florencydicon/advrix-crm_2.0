@@ -528,17 +528,22 @@ export default function ProjectPipeline({
   pageRef.current = page;
   sizeRef.current = pageSize;
 
-  const reload = useCallback(async (nextPage?: number, nextSize?: number, nextFilters?: typeof urlFilters) => {
+  const reload = useCallback(async (nextPage?: number, nextSize?: number, nextFilters?: typeof urlFilters, skipFacets?: boolean) => {
     const p = nextPage ?? pageRef.current;
     const s = nextSize ?? sizeRef.current;
     const f = nextFilters ?? filtersRef.current;
-    const next = await getPipelineBoardAction({ page: p, pageSize: s, filters: f });
+    const next = await getPipelineBoardAction({ page: p, pageSize: s, filters: f, skipFacets });
     // Equal-data short-circuit: skip the state update (and the whole re-render)
     // when the poll returns an identical payload.
     const key = JSON.stringify(next);
     if (key === boardDataRef.current) return;
     boardDataRef.current = key;
-    setBoard(next);
+    // Search reloads skip the facet scan — keep the already-loaded dropdowns.
+    if (skipFacets) {
+      setBoard((prev) => ({ ...next, facets: prev.facets }));
+    } else {
+      setBoard(next);
+    }
     setPage(next.page);
     setPageSize(clampPageSize(next.pageSize));
     // Prune bulk selection to rows that still exist.
@@ -555,7 +560,7 @@ export default function ProjectPipeline({
     }
     setPage(1);
     pageRef.current = 1;
-    reload(1, undefined, urlFilters).catch(() => {});
+    reload(1, undefined, urlFilters, true).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtersKey]);
 

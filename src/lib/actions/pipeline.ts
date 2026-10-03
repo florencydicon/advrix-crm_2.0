@@ -192,6 +192,13 @@ export async function getPipelineBoardAction(opts?: {
   filters?: TaskFilterState;
   /** When true, `filters` also narrows the facet list (used by the count query). */
   includeFacets?: boolean;
+  /**
+   * When true, skip the full-table facet scan (dropdown options). Search
+   * reloads set this — facets don't depend on the search term, so reusing the
+   * already-loaded ones makes typing lag-free. The periodic poll still loads
+   * them, keeping dropdowns fresh.
+   */
+  skipFacets?: boolean;
 }): Promise<PipelineBoardPayload> {
   const empty: PipelineBoardPayload = {
     active: [], completed: [], canManage: false, canReopen: false, canApprove: false,
@@ -247,9 +254,11 @@ export async function getPipelineBoardAction(opts?: {
     else active.push(r);
   }
 
-  const facets = await loadFacets(dataScope, session.sub).catch(
-    (): PipelineFacets => ({ clients: [], projects: [], stages: [] })
-  );
+  const facets = opts?.skipFacets
+    ? { clients: [], projects: [], stages: [] }
+    : await loadFacets(dataScope, session.sub).catch(
+        (): PipelineFacets => ({ clients: [], projects: [], stages: [] })
+      );
 
   return {
     active, completed,

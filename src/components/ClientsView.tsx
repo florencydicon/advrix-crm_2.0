@@ -410,16 +410,24 @@ export default function ClientsView({
 
   // Live search: typing auto-searches across ALL pages (server-side) after a
   // short pause — no need to press Enter or visit each page manually.
+  // Uses router.replace (no history spam, no scroll jump) so typing stays lag-free.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueSearch = useCallback(
     (value: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         const current = searchParams.get("search") || "";
-        if (value !== current) navigate({ search: value || null });
+        if (value !== current) {
+          const newParams = new URLSearchParams(searchParams);
+          if (value) newParams.set("search", value);
+          else newParams.delete("search");
+          newParams.delete("page");
+          const qs = newParams.toString();
+          router.replace(`${basePath}${qs ? `?${qs}` : ""}`, { scroll: false });
+        }
       }, 500);
     },
-    [navigate, searchParams]
+    [router, searchParams, basePath]
   );
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

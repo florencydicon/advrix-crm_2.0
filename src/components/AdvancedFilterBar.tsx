@@ -371,21 +371,58 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
 }
 
 function GlobalSearchInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  // Local draft so typing stays instant (no lag): the server fetch only fires
+  // once per pause (debounced), instead of on every keystroke.
+  const [draft, setDraft] = useState(value);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync when the URL value changes elsewhere (clear-all, back/forward).
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    []
+  );
+
+  const commit = (v: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    if (v !== value) onChange(v);
+  };
+
   return (
     <div className="relative">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
       <input
         type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={draft}
+        onChange={(e) => {
+          const v = e.target.value;
+          setDraft(v);
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => commit(v), 450);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit(draft);
+          if (e.key === "Escape" && draft) {
+            setDraft("");
+            commit("");
+          }
+        }}
+        onBlur={() => commit(draft)}
         placeholder="Search client, project, task, stage, status, priority, deadline…"
         aria-label="Search across the current list"
         className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pl-9 pr-8 text-sm text-white placeholder:text-slate-500 transition-colors focus:border-brand-300/50 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
       />
-      {value && (
+      {draft && (
         <button
           type="button"
-          onClick={() => onChange("")}
+          onClick={() => {
+            setDraft("");
+            commit("");
+          }}
           aria-label="Clear search"
           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-slate-300"
         >
