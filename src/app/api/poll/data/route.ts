@@ -25,12 +25,22 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const limit = Math.max(1, Math.min(100, Number(sp.get("size")) || 25));
   const page = Math.max(1, Number(sp.get("page")) || 1);
+  const filters = {
+    q: sp.get("q") || "",
+    clientId: sp.get("clientId") || "",
+    project: sp.get("project") || "",
+    stage: sp.get("stage") || "",
+    deadline: sp.get("deadline") || "",
+    status: sp.get("status") || "",
+    priority: sp.get("priority") || "",
+  };
 
   const [tasks, team] = await Promise.all([
     getMyTasksPage(session.sub, {
       tab: sp.get("tab") === "history" ? "history" : "active",
       limit,
       offset: (page - 1) * limit,
+      filters,
     }).then((r) => r.items),
     getTeam(),
   ]);

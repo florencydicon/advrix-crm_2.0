@@ -20,12 +20,26 @@ export default async function ProjectsPage({
   if (!hasPermission(session.permissions, "projects:view")) redirect("/dashboard");
 
   // ?page / ?size make the pipeline deep-linkable and server-paginated.
+  // ?q / ?clientId / ?project / ?stage / ?deadline / ?status / ?priority are
+  // applied in SQL across the WHOLE dataset — so a search finds a task even
+  // when it sits on another page (no need to visit each page manually).
   const sp = await searchParams;
-  const page = Number(typeof sp.page === "string" ? sp.page : 1) || 1;
-  const pageSize = Number(typeof sp.size === "string" ? sp.size : 25) || 25;
+  const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
+  const page = Number(one("page")) || 1;
+  const pageSize = Number(one("size")) || 25;
+
+  const filters = {
+    q: one("q") || "",
+    clientId: one("clientId") || "",
+    project: one("project") || "",
+    stage: one("stage") || "",
+    deadline: one("deadline") || "",
+    status: one("status") || "",
+    priority: one("priority") || "",
+  };
 
   const [board, team] = await Promise.all([
-    getPipelineBoardAction({ page, pageSize }),
+    getPipelineBoardAction({ page, pageSize, filters }),
     getTeam().catch(() => []),
   ]);
 

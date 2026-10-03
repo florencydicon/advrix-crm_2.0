@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useCallback } from "react";
-import { ChevronUp, ChevronDown, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { ChevronUp, ChevronDown, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 export interface Column<T> {
   key: string;
@@ -69,20 +69,50 @@ export default function SmartTable<T>({
           newParams.set(key, value);
         }
       }
-      if (!params.page) {
+      // New search/filter restarts at page 1; paging keeps the search term.
+      if (!("page" in params)) {
         newParams.delete("page");
       }
-      router.push(`${basePath}?${newParams.toString()}`);
+      const qs = newParams.toString();
+      router.push(`${basePath}${qs ? `?${qs}` : ""}`);
     },
     [router, searchParams, basePath]
   );
+
+  // Stay in sync when ?search= changes elsewhere (back/forward, clear).
+  useEffect(() => {
+    setSearchDraft(searchParams.get(searchParam) || "");
+  }, [searchParams, searchParam]);
+
+  // Live search across ALL pages (server-side) with a short debounce.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+  const queueSearch = useCallback(
+    (value: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        const current = searchParams.get(searchParam) || "";
+        if (value.trim() !== current) navigate({ [searchParam]: value.trim() || null });
+      }, 500);
+    },
+    [navigate, searchParams, searchParam]
+  );
+
+  const clearSearch = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchDraft("");
+    navigate({ [searchParam]: null });
+  }, [navigate, searchParam]);
 
   const handleFilter = (key: string) => {
     navigate({ [filterParam]: key === activeFilter ? null : key });
   };
 
   const handleSearch = () => {
-    navigate({ [searchParam]: searchDraft || null });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    navigate({ [searchParam]: searchDraft.trim() || null });
   };
 
   const handlePage = (p: number) => {
@@ -98,11 +128,25 @@ export default function SmartTable<T>({
             <input
               type="text"
               value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
+              onChange={(e) => {
+                setSearchDraft(e.target.value);
+                queueSearch(e.target.value);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               placeholder={searchPlaceholder}
-              className="input !pl-8 !py-1.5 text-xs"
+              aria-label="Search across all pages"
+              className="input !pl-8 !pr-8 !py-1.5 text-xs"
             />
+            {searchDraft && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-500 hover:text-white hover:bg-white/10"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         )}
         {filterTabs && filterTabs.length > 0 && (

@@ -88,6 +88,8 @@ export interface AdvancedFilterApi<T> {
   matches: (row: T) => boolean;
   /** Any select filter is active (search excluded — it has its own clear button). */
   hasActive: boolean;
+  /** True when a select filter OR the search box is active. */
+  hasAnyFilter: boolean;
 }
 
 const ALL_KEYS: FilterKey[] = ["client", "project", "stage", "deadline", "status", "priority"];
@@ -282,7 +284,19 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
     };
   }, [rows]);
 
-  const [search, setSearch] = useState("");
+  // Search lives in the URL (?q=) like the selects, so the SERVER can filter on
+  // it and a search finds rows on any page instead of only the loaded ones.
+  const search = searchParams.get("q") || "";
+
+  const setSearch = useCallback((value: string) => {
+    const sp = new URLSearchParams(searchParams.toString());
+    if (value) sp.set("q", value);
+    else sp.delete("q");
+    // A new search always restarts at page 1.
+    sp.delete("page");
+    const qs = sp.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router]);
 
   // Filters are now derived directly from the URL — single source of truth.
   // This eliminates the previous two-way sync (state↔URL) that caused the
@@ -302,6 +316,8 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
     const param = PARAM_BY_KEY[key];
     if (value) sp.set(param, value);
     else sp.delete(param);
+    // A new filter always restarts at page 1 so results come from every page.
+    sp.delete("page");
     const qs = sp.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router]);
@@ -313,11 +329,12 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
       const p = PARAM_BY_KEY[key];
       if (sp.has(p)) { sp.delete(p); dirty = true; }
     }
+    if (sp.has("q")) { sp.delete("q"); dirty = true; }
+    if (sp.has("page")) { sp.delete("page"); dirty = true; }
     if (dirty) {
       const qs = sp.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     }
-    setSearch("");
   }, [searchParams, pathname, router, visible]);
 
   const matches = useCallback(
@@ -349,6 +366,7 @@ export function useAdvancedFilters<T>(rows: T[], config: AdvancedFilterConfig<T>
     clearAll,
     matches,
     hasActive,
+    hasAnyFilter: hasActive || search.trim().length > 0,
   };
 }
 

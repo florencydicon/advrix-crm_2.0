@@ -42,10 +42,22 @@ export default async function DashboardPage({
     const tab = one("tab") === "history" ? "history" : "active";
     const pageSize = Math.max(1, Math.min(100, Number(one("size")) || 25));
     const requestedPage = Math.max(1, Number(one("page")) || 1);
+    // Server-side search/filters (?q=&clientId=&project=&stage=&deadline=
+    // &status=&priority=) — applied in SQL across the whole set.
+    const filters = {
+      q: one("q") || "",
+      clientId: one("clientId") || "",
+      project: one("project") || "",
+      stage: one("stage") || "",
+      deadline: one("deadline") || "",
+      status: one("status") || "",
+      priority: one("priority") || "",
+    };
     const { items: myTasks, total: myTotal, counts } = await getMyTasksPage(session.sub, {
       tab,
       limit: pageSize,
       offset: (requestedPage - 1) * pageSize,
+      filters,
     }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 } }));
     const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
     const open = myTasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");

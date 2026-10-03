@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback, useMemo } from "react";
+import { useState, useTransition, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -394,11 +394,36 @@ export default function ClientsView({
           newParams.set(key, value);
         }
       }
-      if (!params.page) newParams.delete("page");
-      router.push(`${basePath}?${newParams.toString()}`);
+      // New search/filter always restarts at page 1; paging keeps the search.
+      if (!("page" in params)) newParams.delete("page");
+      const qs = newParams.toString();
+      router.push(`${basePath}${qs ? `?${qs}` : ""}`);
     },
     [router, searchParams, basePath]
   );
+
+  // Keep the input in sync when the URL ?search= changes (back/forward,
+  // clear, or a search done from another page).
+  useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+
+  // Live search: typing auto-searches across ALL pages (server-side) after a
+  // short pause — no need to press Enter or visit each page manually.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueSearch = useCallback(
+    (value: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        const current = searchParams.get("search") || "";
+        if (value !== current) navigate({ search: value || null });
+      }, 500);
+    },
+    [navigate, searchParams]
+  );
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
 
 
   function runWith(fn: (fd: FormData) => Promise<{ ok?: boolean; error?: string }>) {
@@ -463,11 +488,47 @@ export default function ClientsView({
             <input
               type="text"
               value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && navigate({ search: searchDraft || null })}
-              placeholder="Search clients…"
-              className="input !pl-8 !py-1.5 text-xs"
+              onChange={(e) => {
+                setSearchDraft(e.target.value);
+                queueSearch(e.target.value.trim());
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  navigate({ search: searchDraft.trim() || null });
+                }
+              }}
+              placeholder="Search clients (all pages)…"
+              aria-label="Search clients across all pages"
+              className="input !pl-8 !pr-16 !py-1.5 text-xs"
             />
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+              {searchDraft && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (debounceRef.current) clearTimeout(debounceRef.current);
+                    setSearchDraft("");
+                    navigate({ search: null });
+                  }}
+                  aria-label="Clear search"
+                  className="p-1 rounded text-slate-500 hover:text-white hover:bg-white/10"
+                >
+                  ✕
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  navigate({ search: searchDraft.trim() || null });
+                }}
+                aria-label="Search"
+                className="px-2 py-1 rounded-md bg-brand-300 text-night-950 text-[11px] font-semibold hover:bg-brand-200"
+              >
+                Go
+              </button>
+            </div>
           </div>
           <select
             value={selectedManager}

@@ -317,12 +317,20 @@ export default function StaffDashboard({
   const live = useSilentPoll(
     { tasks, team },
     async () => {
-      // Same tab/page the user is viewing, so a refresh never widens the list.
+      // Same tab/page/filters the user is viewing, so a refresh never widens
+      // the list or drops an active search.
       const qs = new URLSearchParams({
         tab: initialTab,
         page: String(page),
         size: String(pageSize),
       });
+      try {
+        const cur = new URLSearchParams(window.location.search);
+        for (const k of ["q", "clientId", "project", "stage", "deadline", "status", "priority"]) {
+          const v = cur.get(k);
+          if (v) qs.set(k, v);
+        }
+      } catch {}
       const data = await etagFetch<{ tasks: Task[]; team: UserRow[] }>(`/api/poll/data?${qs.toString()}`);
       if (data === null) throw new Error("unchanged"); // 304  keep current arrays
       return data;

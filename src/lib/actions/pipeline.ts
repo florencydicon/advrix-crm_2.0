@@ -6,6 +6,7 @@ import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { resolveDataScope, type DataScope } from "@/lib/scope";
 import { clampPage, clampPageSize } from "@/lib/pagination";
+import { buildTaskFilterSql, hasActiveTaskFilter, type TaskFilterState } from "@/lib/taskFilters";
 import type { Task, TaskStatus, ContentStatus } from "@/lib/types";
 import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam, setTaskDeadline, flagOverdueTasks } from "@/lib/workflow";
 import { sanitizeRich, richToPlain } from "@/lib/rich";
@@ -49,6 +50,8 @@ export interface PipelineBoardPayload {
   pageSize: number;
   /** Distinct filter option values, so dropdowns stay complete while paginated. */
   facets: PipelineFacets;
+  /** True when any search/filter is active. */
+  filtered?: boolean;
 }
 
 export interface PipelineFacets {
@@ -185,6 +188,10 @@ async function loadFacets(scope: DataScope, sessionSub: string): Promise<Pipelin
 export async function getPipelineBoardAction(opts?: {
   page?: number;
   pageSize?: number;
+  /** Search + select filters, applied in SQL across the whole dataset. */
+  filters?: TaskFilterState;
+  /** When true, `filters` also narrows the facet list (used by the count query). */
+  includeFacets?: boolean;
 }): Promise<PipelineBoardPayload> {
   const empty: PipelineBoardPayload = {
     active: [], completed: [], canManage: false, canReopen: false, canApprove: false,
@@ -206,12 +213,16 @@ export async function getPipelineBoardAction(opts?: {
   const pageSize = clampPageSize(opts?.pageSize);
   const requestedPage = clampPage(opts?.page);
 
+  // Search + select filters become SQL so they match the WHOLE dataset, not
+  // just the rows already loaded on this page.
+  const filter = buildTaskFilterSql(opts?.filters || {}, params.length + 1);
+
   // Total matching rows â€” cheap COUNT, no payload.
   const countRow = await query<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM tasks t
        JOIN projects p ON p.id = t.project_id
-       JOIN clients c ON c.id = p.client_id ${scope}`,
-    params
+       JOIN clients c ON c.id = p.client_id ${scope}${filter.sql}`,
+    [...params, ...filter.params]
   );
   const total = countRow[0]?.n ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -220,12 +231,13 @@ export async function getPipelineBoardAction(opts?: {
 
   // ONLY this page's rows cross the wire. Overdue flagging + board data in a
   // SINGLE statement (CTE) â€” one round-trip.
-  const limitIdx = params.length + 1;
-  const offsetIdx = params.length + 2;
+  const base = params.length + filter.params.length;
+  const limitIdx = base + 1;
+  const offsetIdx = base + 2;
   const rows = await query<Task>(
-    `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope} ORDER BY c.name ASC, p.name ASC, t.created_at DESC
+    `${PIPELINE_OVERDUE_CTE} ${PIPELINE_TASK_SELECT} ${scope}${filter.sql} ORDER BY c.name ASC, p.name ASC, t.created_at DESC
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-    [...params, pageSize, offset]
+    [...params, ...filter.params, pageSize, offset]
   );
 
   const active: Task[] = [];
@@ -244,6 +256,7 @@ export async function getPipelineBoardAction(opts?: {
     canManage, canReopen, canApprove,
     roleKey: session.role_key, userId: session.sub, isBroad,
     total, page, pageSize, facets,
+    filtered: hasActiveTaskFilter(opts?.filters || {}),
   };
 }
 

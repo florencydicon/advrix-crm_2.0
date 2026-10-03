@@ -611,6 +611,8 @@ export interface MyTasksPageOpts {
   tab?: "active" | "history";
   limit?: number;
   offset?: number;
+  /** Search + select filters, applied in SQL across the whole set (not just page). */
+  filters?: import("@/lib/taskFilters").TaskFilterState;
 }
 
 export interface MyTasksPage {
@@ -654,16 +656,24 @@ export async function getMyTasksPage(
       : `AND (t.assigned_to IS DISTINCT FROM $1 OR t.status = 'completed')`;
   const activeWhere = `AND t.assigned_to = $1 AND t.status <> 'completed'`;
 
+  // Search + select filters match the WHOLE set in SQL so a search finds a
+  // task on any page — no need to visit each page manually.
+  const { buildTaskFilterSql } = await import("@/lib/taskFilters");
+  const filter = buildTaskFilterSql(opts.filters || {}, 2);
+  const joinSql = `JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id`;
+  const limIdx = 2 + filter.params.length;
+  const offIdx = 3 + filter.params.length;
+
   const [rows, tabCount, activeCount, readyCount, doneCount] = await Promise.all([
     query<Task>(
-      `${TASK_SELECT} WHERE ${MY_TASK_VISIBILITY} ${tabWhere}
+      `${TASK_SELECT} WHERE ${MY_TASK_VISIBILITY} ${tabWhere} ${filter.sql}
         ORDER BY t.due_date ASC NULLS LAST, t.created_at ASC
-        LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
+        LIMIT $${limIdx} OFFSET $${offIdx}`,
+      [userId, ...filter.params, limit, offset]
     ),
     query<{ n: number }>(
-      `SELECT COUNT(*)::int AS n FROM tasks t WHERE ${MY_TASK_VISIBILITY} ${tabWhere}`,
-      [userId]
+      `SELECT COUNT(*)::int AS n FROM tasks t ${joinSql} WHERE ${MY_TASK_VISIBILITY} ${tabWhere} ${filter.sql}`,
+      [userId, ...filter.params]
     ),
     query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM tasks t WHERE ${MY_TASK_VISIBILITY} ${activeWhere}`,

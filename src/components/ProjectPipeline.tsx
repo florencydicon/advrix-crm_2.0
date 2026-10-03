@@ -479,6 +479,27 @@ export default function ProjectPipeline({
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
 
+  // Server-side filter state derived from the URL (?q=&clientId=&project=
+  // &stage=&deadline=&status=&priority=). The AdvancedFilterBar writes these
+  // params, and we send them back to the server so search/filter matches the
+  // WHOLE dataset — not just the rows already loaded on this page.
+  // "Je search karu e search ma batavu joie" — bija page par javu na pade.
+  const urlFilters = useMemo(
+    () => ({
+      q: searchParams.get("q") || "",
+      clientId: searchParams.get("clientId") || "",
+      project: searchParams.get("project") || "",
+      stage: searchParams.get("stage") || "",
+      deadline: searchParams.get("deadline") || "",
+      status: searchParams.get("status") || "",
+      priority: searchParams.get("priority") || "",
+    }),
+    [searchParams]
+  );
+  const filtersRef = useRef(urlFilters);
+  filtersRef.current = urlFilters;
+  const filtersKey = JSON.stringify(urlFilters);
+
   // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
   const openedLinkId = useRef<string | null>(null);
   useEffect(() => {
@@ -507,10 +528,11 @@ export default function ProjectPipeline({
   pageRef.current = page;
   sizeRef.current = pageSize;
 
-  const reload = useCallback(async (nextPage?: number, nextSize?: number) => {
+  const reload = useCallback(async (nextPage?: number, nextSize?: number, nextFilters?: typeof urlFilters) => {
     const p = nextPage ?? pageRef.current;
     const s = nextSize ?? sizeRef.current;
-    const next = await getPipelineBoardAction({ page: p, pageSize: s });
+    const f = nextFilters ?? filtersRef.current;
+    const next = await getPipelineBoardAction({ page: p, pageSize: s, filters: f });
     // Equal-data short-circuit: skip the state update (and the whole re-render)
     // when the poll returns an identical payload.
     const key = JSON.stringify(next);
@@ -522,6 +544,20 @@ export default function ProjectPipeline({
     // Prune bulk selection to rows that still exist.
     setSelected((prev) => prev.filter((id) => next.active.some((t) => t.id === id)));
   }, []);
+
+  // Refetch from the server whenever the URL search/filters change.
+  // A new search always restarts at page 1, so results come from every page.
+  const firstFilterRun = useRef(true);
+  useEffect(() => {
+    if (firstFilterRun.current) {
+      firstFilterRun.current = false;
+      return;
+    }
+    setPage(1);
+    pageRef.current = 1;
+    reload(1, undefined, urlFilters).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey]);
 
   // Stable row callbacks so memoized rows skip re-rendering when only the array
   // identity changes (selection/filter interactions).
