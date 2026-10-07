@@ -799,9 +799,9 @@ export async function getMyTasksPage(
     facets,
     quickCounts: {
       active: sumNonCompleted(perActive),
+      ready: perActive["approved"] || 0,
       awaiting: perActive["submitted"] || 0,
       uploadDone: perActive["upload_done"] || 0,
-      completed: perHistory["completed"] || 0,
       history: sumAll(perHistory),
     },
   };

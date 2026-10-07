@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, X, ChevronDown, Filter, PlayCircle, Send, Upload, CheckCircle2, History } from "lucide-react";
+import { Search, X, ChevronDown, Filter, PlayCircle, Clock, Send, Upload, History } from "lucide-react";
 import type { Task } from "@/lib/types";
 import type { QuickCounts } from "@/lib/taskFilters";
 import { STATUS_META, STATUS_ORDER, PRIORITY_META } from "@/components/ui";
@@ -508,11 +508,11 @@ function GlobalSearchInput({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-export type QuickKind = "active" | "awaiting" | "upload" | "completed" | "history";
+export type QuickKind = "active" | "ready" | "awaiting" | "upload" | "history";
 
 /**
  * One-tap status shortcuts shared by the pipeline and every dashboard:
- * Active / Awaiting Review / Upload Done / Completed / History.
+ * Active / Ready to Start / Awaiting Review / Upload Done / History.
  * Counts are server-computed across the WHOLE dataset (never just the loaded
  * page), so every number is exact for every role.
  */
@@ -529,9 +529,9 @@ export function QuickFilterChips({
 }) {
   const chips: { kind: QuickKind; label: string; count: number; selected: boolean; Icon: typeof PlayCircle }[] = [
     { kind: "active", label: "Active", count: counts.active, selected: tab === "active" && !status, Icon: PlayCircle },
+    { kind: "ready", label: "Ready to Start", count: counts.ready, selected: tab === "active" && status === "approved", Icon: Clock },
     { kind: "awaiting", label: "Awaiting Review", count: counts.awaiting, selected: tab === "active" && status === "submitted", Icon: Send },
     { kind: "upload", label: "Upload Done", count: counts.uploadDone, selected: tab === "active" && status === "upload_done", Icon: Upload },
-    { kind: "completed", label: "Completed", count: counts.completed, selected: tab === "history" && status === "completed", Icon: CheckCircle2 },
     { kind: "history", label: "History", count: counts.history, selected: tab === "history" && !status, Icon: History },
   ];
   return (

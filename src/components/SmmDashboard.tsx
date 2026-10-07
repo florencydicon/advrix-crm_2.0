@@ -456,12 +456,12 @@ export default function SmmDashboard({
       ].join(" "),
   });
 
-  // One-tap quick filters (Active / Awaiting Review / Upload Done / Completed /
-  // History). Tab + status go out in ONE navigation (plus a local sync first),
-  // so they can never desync or drop each other mid-flight.
+  // One-tap quick filters (Active / Ready to Start / Awaiting Review /
+  // Upload Done / History). Tab + status go out in ONE navigation (plus a
+  // local sync first), so they can never desync or drop each other mid-flight.
   const applyQuick = useCallback((kind: QuickKind) => {
-    const nextTab = kind === "completed" || kind === "history" ? "history" : "active";
-    const status = kind === "awaiting" ? "submitted" : kind === "upload" ? "upload_done" : kind === "completed" ? "completed" : "";
+    const nextTab = kind === "history" ? "history" : "active";
+    const status = kind === "ready" ? "approved" : kind === "awaiting" ? "submitted" : kind === "upload" ? "upload_done" : "";
     af.syncExternal({ ...af.filters, status }, af.search);
     setTab(nextTab);
     const sp = new URLSearchParams(searchParams.toString());
@@ -550,31 +550,6 @@ export default function SmmDashboard({
               <p className="text-[10px] md:text-[11px] font-medium mt-1 opacity-80 truncate">{m.label}</p>
             </div>
           </div>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-1.5">
-        {(
-          [
-            { key: "active", label: "Active", count: qc.active },
-            { key: "history", label: "History", count: qc.history },
-          ] as const
-        ).map((tb) => (
-          <button
-            key={tb.key}
-            type="button"
-            onClick={() => goTo({ tab: tb.key })}
-            aria-pressed={tab === tb.key}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              tab === tb.key
-                ? "bg-brand-300 text-night-950"
-                : "bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] border border-white/10"
-            }`}
-          >
-            {tb.key === "active" ? <PlayCircle className="h-4 w-4" /> : <History className="h-4 w-4" />}
-            {tb.label}
-            <span className={`text-[11px] font-bold ${tab === tb.key ? "text-night-900/70" : "text-slate-500"}`}>{tb.count}</span>
-          </button>
         ))}
       </div>
 

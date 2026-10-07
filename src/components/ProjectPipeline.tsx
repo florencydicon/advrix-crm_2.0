@@ -474,21 +474,22 @@ export default function ProjectPipeline({
   // Multi-select bulk actions (active board only).
   const [selected, setSelected] = useState<string[]>([]);
 
-  // One-tap quick filters: Active / Awaiting Review / Upload Done / Completed /
-  // History. Coordinates the board tab with the status filter in a single step.
+  // One-tap quick filters: Active / Ready to Start / Awaiting Review /
+  // Upload Done / History. Coordinates the board tab with the status filter
+  // in a single step.
   const applyQuick = useCallback((kind: QuickKind) => {
     if (kind === "active") {
       setTab("active");
       af.setFilter("status", "");
+    } else if (kind === "ready") {
+      setTab("active");
+      af.setFilter("status", "approved");
     } else if (kind === "awaiting") {
       setTab("active");
       af.setFilter("status", "submitted");
     } else if (kind === "upload") {
       setTab("active");
       af.setFilter("status", "upload_done");
-    } else if (kind === "completed") {
-      setTab("history");
-      af.setFilter("status", "completed");
     } else {
       setTab("history");
       af.setFilter("status", "");
@@ -1236,37 +1237,13 @@ export default function ProjectPipeline({
       {/* Tabs + Filters */}
       <div className="mb-4 shrink-0 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1 sm:pb-0">
-            <button
-              type="button"
-              onClick={() => setTab("active")}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors shrink-0 ${
-                tab === "active"
-                  ? "bg-brand-300 text-night-950"
-                  : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
-              }`}
-            >
-              <Layers className="h-4 w-4" />
-              Active Board
-              <span className={`text-xs font-semibold ${tab === "active" ? "text-night-900" : "text-slate-500"}`}>
-                {board.quickCounts.active}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("history")}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors shrink-0 ${
-                tab === "history"
-                  ? "bg-brand-300 text-night-950"
-                  : "bg-white/[0.04] text-slate-300 hover:bg-white/10"
-              }`}
-            >
-              <History className="h-4 w-4" />
-              History
-              <span className={`text-xs font-semibold ${tab === "history" ? "text-night-900" : "text-slate-500"}`}>
-                {board.quickCounts.history}
-              </span>
-            </button>
+          <div className="flex-1 min-w-0">
+            <QuickFilterChips
+              counts={board.quickCounts}
+              tab={tab}
+              status={af.filters.status}
+              onSelect={applyQuick}
+            />
           </div>
           {tab === "active" && (
             <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10 shrink-0 self-start sm:self-auto sm:ml-auto">
@@ -1295,13 +1272,6 @@ export default function ProjectPipeline({
             </div>
           )}
         </div>
-
-        <QuickFilterChips
-          counts={board.quickCounts}
-          tab={tab}
-          status={af.filters.status}
-          onSelect={applyQuick}
-        />
 
         <AdvancedFilterBar api={af} />
 

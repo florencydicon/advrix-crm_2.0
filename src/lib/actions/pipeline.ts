@@ -298,9 +298,9 @@ export async function getPipelineBoardAction(opts?: {
   );
   const quickCounts: QuickCounts = {
     active: nonCompleted,
+    ready: perStatus["approved"] || 0,
     awaiting: perStatus["submitted"] || 0,
     uploadDone: perStatus["upload_done"] || 0,
-    completed: perStatus["completed"] || 0,
     history: perStatus["completed"] || 0,
   };
 

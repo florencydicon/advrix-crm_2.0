@@ -59,7 +59,7 @@ export default async function DashboardPage({
       limit: pageSize,
       offset: (requestedPage - 1) * pageSize,
       filters,
-    }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 }, unpaged: false, facets: { clients: [], projects: [], stages: [] }, quickCounts: { active: 0, awaiting: 0, uploadDone: 0, completed: 0, history: 0 } }));
+    }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 }, unpaged: false, facets: { clients: [], projects: [], stages: [] }, quickCounts: { active: 0, ready: 0, awaiting: 0, uploadDone: 0, history: 0 } }));
     const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
     const open = myTasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
