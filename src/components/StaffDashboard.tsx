@@ -4,9 +4,11 @@ import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PlayCircle, Clock, CheckCircle2, MoreVertical, AlertTriangle, History, Layers } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
+import type { TaskFacets } from "@/lib/data";
+import { EMPTY_QUICK_COUNTS, type QuickCounts } from "@/lib/taskFilters";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
-import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import { useAdvancedFilters, AdvancedFilterBar, QuickFilterChips, taskStageValues, type QuickKind } from "@/components/AdvancedFilterBar";
 import Pagination, { clampPageSize } from "@/components/Pagination";
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
@@ -297,6 +299,10 @@ export default function StaffDashboard({
   counts,
   /** True when a filter/search is active and `tasks` holds EVERY match. */
   unpaged = false,
+  /** Whole-set dropdown options (client/project/stage), not just this page's. */
+  facets,
+  /** Exact quick-chip totals, filter-aware across the whole set. */
+  quickCounts,
 }: {
   tasks: Task[];
   team: UserRow[];
@@ -312,6 +318,9 @@ export default function StaffDashboard({
   counts?: { active: number; ready: number; done: number };
   /** True when a filter/search is active and `tasks` holds EVERY match. */
   unpaged?: boolean;
+  facets?: TaskFacets;
+  /** Exact quick-chip totals, filter-aware across the whole set. */
+  quickCounts?: QuickCounts;
 }) {
   // Silent 12s background sync: refreshes only the task/team arrays feeding the
   // table & cards (refocus/visibility re-polls instantly). Pages are never
@@ -403,19 +412,34 @@ export default function StaffDashboard({
     [router, searchParams]
   );
 
+  const qc = quickCounts ?? EMPTY_QUICK_COUNTS;
+
+  // `tasks` is only the current page, so dropdown options must come from the
+  // server facets — otherwise values that live on other pages (e.g. a client or
+  // assignee visible only on page 2) are missing from the pickers entirely.
+  const facetOptions = useMemo(
+    () => ({
+      client: (facets?.clients || []).map((c) => ({ value: c.id, label: c.label })),
+      project: (facets?.projects || []).map((p) => ({ value: p, label: p })),
+      stage: (facets?.stages || []).map((s) => ({ value: s, label: s })),
+    }),
+    [facets]
+  );
+
   const af = useAdvancedFilters(activeTasks, {
     client: {
       id: (t) => t.client_id,
       label: (t) => formatClientName(t.client_company, t.client_name),
     },
     project: { value: (t) => t.project_name },
-    stage: { values: taskStageValues, exclude: ["Completed"] },
+    stage: { values: taskStageValues, exclude: ["Unassigned"] },
     deadline: {
       date: (t) => t.due_date,
       completed: (t) => t.status === "completed",
     },
     status: { value: (t) => t.status, order: STATUS_ORDER },
     priority: { value: (t) => t.priority },
+    facetOptions,
     searchText: (t) =>
       [
         formatClientName(t.client_company, t.client_name),
@@ -429,6 +453,23 @@ export default function StaffDashboard({
         t.due_date || "",
       ].join(" "),
   });
+
+  // One-tap quick filters (Active / Awaiting Review / Upload Done / Completed /
+  // History). Tab + status go out in ONE navigation (plus a local sync first),
+  // so they can never desync or drop each other mid-flight.
+  const applyQuick = useCallback((kind: QuickKind) => {
+    const nextTab = kind === "completed" || kind === "history" ? "history" : "active";
+    const status = kind === "awaiting" ? "submitted" : kind === "upload" ? "upload_done" : kind === "completed" ? "completed" : "";
+    af.syncExternal({ ...af.filters, status }, af.search);
+    const sp = new URLSearchParams(searchParams.toString());
+    if (nextTab === "active") sp.delete("tab");
+    else sp.set("tab", nextTab);
+    if (status) sp.set("status", status);
+    else sp.delete("status");
+    sp.delete("page");
+    const qs = sp.toString();
+    router.push(`/dashboard${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [af, router, searchParams]);
 
   // Stat cards read whole-set counts from the server so they stay correct
   // regardless of which page is on screen.
@@ -455,6 +496,11 @@ export default function StaffDashboard({
         return a.due_date.localeCompare(b.due_date);
       });
   }, [activeTasks, af.matches]);
+
+  // History respects the same filters (status chip, search, dropdowns).
+  const filteredHistory = useMemo(() => {
+    return historyTasks.filter((t) => af.matches(t));
+  }, [historyTasks, af.matches]);
 
   const refresh = async () => {
     router.refresh();
@@ -526,8 +572,8 @@ export default function StaffDashboard({
       <div className="flex items-center gap-1.5">
         {(
           [
-            { key: "active", label: "Active", count: counts ? counts.active : activeTasks.length },
-            { key: "history", label: "History", count: counts ? counts.done : historyTasks.length },
+            { key: "active", label: "Active", count: qc.active },
+            { key: "history", label: "History", count: qc.history },
           ] as const
         ).map((tb) => (
           <button
@@ -548,11 +594,23 @@ export default function StaffDashboard({
         ))}
       </div>
 
+      <QuickFilterChips
+        counts={qc}
+        tab={tab}
+        status={af.filters.status}
+        onSelect={applyQuick}
+      />
+
       {tab === "history" ? (
         historyTasks.length === 0 ? (
           <div className="card py-8 text-center">
             <p className="text-sm font-medium text-slate-300">No completed tasks yet</p>
             <p className="text-xs text-slate-500 mt-1">Tasks you finish will be archived here.</p>
+          </div>
+        ) : filteredHistory.length === 0 ? (
+          <div className="card py-8 text-center">
+            <p className="text-sm font-medium text-slate-300">No tasks match your filters.</p>
+            <p className="text-xs text-slate-500 mt-1">Try a different search or clear the filters.</p>
           </div>
         ) : (
           <div className="card overflow-hidden">
@@ -571,7 +629,7 @@ export default function StaffDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
-                  {historyTasks.map((t) => (
+                  {filteredHistory.map((t) => (
                     <HistoryDesktopRow key={t.id} t={t} onOpen={openTaskById} />
                   ))}
                 </tbody>
@@ -579,7 +637,7 @@ export default function StaffDashboard({
             </div>
             {/* Mobile: history cards */}
             <div className="md:hidden divide-y divide-white/[0.04]">
-              {historyTasks.map((t) => (
+              {filteredHistory.map((t) => (
                 <HistoryMobileCard key={t.id} t={t} onOpen={openTaskById} />
               ))}
             </div>

@@ -4,9 +4,11 @@ import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Users, Upload, CheckCircle2, MoreVertical, AlertTriangle, PlayCircle, History, Layers } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
+import type { TaskFacets } from "@/lib/data";
+import { EMPTY_QUICK_COUNTS, type QuickCounts } from "@/lib/taskFilters";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
-import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import { useAdvancedFilters, AdvancedFilterBar, QuickFilterChips, taskStageValues, type QuickKind } from "@/components/AdvancedFilterBar";
 import Pagination, { clampPageSize } from "@/components/Pagination";
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
@@ -304,6 +306,10 @@ export default function SmmDashboard({
   counts,
   /** True when a filter/search is active and `tasks` holds EVERY match. */
   unpaged = false,
+  /** Whole-set dropdown options (client/project/stage), not just this page's. */
+  facets,
+  /** Exact quick-chip totals, filter-aware across the whole set. */
+  quickCounts,
 }: {
   tasks: Task[];
   team: UserRow[];
@@ -317,6 +323,9 @@ export default function SmmDashboard({
   counts?: { active: number; ready: number; done: number };
   /** True when a filter/search is active and `tasks` holds EVERY match. */
   unpaged?: boolean;
+  facets?: TaskFacets;
+  /** Exact quick-chip totals, filter-aware across the whole set. */
+  quickCounts?: QuickCounts;
 }) {
   // Silent 12s background sync: cache-busted for mobile where fetch cache is aggressive.
   const etagFetch = useRef(createEtagFetcher()).current;
@@ -375,6 +384,11 @@ export default function SmmDashboard({
   const historyTasks = useMemo(() => tasks.filter((t) => t.assigned_to !== userId || t.status === "completed"), [tasks, userId]);
   const [tab, setTab] = useState<"active" | "history">(initialTab);
 
+  // Stay in sync when the server tab changes underneath (back/forward).
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
   /** Navigate the dashboard to a different tab/page/page-size. */
   const goTo = useCallback(
     (next: { tab?: "active" | "history"; page?: number; size?: number }) => {
@@ -400,6 +414,20 @@ export default function SmmDashboard({
     [router, searchParams]
   );
 
+  const qc = quickCounts ?? EMPTY_QUICK_COUNTS;
+
+  // `tasks` is only the current page, so dropdown options must come from the
+  // server facets — otherwise values that live on other pages (e.g. a client or
+  // assignee visible only on page 2) are missing from the pickers entirely.
+  const facetOptions = useMemo(
+    () => ({
+      client: (facets?.clients || []).map((c) => ({ value: c.id, label: c.label })),
+      project: (facets?.projects || []).map((p) => ({ value: p, label: p })),
+      stage: (facets?.stages || []).map((s) => ({ value: s, label: s })),
+    }),
+    [facets]
+  );
+
   const af = useAdvancedFilters(tab === "history" ? historyTasks : activeTasks, {
     client: {
       id: (t) => t.client_id,
@@ -413,6 +441,7 @@ export default function SmmDashboard({
     },
     status: { value: (t) => t.status, order: STATUS_ORDER },
     priority: { value: (t) => t.priority },
+    facetOptions,
     searchText: (t) =>
       [
         formatClientName(t.client_company, t.client_name),
@@ -427,8 +456,28 @@ export default function SmmDashboard({
       ].join(" "),
   });
 
+  // One-tap quick filters (Active / Awaiting Review / Upload Done / Completed /
+  // History). Tab + status go out in ONE navigation (plus a local sync first),
+  // so they can never desync or drop each other mid-flight.
+  const applyQuick = useCallback((kind: QuickKind) => {
+    const nextTab = kind === "completed" || kind === "history" ? "history" : "active";
+    const status = kind === "awaiting" ? "submitted" : kind === "upload" ? "upload_done" : kind === "completed" ? "completed" : "";
+    af.syncExternal({ ...af.filters, status }, af.search);
+    setTab(nextTab);
+    const sp = new URLSearchParams(searchParams.toString());
+    if (nextTab === "active") sp.delete("tab");
+    else sp.set("tab", nextTab);
+    if (status) sp.set("status", status);
+    else sp.delete("status");
+    sp.delete("page");
+    const qs = sp.toString();
+    router.push(`/dashboard${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [af, router, searchParams]);
+
+  // "Ready to Start" reads the whole-set server count so the card stays correct
+  // regardless of which page is on screen (same rule as StaffDashboard).
   const metrics = [
-    { label: "Ready to Start", value: activeTasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
+    { label: "Ready to Start", value: counts ? counts.ready : activeTasks.filter((t) => t.status === "approved").length, Icon: Users, cls: "text-brand-300 bg-brand-300/[0.07]" },
     { label: "Client Review", value: activeTasks.filter((t) => t.status === "client_review").length, Icon: Users, cls: "text-sky-300 bg-sky-400/10" },
     { label: "Uploading", value: activeTasks.filter((t) => t.status === "uploading").length, Icon: Upload, cls: "text-amber-300 bg-amber-400/10" },
     { label: "Completed", value: historyTasks.filter((t) => completed(t)).length, Icon: CheckCircle2, cls: "text-emerald-300 bg-emerald-400/10" },
@@ -507,8 +556,8 @@ export default function SmmDashboard({
       <div className="flex items-center gap-1.5">
         {(
           [
-            { key: "active", label: "Active", count: counts ? counts.active : activeTasks.length },
-            { key: "history", label: "History", count: counts ? counts.done : historyTasks.length },
+            { key: "active", label: "Active", count: qc.active },
+            { key: "history", label: "History", count: qc.history },
           ] as const
         ).map((tb) => (
           <button
@@ -528,6 +577,13 @@ export default function SmmDashboard({
           </button>
         ))}
       </div>
+
+      <QuickFilterChips
+        counts={qc}
+        tab={tab}
+        status={af.filters.status}
+        onSelect={applyQuick}
+      />
 
       {tab === "history" ? (
         historyTasks.length === 0 ? (

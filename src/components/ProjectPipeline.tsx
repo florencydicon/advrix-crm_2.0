@@ -19,7 +19,7 @@ import {
 import type { Task, UserRow } from "@/lib/types";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
-import { useAdvancedFilters, AdvancedFilterBar, taskStageValues } from "@/components/AdvancedFilterBar";
+import { useAdvancedFilters, AdvancedFilterBar, QuickFilterChips, taskStageValues, type QuickKind } from "@/components/AdvancedFilterBar";
 import type { TaskFilterState } from "@/lib/taskFilters";
 import Pagination, { clampPageSize, type PageSize } from "@/components/Pagination";
 import { isOverdue } from "@/lib/deadlines";
@@ -473,6 +473,27 @@ export default function ProjectPipeline({
 
   // Multi-select bulk actions (active board only).
   const [selected, setSelected] = useState<string[]>([]);
+
+  // One-tap quick filters: Active / Awaiting Review / Upload Done / Completed /
+  // History. Coordinates the board tab with the status filter in a single step.
+  const applyQuick = useCallback((kind: QuickKind) => {
+    if (kind === "active") {
+      setTab("active");
+      af.setFilter("status", "");
+    } else if (kind === "awaiting") {
+      setTab("active");
+      af.setFilter("status", "submitted");
+    } else if (kind === "upload") {
+      setTab("active");
+      af.setFilter("status", "upload_done");
+    } else if (kind === "completed") {
+      setTab("history");
+      af.setFilter("status", "completed");
+    } else {
+      setTab("history");
+      af.setFilter("status", "");
+    }
+  }, [af]);
   const toggleSelectId = useCallback(
     (id: string) =>
       setSelected((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id])),
@@ -735,9 +756,6 @@ export default function ProjectPipeline({
     value: s,
     label: STATUS_META[s]?.label || s,
   }));
-
-  const activeCount = board.active.length;
-  const completedCount = board.completed.length;
 
   const sortedActive = useMemo(
     () =>
@@ -1231,7 +1249,7 @@ export default function ProjectPipeline({
               <Layers className="h-4 w-4" />
               Active Board
               <span className={`text-xs font-semibold ${tab === "active" ? "text-night-900" : "text-slate-500"}`}>
-                {activeCount}
+                {board.quickCounts.active}
               </span>
             </button>
             <button
@@ -1246,7 +1264,7 @@ export default function ProjectPipeline({
               <History className="h-4 w-4" />
               History
               <span className={`text-xs font-semibold ${tab === "history" ? "text-night-900" : "text-slate-500"}`}>
-                {completedCount}
+                {board.quickCounts.history}
               </span>
             </button>
           </div>
@@ -1277,6 +1295,13 @@ export default function ProjectPipeline({
             </div>
           )}
         </div>
+
+        <QuickFilterChips
+          counts={board.quickCounts}
+          tab={tab}
+          status={af.filters.status}
+          onSelect={applyQuick}
+        />
 
         <AdvancedFilterBar api={af} />
 

@@ -54,12 +54,12 @@ export default async function DashboardPage({
       status: one("status") || "",
       priority: one("priority") || "",
     };
-    const { items: myTasks, total: myTotal, counts, unpaged } = await getMyTasksPage(session.sub, {
+    const { items: myTasks, total: myTotal, counts, unpaged, facets, quickCounts } = await getMyTasksPage(session.sub, {
       tab,
       limit: pageSize,
       offset: (requestedPage - 1) * pageSize,
       filters,
-    }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 }, unpaged: false }));
+    }).catch(() => ({ items: [] as import("@/lib/types").Task[], total: 0, counts: { active: 0, ready: 0, done: 0 }, unpaged: false, facets: { clients: [], projects: [], stages: [] }, quickCounts: { active: 0, awaiting: 0, uploadDone: 0, completed: 0, history: 0 } }));
     const team = await getTeam().catch(() => [] as import("@/lib/types").UserRow[]);
     const open = myTasks.filter((t: import("@/lib/types").Task) => t.status !== "completed");
     return (
@@ -98,6 +98,8 @@ export default async function DashboardPage({
             tab={tab}
             counts={counts}
             unpaged={unpaged}
+            facets={facets}
+            quickCounts={quickCounts}
           />
         ) : (
           <StaffDashboard
@@ -112,6 +114,8 @@ export default async function DashboardPage({
             tab={tab}
             counts={counts}
             unpaged={unpaged}
+            facets={facets}
+            quickCounts={quickCounts}
           />
         )}
       </div>

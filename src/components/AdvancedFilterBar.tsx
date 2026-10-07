@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, X, ChevronDown, Filter } from "lucide-react";
+import { Search, X, ChevronDown, Filter, PlayCircle, Send, Upload, CheckCircle2, History } from "lucide-react";
 import type { Task } from "@/lib/types";
+import type { QuickCounts } from "@/lib/taskFilters";
 import { STATUS_META, STATUS_ORDER, PRIORITY_META } from "@/components/ui";
 
 export type FilterKey = "client" | "project" | "stage" | "deadline" | "status" | "priority";
@@ -84,6 +85,13 @@ export interface AdvancedFilterApi<T> {
   setSearch: (value: string) => void;
   setFilter: (key: FilterKey, value: string) => void;
   clearAll: () => void;
+  /**
+   * Adopt externally-computed values into local state WITHOUT touching the
+   * URL. Used when the caller performs its own combined navigation (e.g. a
+   * quick chip that switches tab + status atomically in one URL write) — the
+   * local UI must match the URL the caller is about to push.
+   */
+  syncExternal: (nextFilters: FilterState, nextSearch: string) => void;
   /** Client-side predicate — feed the dataset through this to apply all filters. */
   matches: (row: T) => boolean;
   /** Any select filter is active (search excluded — it has its own clear button). */
@@ -322,6 +330,14 @@ export function useAdvancedFilters<T>(
     pushUrl(next, "");
   }, [pushUrl]);
 
+  const syncExternal = useCallback((nextFilters: FilterState, nextSearch: string) => {
+    const full: FilterState = { ...EMPTY_FILTERS, ...nextFilters };
+    filtersRef.current = full;
+    searchRef.current = nextSearch;
+    setFiltersState(full);
+    setSearchState(nextSearch);
+  }, []);
+
   const labels: Record<FilterKey, string> = { ...DEFAULT_LABELS, ...config.labels };
 
   const options = useMemo<FilterOptions>(() => {
@@ -367,17 +383,33 @@ export function useAdvancedFilters<T>(
     const facets = cfg.facetOptions || {};
     const clientOpts = facets.client || [...client.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
     const projectOpts = facets.project || [...project].map((value) => ({ value, label: value })).sort((a, b) => a.label.localeCompare(b.label));
-    const stageOpts = facets.stage || [...stage].map((value) => ({ value, label: value })).sort((a, b) => a.label.localeCompare(b.label));
+    // `exclude` still applies to server facets — it is about hiding a value from
+    // the picker, not about how the option list was produced.
+    const stageOpts = (facets.stage || [...stage].map((value) => ({ value, label: value })))
+      .filter((o) => !stageExclude.has(o.value))
+      .sort((a, b) => a.label.localeCompare(b.label));
 
     return {
       client: clientOpts,
       project: projectOpts,
       stage: stageOpts,
       deadline: cfg.deadline ? DEADLINE_OPTIONS : [],
-      status: statusToOptions(status, statusLabel, cfg.status?.order),
-      priority: priorityToOptions(priority),
+      // Status & priority are closed enums: ALWAYS list every canonical value,
+      // so the option exists even when no row on the current page carries it
+      // (e.g. "Ready to Start" tasks sitting on page 2). Row-derived extras
+      // (legacy/custom values) are appended after the canonical order.
+      status: cfg.status
+        ? statusToOptions(
+            new Set([...status, ...(cfg.status.order || STATUS_ORDER), ...Object.keys(STATUS_META)]),
+            statusLabel,
+            cfg.status?.order
+          )
+        : [],
+      priority: cfg.priority
+        ? priorityToOptions(new Set([...priority, ...PRIORITY_ORDER, ...Object.keys(PRIORITY_META)]))
+        : [],
     };
-  }, [rows]);
+  }, [rows, configRef.current.facetOptions]);
 
   const matches = useCallback(
     (row: T): boolean => {
@@ -406,6 +438,7 @@ export function useAdvancedFilters<T>(
     setSearch,
     setFilter,
     clearAll,
+    syncExternal,
     matches,
     hasActive,
     hasAnyFilter: hasActive || search.trim().length > 0,
@@ -475,8 +508,56 @@ function GlobalSearchInput({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-function FilterSelect({
-  value,
+export type QuickKind = "active" | "awaiting" | "upload" | "completed" | "history";
+
+/**
+ * One-tap status shortcuts shared by the pipeline and every dashboard:
+ * Active / Awaiting Review / Upload Done / Completed / History.
+ * Counts are server-computed across the WHOLE dataset (never just the loaded
+ * page), so every number is exact for every role.
+ */
+export function QuickFilterChips({
+  counts,
+  tab,
+  status,
+  onSelect,
+}: {
+  counts: QuickCounts;
+  tab: "active" | "history";
+  status: string;
+  onSelect: (kind: QuickKind) => void;
+}) {
+  const chips: { kind: QuickKind; label: string; count: number; selected: boolean; Icon: typeof PlayCircle }[] = [
+    { kind: "active", label: "Active", count: counts.active, selected: tab === "active" && !status, Icon: PlayCircle },
+    { kind: "awaiting", label: "Awaiting Review", count: counts.awaiting, selected: tab === "active" && status === "submitted", Icon: Send },
+    { kind: "upload", label: "Upload Done", count: counts.uploadDone, selected: tab === "active" && status === "upload_done", Icon: Upload },
+    { kind: "completed", label: "Completed", count: counts.completed, selected: tab === "history" && status === "completed", Icon: CheckCircle2 },
+    { kind: "history", label: "History", count: counts.history, selected: tab === "history" && !status, Icon: History },
+  ];
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+      {chips.map(({ kind, label, count, selected, Icon }) => (
+        <button
+          key={kind}
+          type="button"
+          onClick={() => onSelect(kind)}
+          aria-pressed={selected}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors shrink-0 ${
+            selected
+              ? "bg-brand-300 text-night-950"
+              : "bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] border border-white/10"
+          }`}
+        >
+          <Icon className="h-4 w-4" />
+          {label}
+          <span className={`text-[11px] font-bold ${selected ? "text-night-900/70" : "text-slate-500"}`}>{count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FilterSelect({  value,
   onChange,
   options,
   placeholder,

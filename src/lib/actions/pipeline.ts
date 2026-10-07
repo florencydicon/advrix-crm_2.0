@@ -6,7 +6,7 @@ import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { resolveDataScope, type DataScope } from "@/lib/scope";
 import { clampPage, clampPageSize } from "@/lib/pagination";
-import { buildTaskFilterSql, hasActiveTaskFilter, type TaskFilterState } from "@/lib/taskFilters";
+import { buildTaskFilterSql, hasActiveTaskFilter, EMPTY_QUICK_COUNTS, type QuickCounts, type TaskFilterState } from "@/lib/taskFilters";
 import type { Task, TaskStatus, ContentStatus } from "@/lib/types";
 import { advanceTaskStep, markTaskComplete, reopenTask, setTaskTeam, setTaskDeadline, flagOverdueTasks } from "@/lib/workflow";
 import { sanitizeRich, richToPlain } from "@/lib/rich";
@@ -57,6 +57,8 @@ export interface PipelineBoardPayload {
    * search/filter is active. The UI hides the pager and shows all results.
    */
   unpaged?: boolean;
+  /** Exact quick-chip totals (Active / Awaiting / Upload Done / Completed / History). */
+  quickCounts: QuickCounts;
 }
 
 export interface PipelineFacets {
@@ -209,6 +211,7 @@ export async function getPipelineBoardAction(opts?: {
     active: [], completed: [], canManage: false, canReopen: false, canApprove: false,
     roleKey: null, userId: null, isBroad: false,
     total: 0, page: 1, pageSize: clampPageSize(opts?.pageSize), facets: { clients: [], projects: [], stages: [] },
+    quickCounts: EMPTY_QUICK_COUNTS,
   };
   const session = await getSession();
   if (!session) return empty;
@@ -276,6 +279,31 @@ export async function getPipelineBoardAction(opts?: {
         (): PipelineFacets => ({ clients: [], projects: [], stages: [] })
       );
 
+  // Exact per-status totals for the quick-filter chips. Same scope and same
+  // search/filters as the board EXCEPT status itself — so Active / Awaiting
+  // Review / Upload Done / Completed / History always show true numbers.
+  const noStatusFilter = buildTaskFilterSql({ ...(opts?.filters || {}), status: "" }, params.length + 1);
+  const statusCountRows = await query<{ status: string; n: number }>(
+    `SELECT t.status, COUNT(*)::int AS n FROM tasks t
+       JOIN projects p ON p.id = t.project_id
+       JOIN clients c ON c.id = p.client_id ${scope}${noStatusFilter.sql}
+     GROUP BY t.status`,
+    [...params, ...noStatusFilter.params]
+  );
+  const perStatus: Record<string, number> = {};
+  for (const r of statusCountRows) perStatus[r.status] = r.n;
+  const nonCompleted = Object.entries(perStatus).reduce(
+    (s, [k, v]) => (k === "completed" ? s : s + v),
+    0
+  );
+  const quickCounts: QuickCounts = {
+    active: nonCompleted,
+    awaiting: perStatus["submitted"] || 0,
+    uploadDone: perStatus["upload_done"] || 0,
+    completed: perStatus["completed"] || 0,
+    history: perStatus["completed"] || 0,
+  };
+
   return {
     active, completed,
     canManage, canReopen, canApprove,
@@ -283,6 +311,7 @@ export async function getPipelineBoardAction(opts?: {
     total, page, pageSize, facets,
     filtered: hasActiveTaskFilter(opts?.filters || {}),
     unpaged: fetchAll,
+    quickCounts,
   };
 }
 

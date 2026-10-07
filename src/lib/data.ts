@@ -623,6 +623,17 @@ export interface MyTasksPage {
   counts: { active: number; ready: number; done: number };
   /** True when a filter/search is active and `items` holds EVERY match. */
   unpaged?: boolean;
+  /** Exact quick-chip totals (Active / Awaiting / Upload Done / Completed / History). */
+  quickCounts?: import("@/lib/taskFilters").QuickCounts;
+  /** Distinct filter options across the user's whole visible set (both tabs),
+   * so dropdowns list every value even when it only occurs on another page. */
+  facets?: TaskFacets;
+}
+
+export interface TaskFacets {
+  clients: { id: string; label: string }[];
+  projects: string[];
+  stages: string[];
 }
 
 /** Shared visibility predicate: tasks this member currently holds or has held. */
@@ -634,6 +645,54 @@ const MY_TASK_VISIBILITY = `(
        WHERE ta.task_id = t.id AND ta.user_id = $1 AND ta.position < t.current_step
      )
    )`;
+
+/**
+ * Distinct client / project / stage values across one member's whole visible
+ * set (both tabs). Fetched separately from the page of tasks so the filter
+ * dropdowns keep listing every option even when a value only occurs on a page
+ * the user hasn't opened — e.g. "Ready to Start" living on page 2.
+ */
+async function loadMyFacets(userId: string): Promise<TaskFacets> {
+  const rows = await query<{
+    client_id: string;
+    client_label: string;
+    project_name: string;
+    stage_names: string[] | null;
+  }>(
+    `SELECT c.id AS client_id,
+            CASE WHEN NULLIF(TRIM(c.company), '') IS NOT NULL AND NULLIF(TRIM(c.name), '') IS NOT NULL
+                 THEN TRIM(c.company) || ' (' || TRIM(c.name) || ')'
+                 ELSE COALESCE(NULLIF(TRIM(c.company), ''), TRIM(c.name), '-') END AS client_label,
+            p.name AS project_name,
+            ARRAY(
+              SELECT DISTINCT COALESCE(NULLIF(u2.full_name, ''), 'Unassigned')
+              FROM task_assignees ta2
+              JOIN users u2 ON u2.id = ta2.user_id
+              WHERE ta2.task_id = t.id
+            ) AS stage_names
+       FROM tasks t
+       JOIN projects p ON p.id = t.project_id
+       JOIN clients c ON c.id = p.client_id
+      WHERE ${MY_TASK_VISIBILITY}
+      ORDER BY c.name ASC, p.name ASC`,
+    [userId]
+  );
+
+  const clients = new Map<string, string>();
+  const projects = new Set<string>();
+  const stages = new Set<string>();
+  for (const r of rows) {
+    if (r.client_id && !clients.has(r.client_id)) clients.set(r.client_id, r.client_label || r.client_id);
+    if (r.project_name) projects.add(r.project_name);
+    for (const s of r.stage_names || []) stages.add(s);
+    if (!r.stage_names || r.stage_names.length === 0) stages.add("Unassigned");
+  }
+  return {
+    clients: [...clients.entries()].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label)),
+    projects: [...projects].sort((a, b) => a.localeCompare(b)),
+    stages: [...stages].sort((a, b) => a.localeCompare(b)),
+  };
+}
 
 /**
  * One page of the staff dashboard list, paged in SQL.
@@ -665,12 +724,14 @@ export async function getMyTasksPage(
   const { buildTaskFilterSql, hasActiveTaskFilter } = await import("@/lib/taskFilters");
   const fetchAll = hasActiveTaskFilter(opts.filters || {});
   const filter = buildTaskFilterSql(opts.filters || {}, 2);
+  // Same search/filters minus status — exact chip numbers per tab scope.
+  const noStatusFilter = buildTaskFilterSql({ ...(opts.filters || {}), status: "" }, 2);
   const joinSql = `JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id`;
   const limIdx = 2 + filter.params.length;
   const offIdx = 3 + filter.params.length;
   const orderSql = `ORDER BY t.due_date ASC NULLS LAST, t.created_at ASC`;
 
-  const [rows, tabCount, activeCount, readyCount, doneCount] = await Promise.all([
+  const [rows, tabCount, activeCount, readyCount, doneCount, facets, statusActiveRows, statusHistoryRows] = await Promise.all([
     fetchAll
       ? query<Task>(
           `${TASK_SELECT} WHERE ${MY_TASK_VISIBILITY} ${tabWhere} ${filter.sql}
@@ -700,7 +761,31 @@ export async function getMyTasksPage(
         AND (t.assigned_to IS DISTINCT FROM $1 OR t.status = 'completed')`,
       [userId]
     ),
+    loadMyFacets(userId).catch(
+      (): TaskFacets => ({ clients: [], projects: [], stages: [] })
+    ),
+    query<{ status: string; n: number }>(
+      `SELECT t.status, COUNT(*)::int AS n FROM tasks t ${joinSql}
+        WHERE ${MY_TASK_VISIBILITY} ${activeWhere} ${noStatusFilter.sql}
+        GROUP BY t.status`,
+      [userId, ...noStatusFilter.params]
+    ),
+    query<{ status: string; n: number }>(
+      `SELECT t.status, COUNT(*)::int AS n FROM tasks t ${joinSql}
+        WHERE ${MY_TASK_VISIBILITY}
+          AND (t.assigned_to IS DISTINCT FROM $1 OR t.status = 'completed') ${noStatusFilter.sql}
+        GROUP BY t.status`,
+      [userId, ...noStatusFilter.params]
+    ),
   ]);
+
+  const perActive: Record<string, number> = {};
+  for (const r of statusActiveRows) perActive[r.status] = r.n;
+  const perHistory: Record<string, number> = {};
+  for (const r of statusHistoryRows) perHistory[r.status] = r.n;
+  const sumAll = (m: Record<string, number>) => Object.values(m).reduce((a, b) => a + b, 0);
+  const sumNonCompleted = (m: Record<string, number>) =>
+    Object.entries(m).reduce((s, [k, v]) => (k === "completed" ? s : s + v), 0);
 
   return {
     items: rows,
@@ -711,6 +796,14 @@ export async function getMyTasksPage(
       done: doneCount[0]?.n ?? 0,
     },
     unpaged: fetchAll,
+    facets,
+    quickCounts: {
+      active: sumNonCompleted(perActive),
+      awaiting: perActive["submitted"] || 0,
+      uploadDone: perActive["upload_done"] || 0,
+      completed: perHistory["completed"] || 0,
+      history: sumAll(perHistory),
+    },
   };
 }
 
