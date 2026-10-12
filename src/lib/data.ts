@@ -1582,6 +1582,8 @@ export interface AttendanceGridRow {
   status: string;
   hours_worked: number;
   total_break_mins: number;
+  break_start_time: string | null;
+  break_end_time: string | null;
   latitude: number | null;
   longitude: number | null;
   location_text: string | null;
@@ -1592,6 +1594,7 @@ export async function getAttendanceGrid(start: string, end: string): Promise<Att
     `SELECT a.user_id, u.full_name, r.label AS role_label,
             a.date::text AS date, a.punch_in, a.punch_out, a.status, a.hours_worked,
             COALESCE(a.total_break_mins, 0)::int AS total_break_mins,
+            a.break_start_time, a.break_end_time,
             a.latitude, a.longitude, a.location_text
      FROM attendance a
      JOIN users u ON u.id = a.user_id

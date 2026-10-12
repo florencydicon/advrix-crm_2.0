@@ -27,6 +27,8 @@ type GridRow = {
   status: string;
   hours_worked: number;
   total_break_mins: number;
+  break_start_time: string | null;
+  break_end_time: string | null;
   location_text: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -55,6 +57,30 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string; dot
 function isoDate(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function fmtDateTime(v: string | null | undefined): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtMins(m: number | null | undefined): string {
+  const t = Math.max(0, Math.round(Number(m) || 0));
+  if (t <= 0) return "—";
+  const h = Math.floor(t / 60);
+  const mm = t % 60;
+  return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
+}
+
+/** Break minutes: prefer measured ON→OFF span, fall back to stored total. */
+function breakMinutes(row: GridRow): number {
+  if (row.break_start_time && row.break_end_time) {
+    const ms = new Date(row.break_end_time).getTime() - new Date(row.break_start_time).getTime();
+    if (Number.isFinite(ms) && ms >= 0) return Math.round(ms / 60000);
+  }
+  return Math.max(0, Number(row.total_break_mins) || 0);
 }
 
 export default function AttendanceCalendarView({ month, year }: { month: number; year: number }) {
@@ -334,10 +360,41 @@ export default function AttendanceCalendarView({ month, year }: { month: number;
                 <input type="number" step="0.1" value={editHours} onChange={(e) => setEditHours(e.target.value)} placeholder="e.g. 8.0" className="input !py-2 text-xs" />
               </div>
               {editing.row && (
-                <div className="rounded-lg bg-white/[0.03] px-3 py-2 text-[11px] text-slate-400 space-y-1">
-                  <p>Punch in: {editing.row.punch_in ? new Date(editing.row.punch_in).toLocaleString() : "—"}</p>
-                  <p>Punch out: {editing.row.punch_out ? new Date(editing.row.punch_out).toLocaleString() : "—"}</p>
-                  {editing.row.location_text && <p>📍 {editing.row.location_text}</p>}
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+                  <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 border-b border-white/[0.06]">
+                    Day report — detailed
+                  </p>
+                  <dl className="px-3 py-2.5 text-[11px] space-y-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Check-in (avyu)</dt>
+                      <dd className="text-emerald-300 font-semibold text-right">{fmtDateTime(editing.row.punch_in)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Check-out (gayu)</dt>
+                      <dd className="text-rose-300 font-semibold text-right">{fmtDateTime(editing.row.punch_out)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Lunch break ON</dt>
+                      <dd className="text-amber-300 font-semibold text-right">{fmtDateTime(editing.row.break_start_time)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Lunch break OFF (bandh)</dt>
+                      <dd className="text-amber-300 font-semibold text-right">{fmtDateTime(editing.row.break_end_time)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-white/[0.06] pt-1.5">
+                      <dt className="text-slate-500">Total lunch break</dt>
+                      <dd className="text-white font-bold text-right">{fmtMins(breakMinutes(editing.row))}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Working hours</dt>
+                      <dd className="text-white font-bold text-right">
+                        {editing.row.hours_worked != null ? `${Number(editing.row.hours_worked).toFixed(2)}h` : "—"}
+                      </dd>
+                    </div>
+                    {editing.row.location_text && (
+                      <p className="text-slate-500 border-t border-white/[0.06] pt-1.5">📍 {editing.row.location_text}</p>
+                    )}
+                  </dl>
                 </div>
               )}
               <div className="flex gap-2 pt-2">
