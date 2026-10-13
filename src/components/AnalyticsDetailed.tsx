@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import type { DetailedAnalytics } from "@/lib/data";
 import { STATUS_META } from "@/components/ui";
-import { Search, Building2, FolderKanban, Users, ChevronDown, Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Search, Building2, FolderKanban, Users, ChevronDown, Download, FileSpreadsheet, FileText, CalendarDays } from "lucide-react";
 
 type ExportSelection = {
   hierarchy: boolean;
@@ -11,7 +12,22 @@ type ExportSelection = {
   employee: boolean;
 };
 
-export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics }) {
+function todayLocal(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function fmtReportDate(date: string): string {
+  if (!date) return "All time";
+  const d = new Date(`${date}T00:00:00`);
+  if (isNaN(d.getTime())) return date;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export default function AnalyticsDetailed({ data, date }: { data: DetailedAnalytics; date: string }) {
+  const router = useRouter();
+  const today = todayLocal();
   const [sel, setSel] = useState<ExportSelection>({ hierarchy: true, status: true, employee: true });
   const [busy, setBusy] = useState<"pdf" | "excel" | null>(null);
   const [personFilter, setPersonFilter] = useState<string>("all");
@@ -34,6 +50,10 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       else n.add(id);
       return n;
     });
+
+  const goDate = (d: string) => {
+    router.push(d ? `/reports?date=${d}` : "/reports", { scroll: false });
+  };
 
   const selectedPersonName = useMemo(() => {
     if (personFilter === "all") return null;
@@ -172,6 +192,11 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       doc.setFont(fontName, "normal");
       doc.setTextColor(71, 85, 105);
       doc.text(`Total Clients: ${filtered.totalClients}  •  Total Projects: ${filtered.totalProjects}  •  Total Subtasks: ${filtered.totalTasks}`, 10, y);
+      y += 4;
+      doc.setFontSize(9);
+      doc.setFont(fontName, "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Report date: ${fmtReportDate(date)}`, 10, y);
       y += 8;
       if (sel.status) {
         doc.setFontSize(11);
@@ -263,7 +288,8 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
       const pages = doc.getNumberOfPages();
       for (let i = 1; i <= pages; i++) { doc.setPage(i); if (i !== pages) addFooter(); }
       const suffix = selectedPersonName ? `_${selectedPersonName.replace(/\s+/g, "_")}` : "";
-      doc.save(`Advrix_Reports${suffix}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      const dateSuffix = date ? `_${date}` : "_all-time";
+      doc.save(`Advrix_Reports${suffix}${dateSuffix}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (e) { console.error(e); alert("PDF export failed."); } finally { setBusy(null); }
   }
 
@@ -293,10 +319,11 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
         for (const e of filtered.employeeLoad) rows.push([e.full_name, e.role_label, e.activeTasks, e.totalAssigned, e.completedTasks, e.overdueTasks]);
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Employee Load");
       }
-      const overview = XLSX.utils.aoa_to_sheet([["Advrix Media Pvt. Ltd. — Reports"], ["Date", new Date().toLocaleDateString("en-IN")], ...(selectedPersonName ? [["Person", selectedPersonName]] : []), [], ["Total Clients", filtered.totalClients], ["Total Projects", filtered.totalProjects], ["Total Subtasks", filtered.totalTasks]]);
+      const overview = XLSX.utils.aoa_to_sheet([["Advrix Media Pvt. Ltd. — Reports"], ["Date", new Date().toLocaleDateString("en-IN")], ["Report date", fmtReportDate(date)], ...(selectedPersonName ? [["Person", selectedPersonName]] : []), [], ["Total Clients", filtered.totalClients], ["Total Projects", filtered.totalProjects], ["Total Subtasks", filtered.totalTasks]]);
       XLSX.utils.book_append_sheet(wb, overview, "Overview");
       const suffix = selectedPersonName ? `_${selectedPersonName.replace(/\s+/g, "_")}` : "";
-      XLSX.writeFile(wb, `Advrix_Reports${suffix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const dateSuffix = date ? `_${date}` : "_all-time";
+      XLSX.writeFile(wb, `Advrix_Reports${suffix}${dateSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) { console.error(e); alert("Excel export failed."); } finally { setBusy(null); }
   }
 
@@ -344,6 +371,40 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
           )}
           <span className="text-xs text-slate-500 ml-auto hidden sm:inline">Tip: select a person, then Export will contain only that person’s data.</span>
         </div>
+        <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/10">
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <CalendarDays className="h-4 w-4" />
+            <span>Report date:</span>
+          </div>
+          <input
+            type="date"
+            value={date}
+            max={today}
+            onChange={(e) => goDate(e.target.value)}
+            className="input !py-1.5 !px-3 text-sm min-w-[160px] bg-night-850"
+            style={{ colorScheme: "dark" }}
+            aria-label="Select report date"
+          />
+          <button
+            type="button"
+            onClick={() => goDate(today)}
+            className={`btn-secondary !py-1.5 !px-3 text-xs ${date === today ? "bg-brand-300/20 text-brand-300 border-brand-300/30" : ""}`}
+          >
+            Today
+          </button>
+          {date && (
+            <>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-300/15 text-brand-300 px-3 py-1 text-xs font-medium">
+                Showing <b>{date === today ? "today" : date}</b>
+                <button onClick={() => goDate("")} className="ml-1 hover:text-white" aria-label="Clear date filter">✕</button>
+              </span>
+              <button onClick={() => goDate("")} className="btn-ghost !py-1.5 !px-3 text-xs">
+                All time
+              </button>
+            </>
+          )}
+          <span className="text-xs text-slate-500 ml-auto hidden sm:inline">Pick any previous date or today — tasks created, completed or due on that day.</span>
+        </div>
       </div>
 
       {/* Summary */}
@@ -354,7 +415,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
             <Building2 className="h-4 w-4 text-slate-500" />
           </div>
           <div className="text-2xl font-bold text-white mt-1">{filtered.totalClients}</div>
-          <div className="text-xs text-slate-500 mt-1">{personFilter !== "all" ? `with work for ${selectedPersonName}` : `${data.totalClients} total`}</div>
+          <div className="text-xs text-slate-500 mt-1">{personFilter !== "all" ? `with work for ${selectedPersonName}` : date ? `with activity on ${fmtReportDate(date)}` : `${data.totalClients} total`}</div>
         </div>
         <div className="card p-4">
           <div className="flex items-center justify-between">
@@ -362,7 +423,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
             <FolderKanban className="h-4 w-4 text-slate-500" />
           </div>
           <div className="text-2xl font-bold text-white mt-1">{filtered.totalProjects}</div>
-          <div className="text-xs text-slate-500 mt-1">{filtered.totalProjects} projects</div>
+          <div className="text-xs text-slate-500 mt-1">{date ? `${filtered.totalProjects} active on ${fmtReportDate(date)}` : `${filtered.totalProjects} projects`}</div>
         </div>
         <div className="card p-4">
           <div className="flex items-center justify-between">
@@ -370,7 +431,7 @@ export default function AnalyticsDetailed({ data }: { data: DetailedAnalytics })
             <FileText className="h-4 w-4 text-slate-500" />
           </div>
           <div className="text-2xl font-bold text-white mt-1">{filtered.totalTasks}</div>
-          <div className="text-xs text-slate-500 mt-1">{personFilter !== "all" ? `assigned to ${selectedPersonName}` : "overall"}</div>
+          <div className="text-xs text-slate-500 mt-1">{personFilter !== "all" ? `assigned to ${selectedPersonName}` : date ? `created / completed / due on ${fmtReportDate(date)}` : "overall"}</div>
         </div>
         <div className="card p-4 border-brand-300/20">
           <div className="text-xs text-slate-400 uppercase tracking-wider">Completion</div>

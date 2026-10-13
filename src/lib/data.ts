@@ -986,7 +986,7 @@ export interface DetailedAnalytics {
       status: string;
       totalTasks: number;
       tasksByStatus: { status: string; count: number }[];
-      tasks: { id: string; title: string; status: string; priority: string; assignee_name: string | null; assignee_id: string | null; due_date: string | null }[];
+      tasks: { id: string; title: string; status: string; priority: string; assignee_name: string | null; assignee_id: string | null; due_date: string | null; created_at: string | null; completed_at: string | null }[];
     }[];
   }[];
   employeeLoad: {
@@ -1000,7 +1000,18 @@ export interface DetailedAnalytics {
   }[];
 }
 
-export async function getDetailedAnalytics(pmScopeUserId: string | null = null): Promise<DetailedAnalytics> {
+export async function getDetailedAnalytics(
+  pmScopeUserId: string | null = null,
+  opts?: { date?: string }
+): Promise<DetailedAnalytics> {
+  // Optional date-wise report: a task belongs to date D when it was created,
+  // completed, or is due on D. Any past date or today is accepted.
+  const rawDate = opts?.date || "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : "";
+  const onDate = (t: { created_at?: string | null; completed_at?: string | null; due_date?: string | null }) =>
+    (t.created_at || "").slice(0, 10) === date ||
+    (t.completed_at || "").slice(0, 10) === date ||
+    (t.due_date || "").slice(0, 10) === date;
   const params: unknown[] = [];
   const pmWhereClient = pmScopeUserId ? (params.push(pmScopeUserId), `WHERE c.assigned_pm_id = $${params.length}`) : "";
   // Need separate params for different queries because pmWhere reuse would shift indices; rebuild per query
@@ -1009,7 +1020,7 @@ export async function getDetailedAnalytics(pmScopeUserId: string | null = null):
   const taskWhere = pmScopeUserId ? "WHERE c.assigned_pm_id = $1" : "";
   const projectWhere = pmScopeUserId ? "WHERE c.assigned_pm_id = $1" : "";
 
-  const [clientRows, projectRows, taskRows, tasksByStatusRows, employeeLoadRows] = await Promise.all([
+  const [clientRows0, projectRows0, taskRows0, tasksByStatusRows0, employeeLoadRows0] = await Promise.all([
     query<{ id: string; name: string; company: string | null }>(
       `SELECT c.id, c.name, c.company FROM clients c ${clientWhere} ORDER BY c.name ASC`,
       clientParams
@@ -1018,8 +1029,9 @@ export async function getDetailedAnalytics(pmScopeUserId: string | null = null):
       `SELECT p.id, p.name, p.status, p.client_id FROM projects p JOIN clients c ON c.id = p.client_id ${projectWhere} ORDER BY p.name ASC`,
       clientParams
     ),
-    query<{ id: string; title: string; status: string; priority: string; project_id: string; due_date: string | null; assignee_name: string | null; assignee_id: string | null }>(
-      `SELECT t.id, t.title, t.status, t.priority, t.project_id, t.due_date::text AS due_date, u.full_name AS assignee_name, t.assigned_to AS assignee_id
+    query<{ id: string; title: string; status: string; priority: string; project_id: string; due_date: string | null; assignee_name: string | null; assignee_id: string | null; created_at: string | null; completed_at: string | null }>(
+      `SELECT t.id, t.title, t.status, t.priority, t.project_id, t.due_date::text AS due_date, u.full_name AS assignee_name, t.assigned_to AS assignee_id,
+              t.created_at::text AS created_at, t.completed_at::text AS completed_at
        FROM tasks t JOIN projects p ON p.id = t.project_id JOIN clients c ON c.id = p.client_id
        LEFT JOIN users u ON u.id = t.assigned_to
        ${taskWhere} ORDER BY t.title ASC`,
@@ -1046,6 +1058,51 @@ export async function getDetailedAnalytics(pmScopeUserId: string | null = null):
       clientParams
     ),
   ]);
+
+  // Date-wise report: keep only tasks created / completed / due on the date,
+  // plus only the projects & clients that still have tasks, and recompute the
+  // status + employee aggregates from the same filtered set. No date = everything.
+  let clientRows = clientRows0;
+  let projectRows = projectRows0;
+  let taskRows = taskRows0;
+  let tasksByStatusRows = tasksByStatusRows0;
+  let employeeLoadRows = employeeLoadRows0;
+  if (date) {
+    taskRows = taskRows0.filter((t) => onDate(t));
+    const pIds = new Set(taskRows.map((t) => t.project_id));
+    projectRows = projectRows0.filter((p) => pIds.has(p.id));
+    const cIds = new Set(projectRows.map((p) => p.client_id));
+    clientRows = clientRows0.filter((c) => cIds.has(c.id));
+    const sm = new Map<string, number>();
+    for (const t of taskRows) sm.set(t.status, (sm.get(t.status) || 0) + 1);
+    tasksByStatusRows = [...sm.entries()]
+      .map(([status, count]) => ({ status, count: String(count) }))
+      .sort((a, b) => Number(b.count) - Number(a.count));
+    const empById = new Map(employeeLoadRows0.map((r) => [r.user_id, r]));
+    const agg = new Map<string, { total: number; active: number; completed: number; overdue: number }>();
+    for (const t of taskRows) {
+      if (!t.assignee_id || !empById.has(t.assignee_id)) continue;
+      const a = agg.get(t.assignee_id) || { total: 0, active: 0, completed: 0, overdue: 0 };
+      a.total++;
+      if (t.status === "completed") a.completed++;
+      else {
+        a.active++;
+        if (t.due_date && t.due_date.slice(0, 10) < date) a.overdue++;
+      }
+      agg.set(t.assignee_id, a);
+    }
+    employeeLoadRows = [...agg.entries()]
+      .map(([user_id, a]) => ({
+        user_id,
+        full_name: empById.get(user_id)!.full_name,
+        role_label: empById.get(user_id)!.role_label,
+        active_tasks: String(a.active),
+        total_assigned: String(a.total),
+        completed_tasks: String(a.completed),
+        overdue_tasks: String(a.overdue),
+      }))
+      .sort((x, y) => Number(y.active_tasks) - Number(x.active_tasks) || x.full_name.localeCompare(y.full_name));
+  }
 
   // Build hierarchy
   const tasksByProject = new Map<string, typeof taskRows>();
@@ -1076,7 +1133,7 @@ export async function getDetailedAnalytics(pmScopeUserId: string | null = null):
           status: p.status,
           totalTasks: tlist.length,
           tasksByStatus: [...byStatusMap.entries()].map(([status, count]) => ({ status, count })),
-          tasks: tlist.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, assignee_name: t.assignee_name, assignee_id: t.assignee_id, due_date: t.due_date })),
+          tasks: tlist.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, assignee_name: t.assignee_name, assignee_id: t.assignee_id, due_date: t.due_date, created_at: t.created_at, completed_at: t.completed_at })),
         };
       }),
     };

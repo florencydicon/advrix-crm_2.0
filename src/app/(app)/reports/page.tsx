@@ -6,13 +6,20 @@ import AnalyticsDetailed from "@/components/AnalyticsDetailed";
 
 export const metadata = { title: "Reports — Advrix CRM" };
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!hasPermission(session.permissions, "reports:view")) redirect("/dashboard");
 
+  // ?date=YYYY-MM-DD — any previous date or today. Empty = full report.
+  const sp = await searchParams;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date || "") ? (sp.date as string) : "";
   const pmScope = session.role_key === "PROJECT_MANAGER" ? session.sub : null;
-  const detailed = await getDetailedAnalytics(pmScope);
+  const detailed = await getDetailedAnalytics(pmScope, { date });
 
   return (
     <div className="space-y-6">
@@ -21,7 +28,7 @@ export default async function ReportsPage() {
         <p className="text-sm text-slate-400">Clients, projects, subtasks and employee load — PM / Super Admin view.</p>
       </div>
 
-      <AnalyticsDetailed data={detailed} />
+      <AnalyticsDetailed data={detailed} date={date} />
     </div>
   );
 }
