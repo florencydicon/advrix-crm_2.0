@@ -1118,8 +1118,35 @@ export async function bulkMoveBackToStageAction(
 }
 
 /**
+ * Bulk: mark every selected task as completed (proper completion semantics via
+ * markTaskComplete — completed_at set, project rollup, etc.). Already-completed
+ * tasks are skipped. Super Admin / Project Manager only.
+ */
+export async function bulkCompletePipelineTasksAction(
+  taskIds: string[]
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  const role = (session.role_key || "").toUpperCase();
+  const allowed = role === "SUPER_ADMIN" || role === "PROJECT_MANAGER" || role === "PM" || (session.permissions || []).includes("admin:*");
+  if (!allowed) return { ok: false, error: "Only PM / Super Admin can complete tasks in bulk." };
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  let count = 0;
+  for (const tid of ids) {
+    const task = await taskOf(tid);
+    if (!task || task.status === "completed") continue;
+    // eslint-disable-next-line no-await-in-loop
+    await markTaskComplete(tid);
+    count++;
+  }
+  revalidate();
+  return { ok: true, count };
+}
+
+/**
  * Bulk: set the content-lifecycle status on every selected task. Content team
- * and managers (writers included Ã¢â‚¬â€ they can change status but never delete).
+ * and managers (writers included — they can change status but never delete).
  */
 export async function bulkSetPipelineContentStatusAction(
   taskIds: string[],

@@ -27,6 +27,7 @@ import {
   getPipelineBoardAction,
   reopenPipelineTaskAction,
   bulkAssignPipelineTeamAction,
+  bulkCompletePipelineTasksAction,
   bulkDeletePipelineTasksAction,
   bulkSetPipelineStatusAction,
   bulkSetPipelineStageAction,
@@ -684,6 +685,18 @@ export default function ProjectPipeline({
     await reload();
   };
 
+  // Bulk mark-as-complete — Super Admin / PM only (same gate as Stage).
+  const bulkComplete = async () => {
+    const res = await bulkCompletePipelineTasksAction(selected);
+    if (!res.ok) {
+      notify(res.error || "Bulk complete failed.");
+      return;
+    }
+    notify(`Completed ${res.count} task${res.count === 1 ? "" : "s"} — moved to History.`);
+    setSelected([]);
+    await reload();
+  };
+
   // bulkStatus removed - status is now dynamic/flow-based only (7th image requirement)
   const bulkStage = async (memberId: string) => {
     const res = await bulkSetPipelineStageAction(selected, memberId);
@@ -1312,10 +1325,12 @@ export default function ProjectPipeline({
                     canStage={canBulkStage}
                     canDeadline={isManager}
                     canBulkEdit={false}
+                    canComplete={canBulkStage}
                     statusOptions={[]}
                     onAssign={bulkAssign}
                     onDelete={bulkDelete}
                     onStatus={async () => {}}
+                    onComplete={bulkComplete}
                     onStage={bulkStage}
                     onDeadline={bulkDeadline}
                     stageOptions={stageCandidates}

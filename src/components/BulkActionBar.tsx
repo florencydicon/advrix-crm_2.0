@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Users, Trash2, Tag, X, Check, ArrowRight, Undo2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Users, Trash2, Tag, X, Check, CheckCircle2, ArrowRight, Undo2, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import type { UserRow } from "@/lib/types";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -42,9 +42,11 @@ export default function BulkActionBar({
   stageOptions,
   canDeadline = false,
   canBulkEdit = false,
+  canComplete = false,
   onAssign,
   onDelete,
   onStatus,
+  onComplete,
   onStage,
   onMoveBack,
   onMoveBackTo,
@@ -66,9 +68,11 @@ export default function BulkActionBar({
   stageOptions?: StageOption[];
   canDeadline?: boolean;
   canBulkEdit?: boolean;
+  canComplete?: boolean;
   onAssign: (memberIds: string[]) => Promise<void>;
   onDelete: () => Promise<void>;
   onStatus: (status: string) => Promise<void>;
+  onComplete?: () => Promise<void>;
   onStage?: (memberId: string) => Promise<void>;
   onMoveBack?: () => Promise<void>;
   onMoveBackTo?: (memberId: string) => Promise<void>;
@@ -131,6 +135,17 @@ export default function BulkActionBar({
     setBusy(true);
     try {
       await onDelete();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runComplete = async () => {
+    if (busy || !onComplete) return;
+    if (!window.confirm(`Mark ${selectedCount} selected task${selectedCount === 1 ? "" : "s"} as complete? They will move to History.`)) return;
+    setBusy(true);
+    try {
+      await onComplete();
     } finally {
       setBusy(false);
     }
@@ -507,6 +522,17 @@ export default function BulkActionBar({
           )}
 
           {/* Move Back options removed - only single Stage option remains per requirement */}
+
+          {canComplete && onComplete && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={runComplete}
+              className="btn-ghost !py-1.5 !px-2.5 text-xs !text-emerald-300 disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Complete
+            </button>
+          )}
 
           {canDelete && (
             <button
