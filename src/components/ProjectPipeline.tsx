@@ -475,9 +475,9 @@ export default function ProjectPipeline({
   // Multi-select bulk actions (active board only).
   const [selected, setSelected] = useState<string[]>([]);
 
-  // One-tap quick filters: Active / Ready to Start / Awaiting Review /
-  // Upload Done / History. Coordinates the board tab with the status filter
-  // in a single step.
+  // One-tap quick filters: Active / Ready to Start / In Process /
+  // Awaiting Review / Upload Done / History. Coordinates the board tab with
+  // the status filter in a single step.
   const applyQuick = useCallback((kind: QuickKind) => {
     if (kind === "active") {
       setTab("active");
@@ -485,6 +485,9 @@ export default function ProjectPipeline({
     } else if (kind === "ready") {
       setTab("active");
       af.setFilter("status", "approved");
+    } else if (kind === "inprocess") {
+      setTab("active");
+      af.setFilter("status", "in_progress");
     } else if (kind === "awaiting") {
       setTab("active");
       af.setFilter("status", "submitted");

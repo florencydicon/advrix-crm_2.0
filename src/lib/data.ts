@@ -800,6 +800,7 @@ export async function getMyTasksPage(
     quickCounts: {
       active: sumNonCompleted(perActive),
       ready: perActive["approved"] || 0,
+      inprocess: perActive["in_progress"] || 0,
       awaiting: perActive["submitted"] || 0,
       uploadDone: perActive["upload_done"] || 0,
       history: sumAll(perHistory),

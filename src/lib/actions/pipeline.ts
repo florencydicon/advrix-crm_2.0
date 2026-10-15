@@ -299,6 +299,7 @@ export async function getPipelineBoardAction(opts?: {
   const quickCounts: QuickCounts = {
     active: nonCompleted,
     ready: perStatus["approved"] || 0,
+    inprocess: perStatus["in_progress"] || 0,
     awaiting: perStatus["submitted"] || 0,
     uploadDone: perStatus["upload_done"] || 0,
     history: perStatus["completed"] || 0,

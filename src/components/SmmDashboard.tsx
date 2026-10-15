@@ -456,12 +456,13 @@ export default function SmmDashboard({
       ].join(" "),
   });
 
-  // One-tap quick filters (Active / Ready to Start / Awaiting Review /
-  // Upload Done / History). Tab + status go out in ONE navigation (plus a
-  // local sync first), so they can never desync or drop each other mid-flight.
+  // One-tap quick filters (Active / Ready to Start / In Process /
+  // Awaiting Review / Upload Done / History). Tab + status go out in ONE
+  // navigation (plus a local sync first), so they can never desync or drop
+  // each other mid-flight.
   const applyQuick = useCallback((kind: QuickKind) => {
     const nextTab = kind === "history" ? "history" : "active";
-    const status = kind === "ready" ? "approved" : kind === "awaiting" ? "submitted" : kind === "upload" ? "upload_done" : "";
+    const status = kind === "ready" ? "approved" : kind === "inprocess" ? "in_progress" : kind === "awaiting" ? "submitted" : kind === "upload" ? "upload_done" : "";
     af.syncExternal({ ...af.filters, status }, af.search);
     setTab(nextTab);
     const sp = new URLSearchParams(searchParams.toString());

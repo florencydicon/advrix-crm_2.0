@@ -161,13 +161,16 @@ export function hasActiveTaskFilter(f: TaskFilterState): boolean {
 
 /**
  * Exact per-category totals backing the quick-filter chips
- * (Active / Ready to Start / Awaiting Review / Upload Done / History).
+ * (Active / Ready to Start / In Process / Awaiting Review / Upload Done / History).
  * Always computed with the current search + filters EXCEPT status itself, so
  * every number a user sees is exact across the whole dataset — for every role.
+ * Note: Active = every non-completed task = Ready + In Process + Awaiting +
+ * Upload Done + any other open status, so the parts always reconcile.
  */
 export interface QuickCounts {
   active: number;
   ready: number;
+  inprocess: number;
   awaiting: number;
   uploadDone: number;
   history: number;
@@ -176,6 +179,7 @@ export interface QuickCounts {
 export const EMPTY_QUICK_COUNTS: QuickCounts = {
   active: 0,
   ready: 0,
+  inprocess: 0,
   awaiting: 0,
   uploadDone: 0,
   history: 0,
