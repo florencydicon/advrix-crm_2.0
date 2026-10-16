@@ -932,7 +932,115 @@ export async function bulkAssignPipelineTeamAction(
 }
 
 /**
- * Bulk: delete every selected task. Managers only Ã¢â‚¬â€ writers can never delete.
+ * Content Hub upload-and-submit core (shared by single + bulk).
+ *
+ * Persists the writer's content, then moves the task toward review following
+ * the mandatory flow: approved → in_progress → submitted (QC Review), and
+ * feedback states (needs_improvement / client_feedback) → submitted again.
+ * Content lifecycle flips to `approval`. Completed tasks are never touched.
+ *
+ * Returns "saved" (content stored, stage unchanged), "submitted" (now in
+ * review) or "skipped" (completed task, empty content, or no permission to
+ * advance someone else's task).
+ */
+async function uploadAndSubmitOne(
+  taskId: string,
+  content: string,
+  session: { sub: string; name?: string; permissions?: string[] }
+): Promise<"saved" | "submitted" | "skipped"> {
+  const task = await taskOf(taskId);
+  if (!task || task.status === "completed") return "skipped";
+  if (!String(content ?? "").trim()) return "skipped";
+  const isAssignee = task.assigned_to === session.sub;
+  if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) return "skipped";
+  await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, String(content ?? "")]);
+  let status = task.status;
+  if (status === "approved") {
+    await query(`UPDATE tasks SET status = 'in_progress', reviewed_at = NULL WHERE id = $1`, [taskId]);
+    status = "in_progress";
+  }
+  if (status === "in_progress" || status === "needs_improvement" || status === "client_feedback") {
+    const html = sanitizeRich(String(content ?? ""));
+    await query(
+      `UPDATE tasks SET remarks = $1, remarks_edited_by = $2, remarks_edited_at = now(),
+       status = 'submitted', reviewed_at = NULL, content_status = 'approval'
+       WHERE id = $3`,
+      [html, session.sub, taskId]
+    );
+    return "submitted";
+  }
+  return "saved";
+}
+
+/**
+ * Bulk: upload pasted contents (line N → task N) and auto-send every eligible
+ * task for review. Content editors only (writers + managers). Completed tasks
+ * and empty lines are skipped without shifting the mapping.
+ */
+export async function bulkUploadContentsAndSubmitAction(
+  taskIds: string[],
+  contents: string[]
+): Promise<{ ok: boolean; saved?: number; submitted?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isContentEditor(session)) {
+    return { ok: false, error: "Only the content team and managers can upload content." };
+  }
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  if (!Array.isArray(contents) || contents.length === 0) return { ok: false, error: "No content provided." };
+  let saved = 0;
+  let submitted = 0;
+  for (let i = 0; i < ids.length && i < contents.length; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await uploadAndSubmitOne(ids[i], String(contents[i] ?? ""), session);
+    if (r === "submitted") {
+      submitted++;
+      saved++;
+    } else if (r === "saved") saved++;
+  }
+  if (submitted > 0) {
+    await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
+      type: "task",
+      title: "Content ready for review",
+      body: `${session.name} uploaded content on ${submitted} task${submitted === 1 ? "" : "s"} — ready for review.`,
+      link: "/projects",
+    });
+  }
+  revalidate();
+  return { ok: true, saved, submitted };
+}
+
+/**
+ * Single task: save content and, when the stage allows, send for review.
+ * Content editors only.
+ */
+export async function saveContentAndSubmitAction(
+  taskId: string,
+  content: string
+): Promise<{ ok: boolean; submitted?: boolean; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (!isContentEditor(session)) {
+    return { ok: false, error: "Only the content team and managers can upload content." };
+  }
+  const r = await uploadAndSubmitOne(taskId, content, session);
+  if (r === "skipped") return { ok: false, error: "Nothing to save — task is completed or content is empty." };
+  if (r === "submitted") {
+    const task = await taskOf(taskId);
+    await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
+      type: "task",
+      title: "Content ready for review",
+      body: `${session.name} submitted "${task?.title || "a task"}" for review.`,
+      link: "/projects",
+    });
+  }
+  revalidate();
+  return { ok: true, submitted: r === "submitted" };
+}
+
+/**
+ * Bulk: delete every selected task. Managers only — writers can never delete.
  * Dependents cascade automatically.
  */
 export async function bulkDeletePipelineTasksAction(

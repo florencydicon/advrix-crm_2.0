@@ -13,16 +13,20 @@ import {
   FolderKanban,
   CalendarDays,
   FileText,
+  Send,
 } from "lucide-react";
 import type { WriterBoardClient, WriterBoardTask } from "@/lib/data";
 import { CONTENT_STATUSES } from "@/lib/types";
 import { StatusBadge } from "@/components/ui";
 import {
-  bulkSetPipelineContentsAction,
+  bulkUploadContentsAndSubmitAction,
+  saveContentAndSubmitAction,
   setPipelineTaskContentAction,
   setPipelineTaskContentStatusAction,
 } from "@/lib/actions/pipeline";
 import { useToast } from "@/components/Toast";
+
+const FEEDBACK_STATUSES = ["needs_improvement", "client_feedback"];
 
 function initials(name: string) {
   return (name || "?")
@@ -45,10 +49,6 @@ function isOverdue(v?: string | null) {
   return v.slice(0, 10) < new Date().toISOString().slice(0, 10);
 }
 
-function contentLabel(status?: string | null) {
-  return CONTENT_STATUSES.find((s) => s.key === (status || "pending"))?.label || "Pending";
-}
-
 export default function ContentBoard({
   initial,
   manageAll,
@@ -65,22 +65,18 @@ export default function ContentBoard({
   const [openClients, setOpenClients] = useState<Set<string>>(
     () => new Set(initial.slice(0, 1).map((c) => c.client_id))
   );
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkText, setBulkText] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
+  // One bulk draft per client: row N maps to that client's Nth subtask.
+  const [bulkDrafts, setBulkDrafts] = useState<Record<string, string>>({});
+  const [bulkBusy, setBulkBusy] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Server re-render (router.refresh) swaps the prop — adopt it, prune selection.
+  // Server re-render (router.refresh) swaps the prop — adopt it.
   const [seenBoard, setSeenBoard] = useState(initial);
   if (seenBoard !== initial) {
     setSeenBoard(initial);
     setBoard(initial);
-    setSelected((prev) => {
-      const ids = new Set(initial.flatMap((c) => c.projects.flatMap((p) => p.tasks.map((t) => t.id))));
-      return new Set([...prev].filter((id) => ids.has(id)));
-    });
   }
 
   const q = query.trim().toLowerCase();
@@ -101,20 +97,12 @@ export default function ContentBoard({
       .filter(Boolean) as WriterBoardClient[];
   }, [board, q]);
 
-  const allTasks: WriterBoardTask[] = useMemo(
-    () => filtered.flatMap((c) => c.projects.flatMap((p) => p.tasks)),
-    [filtered]
-  );
-  const orderedSelected = useMemo(
-    () => allTasks.filter((t) => selected.has(t.id)),
-    [allTasks, selected]
-  );
   const totalTasks = board.reduce((s, c) => s + c.projects.reduce((a, p) => a + p.tasks.length, 0), 0);
   const totalProjects = board.reduce((s, c) => s + c.projects.length, 0);
-  const withoutContent = allTasks.filter((t) => !(t.content || "").trim()).length;
-  const overwriteCount = orderedSelected.filter((t) => (t.content || "").trim()).length;
-  const bulkLines = bulkText.split("\n");
-  const bulkFillCount = bulkLines.filter((l) => l.trim()).length;
+  const feedbackTotal = board.reduce(
+    (s, c) => s + c.projects.reduce((a, p) => a + p.tasks.filter((t) => FEEDBACK_STATUSES.includes(t.status)).length, 0),
+    0
+  );
 
   const toggleClient = (id: string) =>
     setOpenClients((prev) => {
@@ -124,63 +112,53 @@ export default function ContentBoard({
       return n;
     });
 
-  const toggleSelect = (id: string) =>
-    setSelected((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
+  const clientTasks = (c: WriterBoardClient): WriterBoardTask[] =>
+    c.projects.flatMap((p) => p.tasks);
 
-  const toggleProjectAll = (tasks: WriterBoardTask[]) => {
-    const ids = tasks.map((t) => t.id);
-    const allOn = ids.every((id) => selected.has(id));
-    setSelected((prev) => {
-      const n = new Set(prev);
-      if (allOn) ids.forEach((id) => n.delete(id));
-      else ids.forEach((id) => n.add(id));
-      return n;
-    });
-  };
-
-  const applyBulk = async () => {
-    if (orderedSelected.length === 0 || bulkFillCount === 0 || bulkBusy) return;
-    if (
-      overwriteCount > 0 &&
-      !window.confirm(
-        `${overwriteCount} selected task${overwriteCount === 1 ? "" : "s"} already ha${overwriteCount === 1 ? "s" : "ve"} content. Overwrite with pasted lines? Empty lines are skipped.`
-      )
-    )
-      return;
-    setBulkBusy(true);
+  const uploadForClient = async (c: WriterBoardClient) => {
+    const tasks = clientTasks(c);
+    const lines = (bulkDrafts[c.client_id] || "").split("\n");
+    if (tasks.length === 0 || lines.filter((l) => l.trim()).length === 0 || bulkBusy) return;
+    setBulkBusy(c.client_id);
     try {
-      const res = await bulkSetPipelineContentsAction(
-        orderedSelected.map((t) => t.id),
-        bulkLines
+      const res = await bulkUploadContentsAndSubmitAction(
+        tasks.map((t) => t.id),
+        lines
       );
       if (!res.ok) {
         toast(res.error || "Bulk upload failed.", "error");
         return;
       }
-      toast(`Content saved on ${res.count} task${res.count === 1 ? "" : "s"}.`, "success");
-      setSelected(new Set());
-      setBulkText("");
+      toast(
+        `Saved ${res.saved} · sent ${res.submitted} for review.`,
+        "success"
+      );
+      setBulkDrafts((prev) => ({ ...prev, [c.client_id]: "" }));
       router.refresh();
     } finally {
-      setBulkBusy(false);
+      setBulkBusy(null);
     }
   };
 
-  const saveSingle = async (t: WriterBoardTask) => {
+  const saveSingle = async (t: WriterBoardTask, submit: boolean) => {
     if (busyId) return;
     setBusyId(t.id);
     try {
-      const res = await setPipelineTaskContentAction(t.id, editDraft);
-      if (!res.ok) {
-        toast(res.error || "Could not save content.", "error");
-        return;
+      if (submit) {
+        const res = await saveContentAndSubmitAction(t.id, editDraft);
+        if (!res.ok) {
+          toast(res.error || "Could not submit.", "error");
+          return;
+        }
+        toast(res.submitted ? "Saved & sent for review." : "Content saved.", "success");
+      } else {
+        const res = await setPipelineTaskContentAction(t.id, editDraft);
+        if (!res.ok) {
+          toast(res.error || "Could not save content.", "error");
+          return;
+        }
+        toast("Draft saved.", "success");
       }
-      toast("Content saved.", "success");
       setEditingId(null);
       router.refresh();
     } finally {
@@ -227,60 +205,8 @@ export default function ContentBoard({
       <p className="text-[11px] text-slate-500">
         {board.length} client{board.length === 1 ? "" : "s"} · {totalProjects} project{totalProjects === 1 ? "" : "s"} ·{" "}
         {totalTasks} open subtask{totalTasks === 1 ? "" : "s"}
-        {withoutContent > 0 && <span className="text-amber-300"> · {withoutContent} without content</span>}
+        {feedbackTotal > 0 && <span className="text-rose-300 font-semibold"> · {feedbackTotal} need{feedbackTotal === 1 ? "s" : ""} feedback fix</span>}
       </p>
-
-      {/* Bulk upload panel */}
-      {selected.size > 0 && (
-        <div className="card p-3 md:p-4 space-y-2 border-brand-300/30">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-300 text-night-950 px-2.5 py-1 text-xs font-bold">
-              <ClipboardPaste className="h-3.5 w-3.5" /> {orderedSelected.length} selected
-            </span>
-            <button type="button" onClick={() => { setSelected(new Set()); setBulkText(""); }} className="text-[11px] text-slate-400 hover:text-white">
-              Clear
-            </button>
-            <span className="ml-auto text-[11px] text-slate-500 hidden sm:inline">
-              Paste from Sheet — line <b className="text-slate-300">N</b> goes to subtask <b className="text-slate-300">N</b>
-            </span>
-          </div>
-          <textarea
-            rows={4}
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            placeholder={"Diwali dhamaka sale is live!\nFlat 20% off on all services\nOffer valid till Sunday"}
-            className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/40"
-          />
-          {bulkFillCount > 0 && (
-            <div className="rounded-lg border border-white/10 bg-night-900/60 px-2.5 py-2 space-y-1 max-h-32 overflow-y-auto">
-              {orderedSelected.slice(0, 8).map((t, i) => (
-                <p key={t.id} className="text-[11px] text-slate-400 truncate">
-                  <span className="text-brand-300 font-semibold">{i + 1}.</span>{" "}
-                  {(bulkLines[i] || "").trim() ? (
-                    <><span className="text-slate-200">“{(bulkLines[i] || "").trim().slice(0, 60)}”</span> → {t.title}</>
-                  ) : (
-                    <><span className="text-slate-600">(skipped)</span> → {t.title}</>
-                  )}
-                </p>
-              ))}
-              {orderedSelected.length > 8 && (
-                <p className="text-[10px] text-slate-600">+ {orderedSelected.length - 8} more…</p>
-              )}
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <p className="text-[10px] text-slate-500 flex-1">Empty lines are skipped · extra subtasks untouched{overwriteCount > 0 ? ` · ${overwriteCount} already have content (will ask)` : ""}</p>
-            <button
-              type="button"
-              disabled={bulkBusy || orderedSelected.length === 0 || bulkFillCount === 0}
-              onClick={applyBulk}
-              className="btn-primary !py-2 !px-4 text-xs disabled:opacity-50"
-            >
-              <Check className="h-3.5 w-3.5" /> {bulkBusy ? "Saving…" : `Upload to ${orderedSelected.length}`}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Client cards */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pb-4">
@@ -293,8 +219,13 @@ export default function ContentBoard({
         ) : (
           filtered.map((c) => {
             const open = q ? true : openClients.has(c.client_id);
-            const cTasks = c.projects.reduce((s, p) => s + p.tasks.length, 0);
-            const cNoContent = c.projects.reduce((s, p) => s + p.tasks.filter((t) => !(t.content || "").trim()).length, 0);
+            const tasks = clientTasks(c);
+            const needContent = tasks.filter((t) => !(t.content || "").trim()).length;
+            const feedback = tasks.filter((t) => FEEDBACK_STATUSES.includes(t.status)).length;
+            const draft = bulkDrafts[c.client_id] || "";
+            const lines = draft.split("\n");
+            const fillCount = lines.filter((l) => l.trim()).length;
+            const busy = bulkBusy === c.client_id;
             return (
               <div key={c.client_id} className="card overflow-hidden">
                 <button
@@ -310,30 +241,72 @@ export default function ContentBoard({
                     {c.client_company && <span className="block text-[11px] text-slate-500 truncate">{c.client_name}</span>}
                   </span>
                   <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-slate-300 shrink-0">
-                    {cTasks} subtask{cTasks === 1 ? "" : "s"}
+                    {tasks.length} subtask{tasks.length === 1 ? "" : "s"}
                   </span>
-                  {cNoContent > 0 && (
+                  {needContent > 0 && (
                     <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300 shrink-0">
-                      {cNoContent} need content
+                      {needContent} need content
+                    </span>
+                  )}
+                  {feedback > 0 && (
+                    <span className="inline-flex items-center rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300 shrink-0">
+                      {feedback} feedback
                     </span>
                   )}
                   {open ? <ChevronDown className="h-4 w-4 text-slate-500 shrink-0" /> : <ChevronRight className="h-4 w-4 text-slate-500 shrink-0" />}
                 </button>
 
                 {open && (
-                  <div className="border-t border-white/[0.06] divide-y divide-white/[0.06]">
-                    {c.projects.map((p) => {
-                      const allOn = p.tasks.every((t) => selected.has(t.id));
-                      return (
+                  <div className="border-t border-white/[0.06]">
+                    {/* Direct bulk box — row N goes to subtask N, auto review */}
+                    <div className="px-3 sm:px-4 py-3 space-y-2 bg-brand-300/[0.04] border-b border-white/[0.06]">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-300">
+                          <ClipboardPaste className="h-3.5 w-3.5" /> Bulk content — {tasks.length} subtask{tasks.length === 1 ? "" : "s"}
+                        </span>
+                        <span className="ml-auto text-[10px] text-slate-500 hidden sm:inline">row N → subtask N · auto send for review</span>
+                      </div>
+                      <textarea
+                        rows={Math.min(Math.max(tasks.length, 3), 8)}
+                        value={draft}
+                        onChange={(e) => setBulkDrafts((prev) => ({ ...prev, [c.client_id]: e.target.value }))}
+                        placeholder={tasks.slice(0, 3).map((t, i) => `Row ${i + 1} → ${t.title}`).join("\n") || "Paste content lines here…"}
+                        className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/40"
+                      />
+                      {fillCount > 0 && (
+                        <div className="rounded-lg border border-white/10 bg-night-900/60 px-2.5 py-2 space-y-1 max-h-32 overflow-y-auto">
+                          {tasks.slice(0, 8).map((t, i) => (
+                            <p key={t.id} className="text-[11px] text-slate-400 truncate">
+                              <span className="text-brand-300 font-semibold">{i + 1}.</span>{" "}
+                              {(lines[i] || "").trim() ? (
+                                <><span className="text-slate-200">“{(lines[i] || "").trim().slice(0, 60)}”</span> → {t.title}</>
+                              ) : (
+                                <><span className="text-slate-600">(skipped)</span> → {t.title}</>
+                              )}
+                            </p>
+                          ))}
+                          {tasks.length > 8 && (
+                            <p className="text-[10px] text-slate-600">+ {tasks.length - 8} more…</p>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] text-slate-500 flex-1">Empty rows skipped · saved content auto-goes for review</p>
+                        <button
+                          type="button"
+                          disabled={busy || tasks.length === 0 || fillCount === 0}
+                          onClick={() => uploadForClient(c)}
+                          className="btn-primary !py-2 !px-4 text-xs disabled:opacity-50"
+                        >
+                          <Send className="h-3.5 w-3.5" /> {busy ? "Uploading…" : "Upload & Review"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="divide-y divide-white/[0.06]">
+                      {c.projects.map((p) => (
                         <div key={p.project_id} className="px-3 sm:px-4 py-2.5">
                           <div className="flex items-center gap-2 mb-2">
-                            <input
-                              type="checkbox"
-                              checked={p.tasks.length > 0 && allOn}
-                              onChange={() => toggleProjectAll(p.tasks)}
-                              aria-label={`Select all in ${p.project_name}`}
-                              className="h-4 w-4 accent-emerald-400 cursor-pointer shrink-0"
-                            />
                             <FolderKanban className="h-3.5 w-3.5 text-brand-300 shrink-0" />
                             <p className="text-xs font-semibold text-white truncate flex-1">{p.project_name}</p>
                             <span className="text-[10px] text-slate-500 shrink-0">{p.tasks.length}</span>
@@ -342,17 +315,11 @@ export default function ContentBoard({
                             {p.tasks.map((t) => {
                               const overdue = isOverdue(t.due_date) && t.status !== "completed";
                               const hasContent = !!(t.content || "").trim();
+                              const hasFeedback = FEEDBACK_STATUSES.includes(t.status);
                               const isEditing = editingId === t.id;
                               return (
-                                <div key={t.id} className={`rounded-xl border p-2.5 transition-colors ${selected.has(t.id) ? "border-brand-300/40 bg-brand-300/[0.05]" : "border-white/10 bg-white/[0.02]"}`}>
+                                <div key={t.id} className={`rounded-xl border p-2.5 transition-colors ${hasFeedback ? "border-rose-400/30 bg-rose-500/[0.04]" : "border-white/10 bg-white/[0.02]"}`}>
                                   <div className="flex items-start gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={selected.has(t.id)}
-                                      onChange={() => toggleSelect(t.id)}
-                                      aria-label={`Select ${t.title}`}
-                                      className="h-4 w-4 mt-0.5 accent-emerald-400 cursor-pointer shrink-0"
-                                    />
                                     <div className="min-w-0 flex-1">
                                       <p className="text-[13px] font-medium text-white leading-snug">{t.title}</p>
                                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
@@ -402,8 +369,11 @@ export default function ContentBoard({
                                       />
                                       <div className="flex gap-2">
                                         <button type="button" onClick={() => setEditingId(null)} className="btn-ghost flex-1 !py-1.5 text-xs">Cancel</button>
-                                        <button type="button" disabled={busyId === t.id} onClick={() => saveSingle(t)} className="btn-primary flex-1 !py-1.5 text-xs disabled:opacity-50">
-                                          <Save className="h-3.5 w-3.5" /> {busyId === t.id ? "Saving…" : "Save content"}
+                                        <button type="button" disabled={busyId === t.id} onClick={() => saveSingle(t, false)} className="btn-ghost flex-1 !py-1.5 text-xs disabled:opacity-50">
+                                          <Save className="h-3.5 w-3.5" /> {busyId === t.id ? "Saving…" : "Save draft"}
+                                        </button>
+                                        <button type="button" disabled={busyId === t.id || !editDraft.trim()} onClick={() => saveSingle(t, true)} className="btn-primary flex-1 !py-1.5 text-xs disabled:opacity-50">
+                                          <Send className="h-3.5 w-3.5" /> {busyId === t.id ? "Sending…" : "Save & Review"}
                                         </button>
                                       </div>
                                     </div>
@@ -415,8 +385,8 @@ export default function ContentBoard({
                             })}
                           </div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
