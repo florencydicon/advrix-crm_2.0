@@ -953,7 +953,11 @@ async function uploadAndSubmitOne(
   if (!String(content ?? "").trim()) return "skipped";
   const isAssignee = task.assigned_to === session.sub;
   if (!isAssignee && !hasPermission(session.permissions, PERM_TASKS_MANAGE)) return "skipped";
-  await query(`UPDATE tasks SET content = $2 WHERE id = $1`, [taskId, String(content ?? "")]);
+  // The uploaded line becomes BOTH the subtask title and its content (same
+  // text in both places). Title is single-line, capped like manual renames.
+  const text = String(content ?? "");
+  const titleText = text.trim().replace(/[\n\r]+/g, " ").slice(0, 200);
+  await query(`UPDATE tasks SET content = $2, title = $3 WHERE id = $1`, [taskId, text, titleText || task.title]);
   let status = task.status;
   if (status === "approved") {
     await query(`UPDATE tasks SET status = 'in_progress', reviewed_at = NULL WHERE id = $1`, [taskId]);

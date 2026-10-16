@@ -22,6 +22,7 @@ import {
   bulkUploadContentsAndSubmitAction,
   saveContentAndSubmitAction,
   setPipelineTaskContentAction,
+  setPipelineTaskTitleAction,
   setPipelineTaskContentStatusAction,
 } from "@/lib/actions/pipeline";
 import { useToast } from "@/components/Toast";
@@ -157,6 +158,16 @@ export default function ContentBoard({
           toast(res.error || "Could not save content.", "error");
           return;
         }
+        // Draft also renames the subtask title to the same text (bulk parity).
+        if (editDraft.trim()) {
+          const tr = await setPipelineTaskTitleAction(t.id, editDraft);
+          if (!tr.ok) {
+            toast(tr.error || "Content saved, but title update failed.", "error");
+            setEditingId(null);
+            router.refresh();
+            return;
+          }
+        }
         toast("Draft saved.", "success");
       }
       setEditingId(null);
@@ -264,7 +275,7 @@ export default function ContentBoard({
                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-300">
                           <ClipboardPaste className="h-3.5 w-3.5" /> Bulk content — {tasks.length} subtask{tasks.length === 1 ? "" : "s"}
                         </span>
-                        <span className="ml-auto text-[10px] text-slate-500 hidden sm:inline">row N → subtask N · auto send for review</span>
+                        <span className="ml-auto text-[10px] text-slate-500 hidden sm:inline">row N → subtask N title + content · auto send for review</span>
                       </div>
                       <textarea
                         rows={Math.min(Math.max(tasks.length, 3), 8)}
@@ -291,7 +302,7 @@ export default function ContentBoard({
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <p className="text-[10px] text-slate-500 flex-1">Empty rows skipped · saved content auto-goes for review</p>
+                        <p className="text-[10px] text-slate-500 flex-1">Empty rows skipped · each line becomes that subtask's title + content</p>
                         <button
                           type="button"
                           disabled={busy || tasks.length === 0 || fillCount === 0}
