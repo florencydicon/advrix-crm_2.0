@@ -1158,6 +1158,88 @@ export async function getDetailedAnalytics(
   };
 }
 
+// ---------- Content Hub (writer workspace) ----------
+
+export interface WriterBoardTask {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  content: string | null;
+  content_status: string | null;
+  project_id: string;
+  project_name: string;
+  assignee_name: string | null;
+}
+
+export interface WriterBoardProject {
+  project_id: string;
+  project_name: string;
+  tasks: WriterBoardTask[];
+}
+
+export interface WriterBoardClient {
+  client_id: string;
+  client_name: string;
+  client_company: string | null;
+  projects: WriterBoardProject[];
+}
+
+/**
+ * Content-writer workspace board: open subtasks grouped Client → Project.
+ * Writers see only tasks assigned to them (holder or sequence member);
+ * managers (manageAll) see every open task for oversight.
+ */
+export async function getWriterBoard(
+  userId: string,
+  manageAll: boolean = false
+): Promise<WriterBoardClient[]> {
+  const where = manageAll
+    ? `WHERE t.status <> 'completed'`
+    : `WHERE t.status <> 'completed'
+       AND (t.assigned_to = $1 OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $1))`;
+  const params: unknown[] = manageAll ? [] : [userId];
+  const rows = await query<WriterBoardTask & { client_id: string; client_name: string; client_company: string | null }>(
+    `SELECT t.id, t.title, t.status, t.priority, t.due_date::text AS due_date,
+            t.content, t.content_status, t.project_id, p.name AS project_name,
+            c.id AS client_id, c.name AS client_name, c.company AS client_company,
+            u.full_name AS assignee_name
+       FROM tasks t
+       JOIN projects p ON p.id = t.project_id
+       JOIN clients c ON c.id = p.client_id
+       LEFT JOIN users u ON u.id = t.assigned_to
+       ${where}
+       ORDER BY COALESCE(c.company, c.name) ASC, p.name ASC,
+                t.due_date ASC NULLS LAST, t.created_at ASC`,
+    params
+  );
+
+  const clients: WriterBoardClient[] = [];
+  const byClient = new Map<string, WriterBoardProject[]>();
+  const projByClient = new Map<string, Map<string, WriterBoardTask[]>>();
+  for (const r of rows) {
+    if (!byClient.has(r.client_id)) {
+      byClient.set(r.client_id, []);
+      projByClient.set(r.client_id, new Map());
+      clients.push({
+        client_id: r.client_id,
+        client_name: r.client_name,
+        client_company: r.client_company,
+        projects: byClient.get(r.client_id)!,
+      });
+    }
+    const pm = projByClient.get(r.client_id)!;
+    if (!pm.has(r.project_id)) {
+      pm.set(r.project_id, []);
+      byClient.get(r.client_id)!.push({ project_id: r.project_id, project_name: r.project_name, tasks: pm.get(r.project_id)! });
+    }
+    const { client_id: _c, client_name: _n, client_company: _co, ...task } = r;
+    pm.get(r.project_id)!.push(task);
+  }
+  return clients;
+}
+
 // ---------- Attendance ----------
 
 export async function getTodayAttendance(userId: string): Promise<Attendance | null> {

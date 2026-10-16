@@ -52,6 +52,7 @@ const NAV: NavItem[] = [
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
+  { href: "/content", label: "Content", icon: FileText, anyPermission: ["tasks:execute", "tasks:manage"] },
   { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
   // Super Admin only — usage/bandwidth analytics expose infra-wide numbers,
   // so this deliberately uses `roles` (not `permission`, which is checked first).
