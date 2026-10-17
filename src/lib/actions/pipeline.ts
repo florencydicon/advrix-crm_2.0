@@ -966,27 +966,52 @@ async function uploadAndSubmitOne(
 }
 
 /**
- * Bulk: upload pasted contents (line N → task N) and auto-send every eligible
- * task for review. Content editors only (writers + managers). Completed tasks
- * and empty lines are skipped without shifting the mapping.
+ * Bulk: paste one content line per subtask. Lines fill ONLY the tasks that do
+ * not already have content, in order — existing content is never overwritten,
+ * so uploading in several sittings appends to the remaining subtasks instead
+ * of replacing earlier work. Blank lines are ignored. Each filled task
+ * auto-sends for review. Content editors only (writers + managers).
  */
 export async function bulkUploadContentsAndSubmitAction(
   taskIds: string[],
   contents: string[]
-): Promise<{ ok: boolean; saved?: number; submitted?: number; error?: string }> {
+): Promise<{ ok: boolean; saved?: number; submitted?: number; skipped?: number; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
   if (!isContentEditor(session)) {
     return { ok: false, error: "Only the content team and managers can upload content." };
   }
   const ids = cleanIdList(taskIds);
+  const lines = (Array.isArray(contents) ? contents : [])
+    .map((c) => String(c ?? ""))
+    .filter((l) => l.trim().length > 0);
   if (ids.length === 0) return { ok: false, error: "No tasks selected." };
-  if (!Array.isArray(contents) || contents.length === 0) return { ok: false, error: "No content provided." };
+  if (lines.length === 0) return { ok: false, error: "No content provided." };
+
   let saved = 0;
   let submitted = 0;
-  for (let i = 0; i < ids.length && i < contents.length; i++) {
+  let skipped = 0;
+  let ci = 0;
+  for (const id of ids) {
+    if (ci >= lines.length) break;
     // eslint-disable-next-line no-await-in-loop
-    const r = await uploadAndSubmitOne(ids[i], String(contents[i] ?? ""), session);
+    const rows = await query<{ status: string; content: string | null }>(
+      `SELECT status, content FROM tasks WHERE id = $1`,
+      [id]
+    );
+    const task = rows[0];
+    if (!task || task.status === "completed") {
+      skipped++;
+      continue;
+    }
+    // Never replace content that is already there — only fill empty subtasks.
+    if ((task.content || "").trim()) {
+      skipped++;
+      continue;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    const r = await uploadAndSubmitOne(id, lines[ci], session);
+    ci++;
     if (r === "submitted") {
       submitted++;
       saved++;
@@ -1001,7 +1026,7 @@ export async function bulkUploadContentsAndSubmitAction(
     });
   }
   revalidate();
-  return { ok: true, saved, submitted };
+  return { ok: true, saved, submitted, skipped };
 }
 
 /**

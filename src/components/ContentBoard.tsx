@@ -6,7 +6,6 @@ import {
   Search,
   ChevronRight,
   ChevronDown,
-  Check,
   X,
   ClipboardPaste,
   Save,
@@ -117,21 +116,26 @@ export default function ContentBoard({
     c.projects.flatMap((p) => p.tasks);
 
   const uploadForClient = async (c: WriterBoardClient) => {
-    const tasks = clientTasks(c);
-    const lines = (bulkDrafts[c.client_id] || "").split("\n");
-    if (tasks.length === 0 || lines.filter((l) => l.trim()).length === 0 || bulkBusy) return;
+    // Only subtasks that don't have content yet — existing content is kept.
+    const targets = clientTasks(c).filter((t) => !(t.content || "").trim());
+    const lines = (bulkDrafts[c.client_id] || "")
+      .split("\n")
+      .filter((l) => l.trim().length > 0);
+    if (targets.length === 0 || lines.length === 0 || bulkBusy) return;
     setBulkBusy(c.client_id);
     try {
       const res = await bulkUploadContentsAndSubmitAction(
-        tasks.map((t) => t.id),
+        targets.map((t) => t.id),
         lines
       );
       if (!res.ok) {
         toast(res.error || "Bulk upload failed.", "error");
         return;
       }
+      const extra = lines.length - targets.length;
       toast(
-        `Saved ${res.saved} · sent ${res.submitted} for review.`,
+        `Saved ${res.saved} · sent ${res.submitted} for review.` +
+          (extra > 0 ? ` ${extra} extra line${extra === 1 ? "" : "s"} ignored (no empty subtask).` : ""),
         "success"
       );
       setBulkDrafts((prev) => ({ ...prev, [c.client_id]: "" }));
@@ -231,11 +235,14 @@ export default function ContentBoard({
           filtered.map((c) => {
             const open = q ? true : openClients.has(c.client_id);
             const tasks = clientTasks(c);
-            const needContent = tasks.filter((t) => !(t.content || "").trim()).length;
+            // Subtasks still waiting for content — the only ones bulk fills.
+            const emptyTasks = tasks.filter((t) => !(t.content || "").trim());
+            const needContent = emptyTasks.length;
             const feedback = tasks.filter((t) => FEEDBACK_STATUSES.includes(t.status)).length;
             const draft = bulkDrafts[c.client_id] || "";
-            const lines = draft.split("\n");
-            const fillCount = lines.filter((l) => l.trim()).length;
+            const lines = draft.split("\n").filter((l) => l.trim().length > 0);
+            const fillCount = lines.length;
+            const extraLines = Math.max(0, fillCount - needContent);
             const busy = bulkBusy === c.client_id;
             return (
               <div key={c.client_id} className="card overflow-hidden">
@@ -269,43 +276,51 @@ export default function ContentBoard({
 
                 {open && (
                   <div className="border-t border-white/[0.06]">
-                    {/* Direct bulk box — row N goes to subtask N, auto review */}
+                    {/* Bulk box — fills only subtasks that have no content yet */}
                     <div className="px-3 sm:px-4 py-3 space-y-2 bg-brand-300/[0.04] border-b border-white/[0.06]">
                       <div className="flex items-center gap-2">
                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-300">
-                          <ClipboardPaste className="h-3.5 w-3.5" /> Bulk content — {tasks.length} subtask{tasks.length === 1 ? "" : "s"}
+                          <ClipboardPaste className="h-3.5 w-3.5" /> Bulk content
+                          {needContent > 0 ? (
+                            <span className="text-slate-400 font-medium">— {needContent} awaiting content</span>
+                          ) : (
+                            <span className="text-slate-500 font-medium">— all filled</span>
+                          )}
                         </span>
-                        <span className="ml-auto text-[10px] text-slate-500 hidden sm:inline">row N → subtask N title + content · auto send for review</span>
+                        <span className="ml-auto text-[10px] text-slate-500 hidden sm:inline">line N → next empty subtask · existing content kept</span>
                       </div>
                       <textarea
-                        rows={Math.min(Math.max(tasks.length, 3), 8)}
+                        rows={Math.min(Math.max(needContent || 3, 3), 8)}
                         value={draft}
+                        disabled={needContent === 0}
                         onChange={(e) => setBulkDrafts((prev) => ({ ...prev, [c.client_id]: e.target.value }))}
-                        placeholder={tasks.slice(0, 3).map((t, i) => `Row ${i + 1} → ${t.title}`).join("\n") || "Paste content lines here…"}
-                        className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/40"
+                        placeholder={
+                          needContent === 0
+                            ? "All subtasks already have content. Use Edit on a subtask to change it."
+                            : emptyTasks.slice(0, 3).map((t, i) => `Line ${i + 1} → ${t.title}`).join("\n") || "Paste one content line per subtask…"
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-night-900 px-2.5 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-brand-300/40 disabled:opacity-40"
                       />
-                      {fillCount > 0 && (
+                      {fillCount > 0 && needContent > 0 && (
                         <div className="rounded-lg border border-white/10 bg-night-900/60 px-2.5 py-2 space-y-1 max-h-32 overflow-y-auto">
-                          {tasks.slice(0, 8).map((t, i) => (
+                          {emptyTasks.slice(0, 8).map((t, i) => (
                             <p key={t.id} className="text-[11px] text-slate-400 truncate">
                               <span className="text-brand-300 font-semibold">{i + 1}.</span>{" "}
-                              {(lines[i] || "").trim() ? (
-                                <><span className="text-slate-200">“{(lines[i] || "").trim().slice(0, 60)}”</span> → {t.title}</>
-                              ) : (
-                                <><span className="text-slate-600">(skipped)</span> → {t.title}</>
-                              )}
+                              <span className="text-slate-200">“{(lines[i] || "").trim().slice(0, 60)}”</span> → {t.title}
                             </p>
                           ))}
-                          {tasks.length > 8 && (
-                            <p className="text-[10px] text-slate-600">+ {tasks.length - 8} more…</p>
+                          {extraLines > 0 && (
+                            <p className="text-[10px] text-amber-300/80">
+                              {extraLines} extra line{extraLines === 1 ? "" : "s"} — no empty subtask left, will be ignored.
+                            </p>
                           )}
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <p className="text-[10px] text-slate-500 flex-1">Empty rows skipped · each line becomes that subtask's title + content</p>
+                        <p className="text-[10px] text-slate-500 flex-1">Keeps already-saved content · fills the rest · auto sends for review</p>
                         <button
                           type="button"
-                          disabled={busy || tasks.length === 0 || fillCount === 0}
+                          disabled={busy || needContent === 0 || fillCount === 0}
                           onClick={() => uploadForClient(c)}
                           className="btn-primary !py-2 !px-4 text-xs disabled:opacity-50"
                         >
