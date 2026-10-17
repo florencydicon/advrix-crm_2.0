@@ -923,14 +923,14 @@ export async function bulkAssignPipelineTeamAction(
 /**
  * Content Hub upload-and-submit core (shared by single + bulk).
  *
- * Persists the writer's content, then moves the task toward review following
- * the mandatory flow: approved → in_progress → submitted (QC Review), and
- * feedback states (needs_improvement / client_feedback) → submitted again.
- * Content lifecycle flips to `approval`. Completed tasks are never touched.
+ * Persists the writer's content (as both title and content body) and moves the
+ * task DIRECTLY to `submitted` ("Submitted for review") from whatever stage it
+ * is in — Start / In Process / feedback — with content lifecycle set to
+ * `approval`. Completed tasks are never touched; already-submitted tasks just
+ * get their content refreshed.
  *
- * Returns "saved" (content stored, stage unchanged), "submitted" (now in
- * review) or "skipped" (completed task, empty content, or no permission to
- * advance someone else's task).
+ * Returns "submitted" (now in review) or "skipped" (completed task, empty
+ * content, or no permission to advance someone else's task).
  */
 async function uploadAndSubmitOne(
   taskId: string,
@@ -945,24 +945,27 @@ async function uploadAndSubmitOne(
   // The uploaded line becomes BOTH the subtask title and its content (same
   // text in both places). Title is single-line, capped like manual renames.
   const text = String(content ?? "");
-  const titleText = text.trim().replace(/[\n\r]+/g, " ").slice(0, 200);
-  await query(`UPDATE tasks SET content = $2, title = $3 WHERE id = $1`, [taskId, text, titleText || task.title]);
-  let status = task.status;
-  if (status === "approved") {
-    await query(`UPDATE tasks SET status = 'in_progress', reviewed_at = NULL WHERE id = $1`, [taskId]);
-    status = "in_progress";
-  }
-  if (status === "in_progress" || status === "needs_improvement" || status === "client_feedback") {
-    const html = sanitizeRich(String(content ?? ""));
+  const titleText = text.trim().replace(/[\n\r]+/g, " ").slice(0, 200) || task.title;
+  const html = sanitizeRich(text);
+
+  if (task.status === "submitted") {
+    // Already in review — refresh the content, keep it submitted.
     await query(
-      `UPDATE tasks SET remarks = $1, remarks_edited_by = $2, remarks_edited_at = now(),
-       status = 'submitted', reviewed_at = NULL, content_status = 'approval'
-       WHERE id = $3`,
-      [html, session.sub, taskId]
+      `UPDATE tasks SET content = $2, title = $3, remarks = $4 WHERE id = $1`,
+      [taskId, text, titleText, html]
     );
     return "submitted";
   }
-  return "saved";
+
+  // Directly submit from any other stage (Start / In Process / feedback).
+  await query(
+    `UPDATE tasks SET content = $2, title = $3, remarks = $4, remarks_edited_by = $5,
+     remarks_edited_at = now(), status = 'submitted', reviewed_at = NULL,
+     content_status = 'approval'
+     WHERE id = $1`,
+    [taskId, text, titleText, html, session.sub]
+  );
+  return "submitted";
 }
 
 /**

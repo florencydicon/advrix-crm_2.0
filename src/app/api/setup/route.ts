@@ -47,7 +47,22 @@ export async function GET() {
         AND NOT ('content:manage' = ANY(permissions))
     `);
 
-    return NextResponse.json({ ok: true, message: "Migrations applied: location columns, task remarks, login_attempts, videographer role, content permission." });
+    // Migration 012: Old content subtasks stuck at Start / In Process move to
+    // "Submitted for review". Targets content-team tasks that already have
+    // content saved but never reached review. Idempotent — only rows still in
+    // approved/in_progress with content are touched.
+    await query(`
+      UPDATE tasks t
+      SET status = 'submitted', content_status = 'approval', reviewed_at = NULL
+      FROM users u, roles r
+      WHERE t.assigned_to = u.id
+        AND r.id = u.role_id
+        AND r.key IN ('WRITER', 'CONTENT_WRITER')
+        AND t.status IN ('approved', 'in_progress')
+        AND t.content IS NOT NULL AND btrim(t.content) <> ''
+    `);
+
+    return NextResponse.json({ ok: true, message: "Migrations applied: location columns, task remarks, login_attempts, videographer role, content permission, content review backfill." });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
