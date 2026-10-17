@@ -23,6 +23,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "tasks:execute", label: "Work on assigned tasks", group: "Tasks" },
   { key: "tasks:review", label: "Review & approve briefs / work", group: "Tasks" },
   { key: "tasks:manage", label: "Manage sequences, deadlines & remarks", group: "Tasks" },
+  // Content
+  { key: "content:manage", label: "Access Content Hub & upload content", group: "Content" },
   // Attendance & Leaves
   { key: "attendance:view", label: "View attendance & reports", group: "Attendance & Leaves" },
   { key: "leaves:approve", label: "Approve / reject leave", group: "Attendance & Leaves" },
@@ -59,6 +61,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     "tasks:execute",
     "tasks:review",
     "tasks:manage",
+    "content:manage",
     "attendance:view",
     "leads:view",
     "leads:manage",
@@ -68,8 +71,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   // Staff roles deliberately do NOT get `projects:view`. The Project Pipeline
   // and Clients pages are PM / Super Admin only; staff work from their own
   // dashboard, attendance, daily log and updates.
-  WRITER: ["tasks:execute"],
-  CONTENT_WRITER: ["projects:view", "tasks:execute"],
+  WRITER: ["tasks:execute", "content:manage"],
+  CONTENT_WRITER: ["projects:view", "tasks:execute", "content:manage"],
   DESIGNER: ["tasks:execute"],
   EDITOR: ["tasks:execute"],
   SMM: ["tasks:execute"],
@@ -118,5 +121,8 @@ export function canAccessContentHub(
   if (!session) return false;
   const role = (session.role_key || "").toUpperCase();
   if (CONTENT_HUB_ROLES.includes(role)) return true;
-  return hasPermission(session.permissions, "tasks:manage");
+  return (
+    hasPermission(session.permissions, "content:manage") ||
+    hasPermission(session.permissions, "tasks:manage")
+  );
 }

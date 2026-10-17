@@ -38,7 +38,16 @@ export async function GET() {
       WHERE key = 'video_shoot' AND visual_role = 'EDITOR'
     `);
 
-    return NextResponse.json({ ok: true, message: "Migrations applied: location columns, task remarks, login_attempts, videographer role." });
+    // Migration 011: Add content:manage to the built-in roles that own the
+    // Content Hub (Content team + managers). Idempotent — only appends when
+    // the permission is missing so custom edits are preserved.
+    await query(`
+      UPDATE roles SET permissions = array_append(permissions, 'content:manage')
+      WHERE key IN ('WRITER', 'CONTENT_WRITER', 'PROJECT_MANAGER')
+        AND NOT ('content:manage' = ANY(permissions))
+    `);
+
+    return NextResponse.json({ ok: true, message: "Migrations applied: location columns, task remarks, login_attempts, videographer role, content permission." });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
