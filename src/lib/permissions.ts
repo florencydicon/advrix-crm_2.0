@@ -94,3 +94,29 @@ export function can(
   if (!session) return false;
   return hasPermission(session.permissions, key);
 }
+
+/**
+ * Roles allowed to open the Content Hub / edit task Title & Content.
+ *
+ * Deliberately NOT `tasks:execute` — every staff role (designer, editor, SMM,
+ * videographer) carries that, which would leak the hub to the whole company.
+ * Only managers, the Content team, and any custom role explicitly granted
+ * `tasks:manage` may see it. SUPER_ADMIN's `admin:*` satisfies the permission.
+ */
+const CONTENT_HUB_ROLES = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "PROJECT_MANAGER",
+  "PM",
+  "WRITER",
+  "CONTENT_WRITER",
+];
+
+export function canAccessContentHub(
+  session: { role_key?: string | null; permissions?: string[] } | null | undefined
+): boolean {
+  if (!session) return false;
+  const role = (session.role_key || "").toUpperCase();
+  if (CONTENT_HUB_ROLES.includes(role)) return true;
+  return hasPermission(session.permissions, "tasks:manage");
+}

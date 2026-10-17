@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, canAccessContentHub } from "@/lib/permissions";
 import { resolveDataScope, type DataScope } from "@/lib/scope";
 import { clampPage, clampPageSize } from "@/lib/pagination";
 import { buildTaskFilterSql, hasActiveTaskFilter, EMPTY_QUICK_COUNTS, type QuickCounts, type TaskFilterState } from "@/lib/taskFilters";
@@ -353,18 +353,7 @@ function isContentEditor(session: {
   role_key?: string | null;
   permissions?: string[];
 }): boolean {
-  const role = (session.role_key || "").toUpperCase();
-  if (
-    role === "SUPER_ADMIN" ||
-    role === "PROJECT_MANAGER" ||
-    role === "ADMIN" ||
-    role === "PM" ||
-    role === "WRITER" ||
-    role === "CONTENT_WRITER"
-  ) {
-    return true;
-  }
-  return hasPermission(session.permissions, PERM_TASKS_MANAGE);
+  return canAccessContentHub(session);
 }
 
 /** Notification deep-links Ã¢â‚¬â€ unified Project Pipeline with the TaskModal auto-opened. */

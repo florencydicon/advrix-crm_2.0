@@ -27,7 +27,7 @@ import {
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
 import { getUpcomingDeadlineAlertsAction } from "@/lib/actions/pipeline";
-import { hasPermission, hasAnyPermission } from "@/lib/permissions";
+import { hasPermission, hasAnyPermission, canAccessContentHub } from "@/lib/permissions";
 import type { SessionPayload } from "@/lib/session";
 import type { Notification } from "@/lib/types";
 import { createEtagFetcher } from "@/lib/clientFetch";
@@ -42,6 +42,7 @@ interface NavItem {
   roles?: string[];
   permission?: string;
   anyPermission?: string[];
+  predicate?: (session: SessionPayload) => boolean;
 }
 
 const NAV: NavItem[] = [
@@ -52,7 +53,7 @@ const NAV: NavItem[] = [
   { href: "/projects", label: "Project Pipeline", icon: FolderKanban, permission: "projects:view" },
   { href: "/leads", label: "Leads", icon: Target, permission: "leads:view" },
   { href: "/clients", label: "Clients", icon: Users, permission: "projects:view" },
-  { href: "/content", label: "Content", icon: FileText, anyPermission: ["tasks:execute", "tasks:manage"] },
+  { href: "/content", label: "Content", icon: FileText, predicate: canAccessContentHub },
   { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
   // Super Admin only — usage/bandwidth analytics expose infra-wide numbers,
   // so this deliberately uses `roles` (not `permission`, which is checked first).
@@ -389,6 +390,7 @@ export default function AppShell({
   const items = NAV.filter((n) => {
     if (n.permission) return hasPermission(session.permissions, n.permission);
     if (n.anyPermission) return hasAnyPermission(session.permissions, n.anyPermission);
+    if (n.predicate) return n.predicate(session);
     if (n.roles) return n.roles.includes(session.role_key);
     return true;
   });

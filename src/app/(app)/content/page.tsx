@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { hasAnyPermission, hasPermission } from "@/lib/permissions";
+import { canAccessContentHub, hasPermission } from "@/lib/permissions";
 import { getWriterBoard } from "@/lib/data";
 import ContentBoard from "@/components/ContentBoard";
 
@@ -9,20 +9,18 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"];
+const WRITER_ROLES = ["WRITER", "CONTENT_WRITER"];
 
 export default async function ContentPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  const perms = session.permissions || [];
-  const allowed =
-    hasAnyPermission(perms, ["tasks:execute", "tasks:manage", "admin:*"]) ||
-    MANAGER_ROLES.includes((session.role_key || "").toUpperCase());
-  if (!allowed) redirect("/dashboard");
+  if (!canAccessContentHub(session)) redirect("/dashboard");
 
+  // Writers see only their own subtasks; managers (and anyone granted
+  // tasks:manage) see the whole team's board.
+  const role = (session.role_key || "").toUpperCase();
   const manageAll =
-    hasPermission(perms, "tasks:manage") ||
-    MANAGER_ROLES.includes((session.role_key || "").toUpperCase());
+    hasPermission(session.permissions, "tasks:manage") || !WRITER_ROLES.includes(role);
   const board = await getWriterBoard(session.sub, manageAll).catch(() => []);
 
   return (
