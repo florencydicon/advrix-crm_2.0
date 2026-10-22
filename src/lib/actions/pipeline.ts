@@ -1446,7 +1446,8 @@ export async function sendBackWithClientFeedbackAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const session = await requireAuth();
   if (!session) return { ok: false, error: "Not authorized." };
-  // Mandatory flow: SMM (or PM/Super Admin) sends client feedback back to previous stage (Designer/Video Editor)
+  // Client feedback (SMM / PM / Super Admin) keeps the task on its CURRENT
+  // stage — the current assignee reworks it; it does not bounce back a stage.
   const roleKey = (session.role_key || "").toUpperCase();
   const allowed = isGatekeeper(session) || roleKey === "SMM" || roleKey === "VIDEOGRAPHER" || roleKey === "DESIGNER" || roleKey === "EDITOR";
   if (!allowed) return { ok: false, error: "Only SMM / PM / Admin can send client feedback." };
@@ -1462,47 +1463,22 @@ export async function sendBackWithClientFeedbackAction(
   const share = typed || "Client requested rework.";
   const newRemarks = `${signature}: ${share}` + (existing ? `\n\n${existing}` : "");
 
-  // Move task back to previous stage (Designer/Video Editor) Ã¢â‚¬â€ mandatory AÃ¢â€ ÂB
-  const trow = await query<{ project_id: string; current_step: number }>(`SELECT project_id, current_step FROM tasks WHERE id = $1`, [taskId]);
-  const seq = await query<{ user_id: string; position: number }>(`SELECT user_id, position FROM task_assignees WHERE task_id = $1 ORDER BY position ASC, added_at ASC`, [taskId]);
-  let targetIdx = (trow[0]?.current_step ?? 0) - 1;
-  if (targetIdx < 0) targetIdx = 0;
-  const target = seq[targetIdx];
-  if (target?.user_id) {
-    const roleKeyTarget = await query<{ key: string }>(`SELECT r.key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`, [target.user_id]).then((r) => r[0]?.key || null);
-    await query(
-      `UPDATE tasks SET remarks = $1, client_feedback = $2, remarks_edited_by = $3, remarks_edited_at = now(),
-       status = 'client_feedback', reviewed_at = now(),
-       current_step = $5, assigned_to = $6, role_key = $7
-       WHERE id = $4`,
-      [newRemarks, share, session.sub, taskId, targetIdx, target.user_id, roleKeyTarget]
-    );
-    // Notify the designer/video editor who is now responsible
-    if (target.user_id !== session.sub) {
-      await createNotification({
-        userId: target.user_id,
-        type: "task",
-        title: "Client feedback Ã¢â‚¬â€ rework needed",
-        body: `${session.name} sent client feedback on "${task.title || "your task"}" Ã¢â‚¬â€ you are up for redesign.`,
-        link: taskDashboardLink(taskId),
-      });
-    }
-  } else {
-    await query(
-      `UPDATE tasks SET remarks = $1, client_feedback = $2, remarks_edited_by = $3, remarks_edited_at = now(),
-       status = 'client_feedback', reviewed_at = now()
-       WHERE id = $4`,
-      [newRemarks, share, session.sub, taskId]
-    );
-    if (task.assigned_to && task.assigned_to !== session.sub) {
-      await createNotification({
-        userId: task.assigned_to,
-        type: "task",
-        title: "Client feedback Ã¢â‚¬â€ rework needed",
-        body: `${session.name} added client feedback on "${task.title || "your task"}".`,
-        link: taskDashboardLink(taskId),
-      });
-    }
+  // Client feedback keeps the task on ITS CURRENT stage — the current
+  // assignee reworks it. It does NOT bounce back to an earlier stage.
+  await query(
+    `UPDATE tasks SET remarks = $1, client_feedback = $2, remarks_edited_by = $3, remarks_edited_at = now(),
+     status = 'client_feedback', reviewed_at = now()
+     WHERE id = $4`,
+    [newRemarks, share, session.sub, taskId]
+  );
+  if (task.assigned_to && task.assigned_to !== session.sub) {
+    await createNotification({
+      userId: task.assigned_to,
+      type: "task",
+      title: "Client feedback — rework needed",
+      body: `${session.name} added client feedback on "${task.title || "your task"}".`,
+      link: taskDashboardLink(taskId),
+    });
   }
   revalidate();
   return { ok: true };
