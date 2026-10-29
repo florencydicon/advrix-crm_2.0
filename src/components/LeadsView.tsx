@@ -13,6 +13,8 @@ import {
   CalendarClock,
   Target,
   ChevronDown,
+  Calendar,
+  X,
 } from "lucide-react";
 import {
   createLeadAction,
@@ -90,12 +92,16 @@ export default function LeadsView({
   leads,
   stats,
   roleKey,
-  dateFilter = "",
+  dateFrom = "",
+  dateTo = "",
+  dateField = "created_at",
 }: {
   leads: Lead[];
   stats: { total: number; newCount: number; followUpsDue: number; won: number; lost: number; pipelineValue: number; wonValue: number };
   roleKey: string;
-  dateFilter?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  dateField?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -105,12 +111,33 @@ export default function LeadsView({
   const [formModal, setFormModal] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterMode, setFilterMode] = useState<"single" | "range">("single");
+  const [filterDateFrom, setFilterDateFrom] = useState(dateFrom || "");
+  const [filterDateTo, setFilterDateTo] = useState(dateTo || "");
+  const [filterField, setFilterField] = useState<"created_at" | "next_follow_up">(
+    dateField === "next_follow_up" ? "next_follow_up" : "created_at"
+  );
 
-  function setDateFilter(value: string) {
+  const hasDateFilter = !!(filterDateFrom || filterDateTo);
+
+  function setUrlDateFilter(from: string, to: string, field: string) {
     const params = new URLSearchParams(window.location.search);
-    if (value === "all") params.delete("date");
-    else params.set("date", value);
+    if (from) params.set("from", from);
+    else params.delete("from");
+    if (to) params.set("to", to);
+    else params.delete("to");
+    if (field && field !== "created_at") params.set("dateField", field);
+    else params.delete("dateField");
     router.replace(`/leads?${params.toString()}`);
+  }
+
+  function clearDateFilter() {
+    setFilterDateFrom("");
+    setFilterDateTo("");
+    setFilterField("created_at");
+    setUrlDateFilter("", "", "created_at");
+    setFilterOpen(false);
   }
 
   const filtered = useMemo(() => {
@@ -257,46 +284,127 @@ export default function LeadsView({
           ))}
         </div>
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          {/* Date filter icon — opens calendar popup (single date or range, created / follow-up) */}
           <button
-            onClick={() => setDateFilter("all")}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-              dateFilter === ""
-                ? "bg-brand-300 text-night-950 shadow-sm"
-                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
-            }`}
+            type="button"
+            onClick={() => setFilterOpen(true)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${hasDateFilter ? "bg-brand-300 text-night-950 shadow-sm" : "text-slate-400 hover:text-brand-300 hover:bg-white/5"}`}
+            title="Filter by date"
+            aria-label="Filter leads by date"
           >
-            All <span className={`ml-1 px-1.5 rounded-full text-[10px] ${dateFilter === "" ? "bg-brand-200" : "bg-white/10 text-slate-400"}`}>{leads.length}</span>
+            <Calendar className="h-3.5 w-3.5" />{" "}
+            {hasDateFilter ? (
+              <span className="text-slate-700">Filtered</span>
+            ) : (
+              <span className="text-slate-500">Date</span>
+            )}
           </button>
-          <button
-            onClick={() => setDateFilter("today")}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-              dateFilter === "today"
-                ? "bg-brand-300 text-night-950 shadow-sm"
-                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
-            }`}
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setDateFilter("week")}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-              dateFilter === "week"
-                ? "bg-brand-300 text-night-950 shadow-sm"
-                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
-            }`}
-          >
-            This Week
-          </button>
-          <button
-            onClick={() => setDateFilter("last_month")}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-              dateFilter === "last_month"
-                ? "bg-brand-300 text-night-950 shadow-sm"
-                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
-            }`}
-          >
-            Last Month
-          </button>
+
+          {/* Date filter popup */}
+          {filterOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setFilterOpen(false)} />
+              <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden animate-fade-in">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+                  <p className="text-sm font-semibold text-white">Filter by date</p>
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen(false)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                    aria-label="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Mode</p>
+                    <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setFilterMode("single")}
+                        className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${filterMode === "single" ? "bg-brand-300/10 text-brand-300 ring-1 ring-brand-300/20" : "text-slate-400 hover:text-white"}`}
+                      >
+                        Single date
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFilterMode("range")}
+                        className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${filterMode === "range" ? "bg-brand-300/10 text-brand-300 ring-1 ring-brand-300/20" : "text-slate-400 hover:text-white"}`}
+                      >
+                        Date range
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Filter on</p>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <label className="cursor-pointer block rounded-lg border border-white/10 p-2 text-left transition-colors hover:bg-white/5">
+                        <input
+                          type="radio"
+                          name="leadDateField"
+                          checked={filterField === "created_at"}
+                          onChange={() => setFilterField("created_at")}
+                          className="mt-0.5 accent-emerald-400 shrink-0"
+                        />
+                        <span className="text-xs text-white">Created date</span>
+                      </label>
+                      <label className="cursor-pointer block rounded-lg border border-white/10 p-2 text-left transition-colors hover:bg-white/5">
+                        <input
+                          type="radio"
+                          name="leadDateField"
+                          checked={filterField === "next_follow_up"}
+                          onChange={() => setFilterField("next_follow_up")}
+                          className="mt-0.5 accent-emerald-400 shrink-0"
+                        />
+                        <span className="text-xs text-white">Follow-up date</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">From</p>
+                    <DatePicker
+                      name="leadDateFrom"
+                      value={filterDateFrom || undefined}
+                      onChange={setFilterDateFrom}
+                      placeholder="From…"
+                    />
+                    {filterMode === "range" && (
+                      <>
+                        <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">To</p>
+                        <DatePicker
+                          name="leadDateTo"
+                          value={filterDateTo || undefined}
+                          onChange={setFilterDateTo}
+                          placeholder="To…"
+                        />
+                      </>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={clearDateFilter}
+                      className="btn-ghost text-xs !py-1.5 text-slate-400 hover:text-white"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUrlDateFilter(filterDateFrom, filterDateTo, filterField);
+                        setFilterOpen(false);
+                      }}
+                      disabled={!hasDateFilter}
+                      className={`btn-primary text-xs !py-1.5 disabled:opacity-50`}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

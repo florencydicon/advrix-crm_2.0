@@ -1388,7 +1388,9 @@ export async function getLeavesForDateRange(startDate: string, endDate: string):
 export async function getLeads(
   ownerId: string | null,
   clientScopeUserId: string | null = null,
-  dateFilter: "today" | "week" | "last_month" | "" = ""
+  dateFrom?: string,
+  dateTo?: string,
+  dateField: "created_at" | "next_follow_up" = "created_at"
 ): Promise<Lead[]> {
   const conditions: string[] = [];
   const args: unknown[] = [];
@@ -1400,11 +1402,13 @@ export async function getLeads(
     args.push(clientScopeUserId);
     conditions.push(`l.converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
   }
-  if (dateFilter === "today") conditions.push(`l.created_at::date = CURRENT_DATE`);
-  else if (dateFilter === "week") conditions.push(`l.created_at::date >= CURRENT_DATE - INTERVAL '6 days'`);
-  else if (dateFilter === "last_month") {
-    conditions.push(`l.created_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'`);
-    conditions.push(`l.created_at < date_trunc('month', CURRENT_DATE)`);
+  if (dateFrom) {
+    args.push(dateFrom);
+    conditions.push(`l.${dateField}::date >= $${args.length}`);
+  }
+  if (dateTo) {
+    args.push(dateTo);
+    conditions.push(`l.${dateField}::date <= $${args.length}`);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await query<Lead & { active_task_count: number }>(
@@ -1430,7 +1434,9 @@ export async function getLeads(
 export async function getLeadStats(
   ownerId: string | null,
   clientScopeUserId: string | null = null,
-  dateFilter: "today" | "week" | "last_month" | "" = ""
+  dateFrom?: string,
+  dateTo?: string,
+  dateField: "created_at" | "next_follow_up" = "created_at"
 ): Promise<LeadStats> {
   const conditions: string[] = [];
   const args: unknown[] = [];
@@ -1442,11 +1448,13 @@ export async function getLeadStats(
     args.push(clientScopeUserId);
     conditions.push(`converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
   }
-  if (dateFilter === "today") conditions.push(`created_at::date = CURRENT_DATE`);
-  else if (dateFilter === "week") conditions.push(`created_at::date >= CURRENT_DATE - INTERVAL '6 days'`);
-  else if (dateFilter === "last_month") {
-    conditions.push(`created_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'`);
-    conditions.push(`created_at < date_trunc('month', CURRENT_DATE)`);
+  if (dateFrom) {
+    args.push(dateFrom);
+    conditions.push(`${dateField}::date >= $${args.length}`);
+  }
+  if (dateTo) {
+    args.push(dateTo);
+    conditions.push(`${dateField}::date <= $${args.length}`);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await query<{
