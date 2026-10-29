@@ -1387,7 +1387,8 @@ export async function getLeavesForDateRange(startDate: string, endDate: string):
 
 export async function getLeads(
   ownerId: string | null,
-  clientScopeUserId: string | null = null
+  clientScopeUserId: string | null = null,
+  dateFilter: "today" | "week" | "last_month" | "" = ""
 ): Promise<Lead[]> {
   const conditions: string[] = [];
   const args: unknown[] = [];
@@ -1398,6 +1399,12 @@ export async function getLeads(
   if (clientScopeUserId) {
     args.push(clientScopeUserId);
     conditions.push(`l.converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
+  }
+  if (dateFilter === "today") conditions.push(`l.created_at::date = CURRENT_DATE`);
+  else if (dateFilter === "week") conditions.push(`l.created_at::date >= CURRENT_DATE - INTERVAL '6 days'`);
+  else if (dateFilter === "last_month") {
+    conditions.push(`l.created_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'`);
+    conditions.push(`l.created_at < date_trunc('month', CURRENT_DATE)`);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await query<Lead & { active_task_count: number }>(
@@ -1422,7 +1429,8 @@ export async function getLeads(
 
 export async function getLeadStats(
   ownerId: string | null,
-  clientScopeUserId: string | null = null
+  clientScopeUserId: string | null = null,
+  dateFilter: "today" | "week" | "last_month" | "" = ""
 ): Promise<LeadStats> {
   const conditions: string[] = [];
   const args: unknown[] = [];
@@ -1433,6 +1441,12 @@ export async function getLeadStats(
   if (clientScopeUserId) {
     args.push(clientScopeUserId);
     conditions.push(`converted_client_id IN (SELECT id FROM clients WHERE assigned_pm_id = $${args.length})`);
+  }
+  if (dateFilter === "today") conditions.push(`created_at::date = CURRENT_DATE`);
+  else if (dateFilter === "week") conditions.push(`created_at::date >= CURRENT_DATE - INTERVAL '6 days'`);
+  else if (dateFilter === "last_month") {
+    conditions.push(`created_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'`);
+    conditions.push(`created_at < date_trunc('month', CURRENT_DATE)`);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await query<{

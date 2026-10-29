@@ -90,10 +90,12 @@ export default function LeadsView({
   leads,
   stats,
   roleKey,
+  dateFilter = "",
 }: {
   leads: Lead[];
   stats: { total: number; newCount: number; followUpsDue: number; won: number; lost: number; pipelineValue: number; wonValue: number };
   roleKey: string;
+  dateFilter?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -103,6 +105,13 @@ export default function LeadsView({
   const [formModal, setFormModal] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  function setDateFilter(value: string) {
+    const params = new URLSearchParams(window.location.search);
+    if (value === "all") params.delete("date");
+    else params.set("date", value);
+    router.replace(`/leads?${params.toString()}`);
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -246,6 +255,48 @@ export default function LeadsView({
               </span>
             </button>
           ))}
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          <button
+            onClick={() => setDateFilter("all")}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+              dateFilter === ""
+                ? "bg-brand-300 text-night-950 shadow-sm"
+                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
+            }`}
+          >
+            All <span className={`ml-1 px-1.5 rounded-full text-[10px] ${dateFilter === "" ? "bg-brand-200" : "bg-white/10 text-slate-400"}`}>{leads.length}</span>
+          </button>
+          <button
+            onClick={() => setDateFilter("today")}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+              dateFilter === "today"
+                ? "bg-brand-300 text-night-950 shadow-sm"
+                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
+            }`}
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setDateFilter("week")}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+              dateFilter === "week"
+                ? "bg-brand-300 text-night-950 shadow-sm"
+                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
+            }`}
+          >
+            This Week
+          </button>
+          <button
+            onClick={() => setDateFilter("last_month")}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+              dateFilter === "last_month"
+                ? "bg-brand-300 text-night-950 shadow-sm"
+                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
+            }`}
+          >
+            Last Month
+          </button>
         </div>
       </div>
 
