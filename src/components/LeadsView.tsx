@@ -307,7 +307,7 @@ export default function LeadsView({
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setFilterOpen(false)} />
               <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-night-850 shadow-2xl shadow-black/50 ring-1 ring-white/10 overflow-hidden animate-fade-in">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
                   <p className="text-sm font-semibold text-white">Filter by date</p>
                   <button
                     type="button"
@@ -318,72 +318,83 @@ export default function LeadsView({
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="p-4 space-y-4">
+                <div className="p-5 space-y-5">
+                  {/* Mode */}
                   <div className="space-y-2">
-                    <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Mode</p>
-                    <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-0.5">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Mode</p>
+                    <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
                       <button
                         type="button"
                         onClick={() => setFilterMode("single")}
-                        className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${filterMode === "single" ? "bg-brand-300/10 text-brand-300 ring-1 ring-brand-300/20" : "text-slate-400 hover:text-white"}`}
+                        className={`flex-1 rounded-lg py-2 text-xs font-medium transition-colors ${filterMode === "single" ? "bg-brand-300 text-night-950 shadow-sm" : "text-slate-400 hover:text-brand-300"}`}
                       >
                         Single date
                       </button>
                       <button
                         type="button"
                         onClick={() => setFilterMode("range")}
-                        className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${filterMode === "range" ? "bg-brand-300/10 text-brand-300 ring-1 ring-brand-300/20" : "text-slate-400 hover:text-white"}`}
+                        className={`flex-1 rounded-lg py-2 text-xs font-medium transition-colors ${filterMode === "range" ? "bg-brand-300 text-night-950 shadow-sm" : "text-slate-400 hover:text-brand-300"}`}
                       >
                         Date range
                       </button>
                     </div>
                   </div>
+
+                  {/* Filter on */}
                   <div className="space-y-2">
-                    <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Filter on</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Filter on</p>
                     <div className="grid sm:grid-cols-2 gap-2">
-                      <label className="cursor-pointer block rounded-lg border border-white/10 p-2 text-left transition-colors hover:bg-white/5">
+                      <label className="cursor-pointer block rounded-lg border border-white/10 p-3 text-left transition-colors hover:bg-white/5 group">
                         <input
                           type="radio"
                           name="leadDateField"
                           checked={filterField === "created_at"}
                           onChange={() => setFilterField("created_at")}
-                          className="mt-0.5 accent-emerald-400 shrink-0"
+                          className="mt-0.5 accent-brand-300 shrink-0"
                         />
-                        <span className="text-xs text-white">Created date</span>
+                        <span className="text-xs text-white group-hover:text-brand-300 transition-colors">Created date</span>
                       </label>
-                      <label className="cursor-pointer block rounded-lg border border-white/10 p-2 text-left transition-colors hover:bg-white/5">
+                      <label className="cursor-pointer block rounded-lg border border-white/10 p-3 text-left transition-colors hover:bg-white/5 group">
                         <input
                           type="radio"
                           name="leadDateField"
                           checked={filterField === "next_follow_up"}
                           onChange={() => setFilterField("next_follow_up")}
-                          className="mt-0.5 accent-emerald-400 shrink-0"
+                          className="mt-0.5 accent-brand-300 shrink-0"
                         />
-                        <span className="text-xs text-white">Follow-up date</span>
+                        <span className="text-xs text-white group-hover:text-brand-300 transition-colors">Follow-up date</span>
                       </label>
                     </div>
                   </div>
+
+                  {/* Date inputs */}
                   <div className="space-y-2">
-                    <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">From</p>
-                    <DatePicker
-                      name="leadDateFrom"
-                      value={filterDateFrom || undefined}
-                      onChange={setFilterDateFrom}
-                      placeholder="From…"
-                    />
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">From</p>
+                    <div className="relative">
+                      <DatePicker
+                        name="leadDateFrom"
+                        value={filterDateFrom || undefined}
+                        onChange={setFilterDateFrom}
+                        placeholder="From…"
+                      />
+                    </div>
                     {filterMode === "range" && (
                       <>
-                        <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">To</p>
-                        <DatePicker
-                          name="leadDateTo"
-                          value={filterDateTo || undefined}
-                          onChange={setFilterDateTo}
-                          placeholder="To…"
-                        />
+                        <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">To</p>
+                        <div className="relative">
+                          <DatePicker
+                            name="leadDateTo"
+                            value={filterDateTo || undefined}
+                            onChange={setFilterDateTo}
+                            placeholder="To…"
+                          />
+                        </div>
                       </>
                     )}
                   </div>
-                  <div className="flex justify-end gap-2 pt-1">
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-2 pt-1 border-t border-white/10">
                     <button
                       type="button"
                       onClick={clearDateFilter}
@@ -394,7 +405,6 @@ export default function LeadsView({
                     <button
                       type="button"
                       onClick={() => {
-                        // Single date = exact match (from == to); range = from → to.
                         const from = filterMode === "single" ? filterDateFrom : filterDateFrom;
                         const to = filterMode === "single" ? filterDateFrom : filterDateTo;
                         setUrlDateFilter(from, to, filterField);
