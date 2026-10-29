@@ -253,52 +253,54 @@ export default function LeadsView({
             className="input !pl-8 !py-1.5 text-xs"
           />
         </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-          <button
-            onClick={() => setStatusFilter("")}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-              statusFilter === ""
-                ? "bg-brand-300 text-night-950 shadow-sm"
-                : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
-            }`}
-          >
-            All <span className={`ml-1 px-1.5 rounded-full text-[10px] ${statusFilter === "" ? "bg-brand-200" : "bg-white/10 text-slate-400"}`}>{leads.length}</span>
-          </button>
-          {tabCounts.map((tab) => (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 shrink-0">
             <button
-              key={tab.key}
-              onClick={() => setStatusFilter(statusFilter === tab.key ? "" : tab.key)}
+              onClick={() => setStatusFilter("")}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-                statusFilter === tab.key
+                statusFilter === ""
                   ? "bg-brand-300 text-night-950 shadow-sm"
                   : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
               }`}
             >
-              {tab.label}
-              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
-                statusFilter === tab.key ? "bg-brand-200 text-night-950" : "bg-white/10 text-slate-400"
-              }`}>
-                {tab.count}
-              </span>
+              All <span className={`ml-1 px-1.5 rounded-full text-[10px] ${statusFilter === "" ? "bg-brand-200" : "bg-white/10 text-slate-400"}`}>{leads.length}</span>
             </button>
-          ))}
+            {tabCounts.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(statusFilter === tab.key ? "" : tab.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+                  statusFilter === tab.key
+                    ? "bg-brand-300 text-night-950 shadow-sm"
+                    : "bg-white/5 border border-white/10 text-slate-300 hover:border-brand-300/50 hover:text-brand-200"
+                }`}
+              >
+                {tab.label}
+                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
+                  statusFilter === tab.key ? "bg-brand-200 text-night-950" : "bg-white/10 text-slate-400"
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="shrink-0">
+            <button
+              type="button"
+              onClick={() => setFilterOpen(true)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${hasDateFilter ? "bg-brand-300 text-night-950 shadow-sm" : "text-slate-400 hover:text-brand-300 hover:bg-white/5"}`}
+              title="Filter by date"
+              aria-label="Filter leads by date"
+            >
+              <Calendar className="h-3.5 w-3.5" />{" "}
+              {hasDateFilter ? (
+                <span className="text-slate-700">Filtered</span>
+              ) : (
+                <span className="text-slate-500">Date</span>
+              )}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-          {/* Date filter icon — opens calendar popup (single date or range, created / follow-up) */}
-          <button
-            type="button"
-            onClick={() => setFilterOpen(true)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${hasDateFilter ? "bg-brand-300 text-night-950 shadow-sm" : "text-slate-400 hover:text-brand-300 hover:bg-white/5"}`}
-            title="Filter by date"
-            aria-label="Filter leads by date"
-          >
-            <Calendar className="h-3.5 w-3.5" />{" "}
-            {hasDateFilter ? (
-              <span className="text-slate-700">Filtered</span>
-            ) : (
-              <span className="text-slate-500">Date</span>
-            )}
-          </button>
 
           {/* Date filter popup */}
           {filterOpen && (
@@ -392,7 +394,10 @@ export default function LeadsView({
                     <button
                       type="button"
                       onClick={() => {
-                        setUrlDateFilter(filterDateFrom, filterDateTo, filterField);
+                        // Single date = exact match (from == to); range = from → to.
+                        const from = filterMode === "single" ? filterDateFrom : filterDateFrom;
+                        const to = filterMode === "single" ? filterDateFrom : filterDateTo;
+                        setUrlDateFilter(from, to, filterField);
                         setFilterOpen(false);
                       }}
                       disabled={!hasDateFilter}
@@ -406,7 +411,6 @@ export default function LeadsView({
             </div>
           )}
         </div>
-      </div>
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -761,8 +765,8 @@ function LeadFormModal({
       <form action={onSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="label">Name *</label>
-            <input name="name" required defaultValue={editing?.name || ""} className="input" placeholder="Lead name" />
+            <label className="label">Name</label>
+            <input name="name" defaultValue={editing?.name || ""} className="input" placeholder="Lead name" />
           </div>
           <div>
             <label className="label">Company</label>
