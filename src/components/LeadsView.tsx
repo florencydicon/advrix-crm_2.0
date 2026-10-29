@@ -288,12 +288,16 @@ export default function LeadsView({
             <button
               type="button"
               onClick={() => setFilterOpen(true)}
-              className={`flex flex-col items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${hasDateFilter ? "bg-brand-300 text-night-950 shadow-sm" : "text-slate-400 hover:text-brand-300 hover:bg-white/5"}`}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+                hasDateFilter
+                  ? "bg-brand-300 text-night-950 shadow-sm"
+                  : "bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/15"
+              }`}
               title="Filter by date"
               aria-label="Filter leads by date"
             >
-              <Calendar className="h-5 w-5" />
-              <span>{hasDateFilter ? "Filtered" : "Date"}</span>
+              <Calendar className="h-4 w-4" />
+              {hasDateFilter ? "Filtered" : "Date"}
             </button>
           </div>
         </div>
