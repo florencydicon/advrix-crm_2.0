@@ -25,3 +25,18 @@ export async function transaction<T = void>(
   // the async callback pattern is supported at runtime. Cast to satisfy TS types.
   return (client.transaction as any)(fn) as Promise<T>;
 }
+
+/**
+ * Run a pre-built list of parameterised statements as ONE atomic transaction.
+ * All statements are submitted together over Neon's HTTP transaction API, so
+ * any failure rolls back the entire batch (important for Excel sync/import).
+ */
+export async function transactionQueries<T = any>(
+  statements: { text: string; params?: any[] }[]
+): Promise<T[][]> {
+  if (statements.length === 0) return [];
+  const client = getClient();
+  return (client.transaction as any)((txn: any) =>
+    statements.map((s) => txn(s.text, s.params || []))
+  ) as Promise<T[][]>;
+}

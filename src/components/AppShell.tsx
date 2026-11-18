@@ -23,6 +23,7 @@ import {
   FileText,
   ListTodo,
   Gauge,
+  FileSpreadsheet,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions/notifications";
@@ -58,6 +59,8 @@ const NAV: NavItem[] = [
   // Super Admin only — usage/bandwidth analytics expose infra-wide numbers,
   // so this deliberately uses `roles` (not `permission`, which is checked first).
   { href: "/usage", label: "Usage & Analytics", icon: Gauge, roles: ["SUPER_ADMIN"] },
+  // Super Admin only — full Excel backup + two-way sync of every business table.
+  { href: "/backup", label: "Data Backup", icon: FileSpreadsheet, roles: ["SUPER_ADMIN"] },
   {
     href: "/settings",
     label: "Settings",

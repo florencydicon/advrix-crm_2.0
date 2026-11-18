@@ -9,6 +9,7 @@ import type { RoleWithPerms } from "@/lib/actions/roles";
 import TeamView from "@/components/TeamView";
 import RolesManager from "@/components/RolesManager";
 import DataExportPanel from "@/components/DataExportPanel";
+import ExcelBackupPanel from "@/components/ExcelBackupPanel";
 import BackupPanel from "@/components/BackupPanel";
 import AttendanceSettingsPanel from "@/components/AttendanceSettingsPanel";
 import { Modal } from "@/components/ui";
@@ -162,6 +163,8 @@ export default function SettingsView({
           </div>
 
           <DataExportPanel />
+
+          {sessionRoleKey === "SUPER_ADMIN" && <ExcelBackupPanel />}
 
           {sessionRoleKey === "SUPER_ADMIN" && <BackupPanel />}
 
