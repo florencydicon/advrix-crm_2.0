@@ -5,6 +5,7 @@ import { Search, AlertTriangle } from "lucide-react";
 import { StatusBadge, EmptyState } from "@/components/ui";
 import { isOverdue } from "@/lib/deadlines";
 import type { MasterRow } from "@/lib/actions/masterboard";
+import { formatDateOnly } from "@/lib/utils";
 
 export default function SharedBoard({
   clientName,
@@ -111,7 +112,7 @@ export default function SharedBoard({
                     <StatusBadge status={r.status} />
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-400 tabular-nums whitespace-nowrap">
-                    {r.created_at ? r.created_at.slice(0, 10) : "—"}
+                    {formatDateOnly(r.created_at)}
                   </td>
                   <td className="px-4 py-3 text-sm tabular-nums whitespace-nowrap">
                     {overdue ? (

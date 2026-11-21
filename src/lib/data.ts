@@ -340,6 +340,7 @@ const TASK_SELECT = `
          u.full_name AS assignee_name, r.label AS role_label,
          t.due_date::text AS due_date,
          t.brief_approved_at::text AS brief_approved_at,
+         t.created_at::text AS created_at,
          t.current_step,
          COALESCE((
            SELECT json_agg(json_build_object(

@@ -81,7 +81,7 @@ function leadToCsv(leads: Lead[]): string {
     String(l.deal_value ?? 0),
     l.next_follow_up ? isoDate(l.next_follow_up) : "",
     (l.notes || "").replace(/\r?\n/g, " "),
-    l.created_at ? l.created_at.slice(0, 10) : "",
+    isoDate(l.created_at),
   ]);
   return [header, ...rows]
     .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))

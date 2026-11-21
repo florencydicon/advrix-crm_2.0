@@ -25,6 +25,7 @@ import {
   setPipelineTaskContentStatusAction,
 } from "@/lib/actions/pipeline";
 import { useToast } from "@/components/Toast";
+import { formatDateOnly } from "@/lib/utils";
 
 const FEEDBACK_STATUSES = ["needs_improvement", "client_feedback"];
 
@@ -366,7 +367,7 @@ export default function ContentBoard({
                                           <CalendarDays className="h-3 w-3" /> {fmtDue(t.due_date)}
                                         </span>
                                         <span className="text-[10px] text-slate-500">
-                                          Created {t.created_at ? t.created_at.slice(0, 10) : "—"}
+                                          Created {formatDateOnly(t.created_at)}
                                         </span>
                                         {manageAll && t.assignee_name && (
                                           <span className="text-[10px] text-slate-500 truncate max-w-[120px]">{t.assignee_name}</span>

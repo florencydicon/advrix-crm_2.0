@@ -10,6 +10,7 @@ import { StatusBadge, PriorityBadge } from "@/components/ui";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { useToast } from "@/components/Toast";
+import { formatDateOnly } from "@/lib/utils";
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]?.toUpperCase()||"").join("");
@@ -464,7 +465,7 @@ export default function ClientDetailModal({
                           </div>
                           <div className="flex items-center gap-1.5 mt-1 ml-7">
                             <PriorityBadge priority={t.priority} />
-                            <span className="text-[11px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
+                            <span className="text-[11px] text-slate-500">Created {formatDateOnly(t.created_at)}</span>
                             {t.due_date && <span className="text-[11px] text-slate-500">Due {t.due_date.slice(0, 10)}</span>}
                           </div>
                         </div>
@@ -641,7 +642,7 @@ export default function ClientDetailModal({
                             <div className="flex items-center gap-1.5 mt-1.5">
                               <StatusBadge status={t.status} />
                               <PriorityBadge priority={t.priority} />
-                              <span className="text-[11px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
+                              <span className="text-[11px] text-slate-500">Created {formatDateOnly(t.created_at)}</span>
                               {t.due_date && <span className="ml-auto text-[11px] text-slate-500">{t.due_date.slice(0,10)}</span>}
                             </div>
                           </button>

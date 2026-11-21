@@ -13,7 +13,7 @@ import Pagination, { clampPageSize } from "@/components/Pagination";
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
 import { isOverdue } from "@/lib/deadlines";
-import { formatClientName } from "@/lib/utils";
+import { formatClientName, formatDateOnly } from "@/lib/utils";
 import dynamic from "next/dynamic";
 // Lazy: the task editor modal is only needed once a user opens it.
 const TaskModal = dynamic(() => import("@/components/TaskModalFull"), { ssr: false });
@@ -117,7 +117,7 @@ const ActiveDesktopRow = memo(function ActiveDesktopRow({
         <PriorityBadge priority={t.priority} />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-400">
-        {t.created_at ? t.created_at.slice(0, 10) : "—"}
+        {formatDateOnly(t.created_at)}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className={`text-xs tabular-nums ${overdue ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
@@ -179,7 +179,7 @@ const HistoryDesktopRow = memo(function HistoryDesktopRow({
         <PriorityBadge priority={t.priority} />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-400">
-        {t.created_at ? t.created_at.slice(0, 10) : "—"}
+        {formatDateOnly(t.created_at)}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className="text-xs tabular-nums text-slate-400">
@@ -240,7 +240,7 @@ const ActiveMobileCard = memo(function ActiveMobileCard({
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
         <StatusBadge status={t.status} />
         <PriorityBadge priority={t.priority} />
-        <span className="text-[10px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
+        <span className="text-[10px] text-slate-500">Created {formatDateOnly(t.created_at)}</span>
         <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500">
           {taskTypeLabel(t.group_key)}
         </span>
@@ -291,7 +291,7 @@ const HistoryMobileCard = memo(function HistoryMobileCard({
       </p>
       <div className="flex flex-wrap items-center gap-2 mt-2">
         <PriorityBadge priority={t.priority} />
-        <span className="text-[11px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
+        <span className="text-[11px] text-slate-500">Created {formatDateOnly(t.created_at)}</span>
         <span className="ml-auto text-[11px] text-slate-500">
           Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
         </span>
