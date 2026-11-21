@@ -17,9 +17,8 @@ import {
   FolderKanban,
 } from "lucide-react";
 import type { Task, UserRow } from "@/lib/types";
-import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
-import { useAdvancedFilters, AdvancedFilterBar, QuickFilterChips, taskStageValues, type QuickKind } from "@/components/AdvancedFilterBar";
+import { useAdvancedFilters, AdvancedFilterBar, QuickFilterChips, taskStageValues, taskStageSearchValues, type QuickKind } from "@/components/AdvancedFilterBar";
 import type { TaskFilterState } from "@/lib/taskFilters";
 import Pagination, { clampPageSize, type PageSize } from "@/components/Pagination";
 import { isOverdue } from "@/lib/deadlines";
@@ -29,7 +28,7 @@ import {
   bulkAssignPipelineTeamAction,
   bulkCompletePipelineTasksAction,
   bulkDeletePipelineTasksAction,
-  bulkSetPipelineStatusAction,
+  bulkSetMyTaskStatusAction,
   bulkSetPipelineStageAction,
   bulkSetPipelineDeadlineAction,
   bulkMoveBackPipelineTasksAction,
@@ -68,6 +67,12 @@ function fmtDateTime(v?: string | null) {
 }
 
 const clientName = (t: Task) => t.client_company || t.client_name || "";
+
+// Employee bulk status — only the next legal step, never an arbitrary jump.
+const MY_STATUS_OPTIONS = [
+  { value: "in_progress", label: "Start Task · In Process" },
+  { value: "submitted", label: "Submit for Review" },
+];
 
 function stageLabel(task: Task) {
   if (task.status === "completed") return "Completed";
@@ -178,6 +183,7 @@ const PipelineActiveRow = memo(function PipelineActiveRow({
       </td>
       <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
       <td className="px-4 py-3"><PriorityBadge priority={t.priority} /></td>
+      <td className="px-4 py-3 text-xs whitespace-nowrap text-slate-400">{fmtDate(t.created_at)}</td>
       <td className={`px-4 py-3 text-xs whitespace-nowrap ${overdue ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
         {overdue && <AlertTriangle className="h-3.5 w-3.5 inline-block mr-1 -mt-0.5 text-rose-400" />}
         {fmtDate(t.due_date)}
@@ -223,6 +229,7 @@ const PipelineHistoryRow = memo(function PipelineHistoryRow({
         </span>
       </td>
       <td className="px-4 py-3"><StatusBadge status="completed" /></td>
+      <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDate(t.created_at)}</td>
       <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDateTime(t.completed_at)}</td>
       {canReopen && (
         <td className="px-4 py-3 text-right">
@@ -330,8 +337,9 @@ const PipelineActiveMobileCard = memo(function PipelineActiveMobileCard({
           {fmtDate(t.due_date)}
         </span>
       </div>
-      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
-        <span className="text-slate-400">Stage · <span className="text-brand-300">{stageLabel(t)}</span></span>
+      <div className="flex items-center justify-between gap-2 mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
+        <span className="text-slate-400 truncate">Stage · <span className="text-brand-300">{stageLabel(t)}</span></span>
+        <span className="text-slate-500 whitespace-nowrap">Created · {fmtDate(t.created_at)}</span>
       </div>
     </div>
   );
@@ -369,8 +377,9 @@ const PipelineHistoryMobileCard = memo(function PipelineHistoryMobileCard({
         <DeadlineBadge task={t} />
         <PriorityBadge priority={t.priority} />
       </div>
-      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mt-2.5 pt-2 border-t border-white/[0.06] text-xs">
         <span className="text-slate-400">By <span className="text-slate-200">{t.assignee_name || "—"}</span></span>
+        <span className="text-slate-500">Created · {fmtDate(t.created_at)}</span>
         <span className="text-slate-500">{fmtDateTime(t.completed_at)}</span>
       </div>
     </div>
@@ -461,7 +470,7 @@ export default function ProjectPipeline({
         clientName(t),
         t.project_name || "",
         t.title || "",
-        taskStageValues(t).join(" "),
+        taskStageSearchValues(t).join(" "),
         t.status || "",
         STATUS_META[t.status]?.label || "",
         t.priority || "",
@@ -661,6 +670,9 @@ export default function ProjectPipeline({
     ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"].includes(
       (board.roleKey || "").toUpperCase()
     );
+  // Every employee with tasks:execute can multi-select their own active tasks
+  // and bulk-advance them (Start / Submit for Review).
+  const canSelectTasks = board.canExecute || isManager;
   // Stage bulk change — only PM and Super Admin (as requested)
   const canBulkStage = ["SUPER_ADMIN", "PROJECT_MANAGER", "PM"].includes(
     (board.roleKey || "").toUpperCase()
@@ -755,6 +767,20 @@ export default function ProjectPipeline({
     await reload();
   }, [reload, notify]);
 
+  // Employee bulk status — per-task ownership + legal transitions enforced server-side.
+  const bulkMyStatus = async (status: string) => {
+    if (status !== "in_progress" && status !== "submitted") return;
+    const res = await bulkSetMyTaskStatusAction(selected, status);
+    if (!res.ok) { notify(res.error || "Bulk status change failed."); return; }
+    const skipped = res.skipped || 0;
+    notify(
+      `Updated ${res.count || 0} task${res.count === 1 ? "" : "s"}.` +
+        (skipped ? ` ${skipped} skipped (not yours or not at this step).` : "")
+    );
+    setSelected([]);
+    await reload();
+  };
+
   // Only the members actually assigned to the selected tasks are offered as
   // move targets (stage forward AND move back) — never the whole team.
   const stageCandidates = useMemo(() => {
@@ -768,11 +794,6 @@ export default function ProjectPipeline({
     }
     return [...seen.values()];
   }, [selected, allTaskRows]);
-
-  const bulkStatusOptions = TASK_STATUS_FLOW.map((s) => ({
-    value: s,
-    label: STATUS_META[s]?.label || s,
-  }));
 
   const sortedActive = useMemo(
     () =>
@@ -853,7 +874,7 @@ export default function ProjectPipeline({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/10 bg-white/[0.03]">
-              {isManager && (
+              {canSelectTasks && (
                 <th className="px-3 py-3 w-10">
                   <input
                     type="checkbox"
@@ -877,6 +898,7 @@ export default function ProjectPipeline({
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Task</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Created</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Deadline</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Stage</th>
             </tr>
@@ -886,7 +908,7 @@ export default function ProjectPipeline({
               <PipelineActiveRow
                 key={t.id}
                 t={t}
-                isManager={isManager}
+                isManager={canSelectTasks}
                 isSelected={selected.includes(t.id)}
                 onOpen={openActive}
                 onToggleSelect={toggleSelectId}
@@ -910,6 +932,7 @@ export default function ProjectPipeline({
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Client</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Completed By</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Created</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date &amp; Time</th>
               {board.canReopen && (
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Re-open</th>
@@ -945,7 +968,7 @@ export default function ProjectPipeline({
         <PipelineActiveMobileCard
           key={t.id}
           t={t}
-          isManager={isManager}
+          isManager={canSelectTasks}
           isSelected={selected.includes(t.id)}
           onOpen={openActive}
           onToggleSelect={toggleSelectId}
@@ -1092,6 +1115,7 @@ export default function ProjectPipeline({
                     <span className="w-px h-4 bg-white/10 shrink-0" />
                     <PriorityBadge priority={t.priority} />
                     <StatusBadge status={t.status} />
+                    <span className="text-xs text-slate-500 whitespace-nowrap">Created · {fmtDate(t.created_at)}</span>
                     <span className={`ml-auto inline-flex items-center gap-1 text-xs whitespace-nowrap ${isOverdue(t) ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
                       {isOverdue(t) ? (
                         <>
@@ -1318,21 +1342,21 @@ export default function ProjectPipeline({
             </div>
           ) : (
             <>
-              {isManager && view === "list" && (
+              {canSelectTasks && view === "list" && (
                 <div className="mb-2">
                   <BulkActionBar
                     selectedCount={selected.length}
                     team={team}
-                    canAssign
-                    canDelete
+                    canAssign={isManager}
+                    canDelete={isManager}
                     canStage={canBulkStage}
                     canDeadline={isManager}
                     canBulkEdit={false}
                     canComplete={canBulkStage}
-                    statusOptions={[]}
+                    statusOptions={MY_STATUS_OPTIONS}
                     onAssign={bulkAssign}
                     onDelete={bulkDelete}
-                    onStatus={async () => {}}
+                    onStatus={bulkMyStatus}
                     onComplete={bulkComplete}
                     onStage={bulkStage}
                     onDeadline={bulkDeadline}

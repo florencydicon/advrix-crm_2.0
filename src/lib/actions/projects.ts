@@ -386,8 +386,8 @@ export async function getProjectEditDataAction(projectId: string) {
   );
   // Per-subtask snapshot so the edit form can pre-fill exact titles (by step
   // index, never by list position) and show number / due date / priority.
-  const editTasks = await query<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null }>(
-    `SELECT id, title, step_key, status, priority, due_date::text AS due_date FROM tasks
+  const editTasks = await query<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null; created_at: string }>(
+    `SELECT id, title, step_key, status, priority, due_date::text AS due_date, created_at::text AS created_at FROM tasks
      WHERE project_id = $1 ORDER BY created_at ASC`,
     [projectId]
   );

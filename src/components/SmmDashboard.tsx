@@ -8,7 +8,7 @@ import type { TaskFacets } from "@/lib/data";
 import { EMPTY_QUICK_COUNTS, type QuickCounts } from "@/lib/taskFilters";
 import { TASK_STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, PriorityBadge, STATUS_ORDER, STATUS_META, PRIORITY_META, DeadlineBadge } from "@/components/ui";
-import { useAdvancedFilters, AdvancedFilterBar, QuickFilterChips, taskStageValues, type QuickKind } from "@/components/AdvancedFilterBar";
+import { useAdvancedFilters, AdvancedFilterBar, QuickFilterChips, taskStageValues, taskStageSearchValues, type QuickKind } from "@/components/AdvancedFilterBar";
 import Pagination, { clampPageSize } from "@/components/Pagination";
 import { useSilentPoll } from "@/lib/useSilentPoll";
 import { createEtagFetcher } from "@/lib/clientFetch";
@@ -22,7 +22,7 @@ import { useToast } from "@/components/Toast";
 import {
   bulkAssignPipelineTeamAction,
   bulkDeletePipelineTasksAction,
-  bulkSetPipelineStatusAction,
+  bulkSetMyTaskStatusAction,
   startPipelineTaskAction,
 } from "@/lib/actions/pipeline";
 
@@ -35,6 +35,12 @@ function taskTypeLabel(groupKey: string | null): string {
   const base = groupKey.split("_d_")[0].split("_v_")[0];
   return map[base] || "Task";
 }
+
+// Employee bulk status — only the next legal step, never an arbitrary jump.
+const MY_STATUS_OPTIONS = [
+  { value: "in_progress", label: "Start Task · In Process" },
+  { value: "submitted", label: "Submit for Review" },
+];
 import { hasPermission } from "@/lib/permissions";
 
 function useIsMobile() {
@@ -115,6 +121,9 @@ const ActiveDesktopRow = memo(function ActiveDesktopRow({
       <td className="px-3 py-2.5 whitespace-nowrap">
         <PriorityBadge priority={t.priority} />
       </td>
+      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-400">
+        {t.created_at ? t.created_at.slice(0, 10) : "—"}
+      </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className={`text-xs tabular-nums ${overdue ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
           {overdue ? `${t.due_date?.slice(0, 10)} ⚠` : (t.due_date ? t.due_date.slice(0, 10) : "—")}
@@ -193,6 +202,7 @@ const ActiveMobileCard = memo(function ActiveMobileCard({
         </span>
         <StatusBadge status={t.status} />
         <PriorityBadge priority={t.priority} />
+        <span className="text-[10px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-white/[0.06]">
         <DeadlineBadge task={t} />
@@ -255,6 +265,9 @@ const HistoryDesktopRow = memo(function HistoryDesktopRow({
       <td className="px-3 py-2.5 whitespace-nowrap">
         <PriorityBadge priority={t.priority} />
       </td>
+      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-400">
+        {t.created_at ? t.created_at.slice(0, 10) : "—"}
+      </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className="text-xs tabular-nums text-slate-400">
           {t.due_date ? t.due_date.slice(0, 10) : "—"}
@@ -283,8 +296,9 @@ const HistoryMobileCard = memo(function HistoryMobileCard({
       <p className="text-xs text-slate-400 mt-0.5 truncate">
         {formatClientName(t.client_company, t.client_name)} · {t.project_name}
       </p>
-      <div className="flex items-center gap-2 mt-2">
+      <div className="flex flex-wrap items-center gap-2 mt-2">
         <PriorityBadge priority={t.priority} />
+        <span className="text-[11px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
         <span className="ml-auto text-[11px] text-slate-500">
           Due {t.due_date ? t.due_date.slice(0, 10) : "—"}
         </span>
@@ -363,6 +377,10 @@ export default function SmmDashboard({
   const isManager =
     canManageTeam ||
     ["SUPER_ADMIN", "ADMIN", "PROJECT_MANAGER", "PM"].includes((roleKey || "").toUpperCase());
+  // Every employee with tasks:execute can multi-select their own active tasks
+  // and bulk-advance them (Start / Submit for Review).
+  const canSelectTasks =
+    hasPermission(permissions, "tasks:execute") || isManager;
   const [selected, setSelected] = useState<string[]>([]);
 
   // Deep-link routing: ?taskId=xxx auto-opens that task's modal (from notifications).
@@ -447,7 +465,7 @@ export default function SmmDashboard({
         formatClientName(t.client_company, t.client_name),
         t.project_name || "",
         t.title || "",
-        taskStageValues(t).join(" "),
+        taskStageSearchValues(t).join(" "),
         t.status || "",
         STATUS_META[t.status]?.label || "",
         t.priority || "",
@@ -518,7 +536,23 @@ export default function SmmDashboard({
     await refresh();
   };
 
-  // bulkStatus removed - status is flow-driven, not manual (see 7th image requirement)
+  // Employee bulk status — per-task ownership + legal transitions enforced server-side.
+  const bulkMyStatus = async (status: string) => {
+    if (status !== "in_progress" && status !== "submitted") return;
+    const res = await bulkSetMyTaskStatusAction(selected, status);
+    if (!res.ok) {
+      toast(res.error || "Bulk status change failed.", "error");
+      return;
+    }
+    const skipped = res.skipped || 0;
+    toast(
+      `Updated ${res.count || 0} task${res.count === 1 ? "" : "s"}.` +
+        (skipped ? ` ${skipped} skipped (not yours or not at this step).` : ""),
+      skipped ? "info" : "success"
+    );
+    setSelected([]);
+    await refresh();
+  };
 
   // Stable callbacks so memoized rows skip re-rendering when only the array
   // identity changes (selection/filter interactions).
@@ -584,6 +618,7 @@ export default function SmmDashboard({
                     <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
                     <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
                     <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
+                    <th className="px-3 py-2.5 min-w-[120px] whitespace-nowrap">Created</th>
                     <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
                   </tr>
                 </thead>
@@ -613,16 +648,16 @@ export default function SmmDashboard({
             </div>
           ) : (
             <>
-              {isManager && (
+              {canSelectTasks && (
                 <BulkActionBar
                   selectedCount={selected.length}
                   team={team}
-                  canAssign
-                  canDelete
-                  statusOptions={[]}
+                  canAssign={isManager}
+                  canDelete={isManager}
+                  statusOptions={MY_STATUS_OPTIONS}
                   onAssign={bulkAssign}
                   onDelete={bulkDelete}
-                  onStatus={async () => {}}
+                  onStatus={bulkMyStatus}
                   onClear={() => setSelected([])}
                 />
               )}
@@ -631,7 +666,7 @@ export default function SmmDashboard({
                   <table className="w-full border-collapse min-w-[880px]">
                     <thead className="sticky top-0 z-10">
                       <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
-                        {isManager && (
+                        {canSelectTasks && (
                           <th className="px-3 py-2.5 w-10">
                             <input
                               type="checkbox"
@@ -656,6 +691,7 @@ export default function SmmDashboard({
                         <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Task Type</th>
                         <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
                         <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
+                        <th className="px-3 py-2.5 min-w-[120px] whitespace-nowrap">Created</th>
                         <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
                         <th className="px-3 py-2.5 w-16">Stage</th>
                         <th className="px-3 py-2.5 w-24 whitespace-nowrap">Action</th>
@@ -666,7 +702,7 @@ export default function SmmDashboard({
 <ActiveDesktopRow
                         key={t.id}
                         t={t}
-                        isManager={isManager}
+                        isManager={canSelectTasks}
                         isSelected={selected.includes(t.id)}
                         onOpen={openTaskById}
                         onToggleSelect={toggleSelectId}
@@ -682,7 +718,7 @@ export default function SmmDashboard({
                   <ActiveMobileCard
                     key={t.id}
                     t={t}
-                    isManager={isManager}
+                    isManager={canSelectTasks}
                     isSelected={selected.includes(t.id)}
                     onOpen={openTaskById}
                     onToggleSelect={toggleSelectId}

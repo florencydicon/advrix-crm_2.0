@@ -540,6 +540,7 @@ export default function AnalyticsDetailed({ data, date }: { data: DetailedAnalyt
                                             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 uppercase">Status</th>
                                             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 uppercase hidden sm:table-cell">Priority</th>
                                             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 uppercase">Assignee</th>
+                                            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 uppercase">Created</th>
                                             <th className="px-3 py-2 text-right text-xs font-semibold text-slate-400 uppercase">Due</th>
                                           </tr>
                                         </thead>
@@ -550,6 +551,7 @@ export default function AnalyticsDetailed({ data, date }: { data: DetailedAnalyt
                                               <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium border ${t.status === "completed" ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20" : t.status === "submitted" ? "bg-violet-500/10 text-violet-300 border-violet-500/20" : "bg-white/[0.06] text-slate-300 border-white/10"}`}>{statusLabel(t.status)}</span></td>
                                               <td className="px-3 py-2 text-xs hidden sm:table-cell"><span className={`rounded-full px-2 py-0.5 text-[11px] border ${t.priority === "urgent" ? "bg-rose-500/10 text-rose-300 border-rose-500/20" : t.priority === "high" ? "bg-orange-500/10 text-orange-300 border-orange-500/20" : "bg-white/5 text-slate-400 border-white/10"}`}>{t.priority}</span></td>
                                               <td className="px-3 py-2 text-xs text-slate-300 truncate max-w-[120px]">{t.assignee_name || <span className="text-slate-500">Unassigned</span>}</td>
+                                              <td className="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">{t.created_at ? new Date(t.created_at).toLocaleDateString("en-IN") : "—"}</td>
                                               <td className="px-3 py-2 text-xs text-right whitespace-nowrap text-slate-400">{t.due_date ? new Date(t.due_date).toLocaleDateString("en-IN") : "—"}</td>
                                             </tr>
                                           ))}

@@ -18,7 +18,7 @@ export interface TaskFilterState {
   clientId?: string;
   /** Project name. */
   project?: string;
-  /** Assignee / current stage name, or "Unassigned". */
+  /** Current stage holder name, or "Unassigned" / "Completed". */
   stage?: string;
   /** overdue | today | this_week | next_week */
   deadline?: string;
@@ -70,23 +70,21 @@ export function buildTaskFilterSql(f: TaskFilterState, startIndex: number): Buil
   }
 
   if (f.stage) {
-    // Mirrors taskStageValues(): the current holder plus every assignee, or
-    // "Unassigned" when the task has no assignee rows at all. The same value is
-    // bound once and reused via a CTE-free repeated placeholder.
-    const p1 = next();
-    const p2 = next();
-    params.push(f.stage, f.stage);
+    // Mirrors taskStageValues(): ONLY the current holder (assigned_to), or
+    // "Unassigned" / "Completed". Past/future assignees must NOT match here —
+    // the free-text search still covers the full assignee history separately.
+    const p = next();
+    params.push(f.stage);
     parts.push(
       `AND (
-         EXISTS (
-           SELECT 1 FROM task_assignees sfa
-           JOIN users sfu ON sfu.id = sfa.user_id
-           WHERE sfa.task_id = t.id AND sfu.full_name = ${p1}
-         )
-         OR (
-           ${p2} = 'Unassigned'
-           AND NOT EXISTS (SELECT 1 FROM task_assignees sfa2 WHERE sfa2.task_id = t.id)
-         )
+         (${p} NOT IN ('Unassigned', 'Completed')
+          AND t.status <> 'completed'
+          AND EXISTS (
+            SELECT 1 FROM users sfu
+            WHERE sfu.id = t.assigned_to AND sfu.full_name = ${p}
+          ))
+         OR (${p} = 'Unassigned' AND t.status <> 'completed' AND t.assigned_to IS NULL)
+         OR (${p} = 'Completed' AND t.status = 'completed')
        )`
     );
   }

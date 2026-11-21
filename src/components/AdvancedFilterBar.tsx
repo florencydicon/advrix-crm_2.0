@@ -45,7 +45,7 @@ export interface AdvancedFilterConfig<T> {
     value: (row: T) => string | null | undefined;
   };
   stage?: {
-    /** Candidate values that should match this row (stage holder + all assignees). */
+    /** Current stage holder value(s) that should match this row. */
     values: (row: T) => string[];
     /** Values to hide from the dropdown but still allow (e.g. "Unassigned"). */
     exclude?: string[];
@@ -179,17 +179,28 @@ function deadlineMatches(
 }
 
 /**
- * Stage/person filter candidates for a pipeline task: the current holder
- * plus every assignee. Completed tasks expose a single "Completed" value,
- * unassigned ones "Unassigned" (hide it via config.stage.exclude).
+ * Stage/person filter candidates for a pipeline task: ONLY the current stage
+ * holder. Completed tasks expose a single "Completed" value, unassigned ones
+ * "Unassigned" (hide it via config.stage.exclude). Past/future assignees must
+ * never match the Stage filter — they remain searchable via taskStageSearchValues().
  */
 export function taskStageValues(t: Task): string[] {
   if (t.status === "completed") return ["Completed"];
+  if (!t.assigned_to) return ["Unassigned"];
+  const current =
+    (t.assignees || []).find((a) => a.id === t.assigned_to)?.name?.trim() ||
+    t.assignee_name?.trim();
+  return current ? [current] : ["Unassigned"];
+}
+
+/** Free-text search still covers the full assignee history, not just Stage. */
+export function taskStageSearchValues(t: Task): string[] {
+  if (t.status === "completed") return ["Completed"];
   const seq = t.assignees || [];
   if (seq.length === 0) return ["Unassigned"];
+  const out: string[] = [];
   const idx = Math.min(t.current_step ?? 0, seq.length - 1);
   const current = seq[idx]?.name?.trim();
-  const out: string[] = [];
   if (current) out.push(current);
   for (const a of seq) {
     const name = a?.name?.trim();

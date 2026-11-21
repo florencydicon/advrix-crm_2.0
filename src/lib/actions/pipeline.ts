@@ -16,6 +16,7 @@ const PERM_PROJECTS_VIEW = "projects:view";
 const PERM_PROJECTS_MANAGE = "projects:manage";
 const PERM_TASKS_MANAGE = "tasks:manage";
 const PERM_TASKS_REVIEW = "tasks:review";
+const PERM_TASKS_EXECUTE = "tasks:execute";
 
 /**
  * Overdue auto-flag fused into the board's SELECT via a data-modifying CTE, so
@@ -38,6 +39,8 @@ export interface PipelineBoardPayload {
   active: Task[];
   completed: Task[];
   canManage: boolean;
+  /** Employee may work on assigned tasks (tasks:execute). */
+  canExecute: boolean;
   canReopen: boolean;
   canApprove: boolean;
   roleKey: string | null;
@@ -144,12 +147,14 @@ async function loadFacets(scope: DataScope, sessionSub: string): Promise<Pipelin
     `SELECT c.id AS client_id,
             COALESCE(NULLIF(c.company, ''), c.name, '') AS client_label,
             p.name AS project_name,
-            ARRAY(
-              SELECT DISTINCT COALESCE(NULLIF(u2.full_name, ''), 'Unassigned')
-              FROM task_assignees ta2
-              JOIN users u2 ON u2.id = ta2.user_id
-              WHERE ta2.task_id = t.id
-            ) AS stage_names
+            CASE
+              WHEN t.status = 'completed' THEN ARRAY['Completed']
+              ELSE ARRAY(
+                SELECT DISTINCT COALESCE(NULLIF(u2.full_name, ''), 'Unassigned')
+                FROM users u2
+                WHERE u2.id = t.assigned_to
+              )
+            END AS stage_names
        FROM tasks t
        JOIN projects p ON p.id = t.project_id
        JOIN clients c ON c.id = p.client_id
@@ -208,7 +213,7 @@ export async function getPipelineBoardAction(opts?: {
   skipFacets?: boolean;
 }): Promise<PipelineBoardPayload> {
   const empty: PipelineBoardPayload = {
-    active: [], completed: [], canManage: false, canReopen: false, canApprove: false,
+    active: [], completed: [], canManage: false, canExecute: false, canReopen: false, canApprove: false,
     roleKey: null, userId: null, isBroad: false,
     total: 0, page: 1, pageSize: clampPageSize(opts?.pageSize), facets: { clients: [], projects: [], stages: [] },
     quickCounts: EMPTY_QUICK_COUNTS,
@@ -307,7 +312,7 @@ export async function getPipelineBoardAction(opts?: {
 
   return {
     active, completed,
-    canManage, canReopen, canApprove,
+    canManage, canExecute: hasPermission(perms, PERM_TASKS_EXECUTE), canReopen, canApprove,
     roleKey: session.role_key, userId: session.sub, isBroad,
     total, page, pageSize, facets,
     filtered: hasActiveTaskFilter(opts?.filters || {}),
@@ -1114,6 +1119,69 @@ export async function bulkSetPipelineStatusAction(
   }
   revalidate();
   return { ok: true, count: ids.length };
+}
+
+/**
+ * Bulk: an employee advances ONLY their own selected tasks through the
+ * permitted next step (Ready to Start → In Process, or In Process /
+ * Needs Improvement / Client Feedback → Submit for Review). Ownership and the
+ * source status are re-checked inside the UPDATE, so nobody can change someone
+ * else's task or skip the mandatory Start step.
+ */
+export type MyTaskBulkStatus = Extract<TaskStatus, "in_progress" | "submitted">;
+
+const MY_TASK_STATUS_FROM: Record<MyTaskBulkStatus, TaskStatus[]> = {
+  in_progress: ["approved"],
+  submitted: ["in_progress", "needs_improvement", "client_feedback"],
+};
+
+export async function bulkSetMyTaskStatusAction(
+  taskIds: string[],
+  status: MyTaskBulkStatus
+): Promise<{ ok: boolean; count?: number; skipped?: number; error?: string }> {
+  const session = await requireAuth();
+  if (!session) return { ok: false, error: "Not authorized." };
+  if (
+    !hasPermission(session.permissions, PERM_TASKS_EXECUTE) &&
+    !hasPermission(session.permissions, PERM_TASKS_MANAGE)
+  ) {
+    return { ok: false, error: "Not authorized." };
+  }
+  if (!Object.prototype.hasOwnProperty.call(MY_TASK_STATUS_FROM, status)) {
+    return { ok: false, error: "Invalid status." };
+  }
+
+  const ids = cleanIdList(taskIds);
+  if (ids.length === 0) return { ok: false, error: "No tasks selected." };
+  const from = MY_TASK_STATUS_FROM[status];
+  let count = 0;
+  let skipped = 0;
+
+  for (const id of ids) {
+    const updated = await query<{ id: string }>(
+      `UPDATE tasks
+          SET status = $2,
+              reviewed_at = CASE WHEN $2 = 'submitted' THEN NULL ELSE reviewed_at END
+        WHERE id = $1
+          AND assigned_to = $3
+          AND status = ANY($4::text[])
+        RETURNING id`,
+      [id, status, session.sub, from]
+    );
+    if (updated[0]) count++;
+    else skipped++;
+  }
+
+  if (status === "submitted" && count > 0) {
+    await notifyRoles(["PROJECT_MANAGER", "SUPER_ADMIN"], {
+      type: "task",
+      title: "Tasks ready for review",
+      body: `${session.name} submitted ${count} task${count === 1 ? "" : "s"} for review.`,
+      link: "/dashboard",
+    });
+  }
+  revalidate();
+  return { ok: true, count, skipped };
 }
 
 /**

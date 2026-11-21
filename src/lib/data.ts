@@ -664,12 +664,14 @@ async function loadMyFacets(userId: string): Promise<TaskFacets> {
                  THEN TRIM(c.company) || ' (' || TRIM(c.name) || ')'
                  ELSE COALESCE(NULLIF(TRIM(c.company), ''), TRIM(c.name), '-') END AS client_label,
             p.name AS project_name,
-            ARRAY(
-              SELECT DISTINCT COALESCE(NULLIF(u2.full_name, ''), 'Unassigned')
-              FROM task_assignees ta2
-              JOIN users u2 ON u2.id = ta2.user_id
-              WHERE ta2.task_id = t.id
-            ) AS stage_names
+            CASE
+              WHEN t.status = 'completed' THEN ARRAY['Completed']
+              ELSE ARRAY(
+                SELECT DISTINCT COALESCE(NULLIF(u2.full_name, ''), 'Unassigned')
+                FROM users u2
+                WHERE u2.id = t.assigned_to
+              )
+            END AS stage_names
        FROM tasks t
        JOIN projects p ON p.id = t.project_id
        JOIN clients c ON c.id = p.client_id
@@ -1166,6 +1168,7 @@ export interface WriterBoardTask {
   status: string;
   priority: string;
   due_date: string | null;
+  created_at: string;
   content: string | null;
   content_status: string | null;
   project_id: string;
@@ -1202,6 +1205,7 @@ export async function getWriterBoard(
   const params: unknown[] = manageAll ? [] : [userId];
   const rows = await query<WriterBoardTask & { client_id: string; client_name: string; client_company: string | null }>(
     `SELECT t.id, t.title, t.status, t.priority, t.due_date::text AS due_date,
+            t.created_at::text AS created_at,
             t.content, t.content_status, t.project_id, p.name AS project_name,
             c.id AS client_id, c.name AS client_name, c.company AS client_company,
             u.full_name AS assignee_name
@@ -1879,6 +1883,7 @@ export interface ClientDetailTask {
   priority: string;
   project_name: string;
   due_date: string | null;
+  created_at: string;
 }
 
 export async function getClientDetail(clientId: string): Promise<{ projects: ClientDetailProject[]; tasks: ClientDetailTask[] }> {
@@ -1890,7 +1895,8 @@ export async function getClientDetail(clientId: string): Promise<{ projects: Cli
     [clientId]
   );
   const tasks = await query<ClientDetailTask>(
-    `SELECT t.id, t.title, t.status, t.priority, p.name AS project_name, t.due_date::text AS due_date
+    `SELECT t.id, t.title, t.status, t.priority, p.name AS project_name, t.due_date::text AS due_date,
+            t.created_at::text AS created_at
      FROM tasks t JOIN projects p ON p.id = t.project_id
      WHERE p.client_id = $1 ORDER BY t.created_at DESC LIMIT 100`,
     [clientId]

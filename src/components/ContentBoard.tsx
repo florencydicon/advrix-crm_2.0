@@ -365,6 +365,9 @@ export default function ContentBoard({
                                         <span className={`inline-flex items-center gap-1 text-[10px] ${overdue ? "text-rose-300 font-semibold" : "text-slate-500"}`}>
                                           <CalendarDays className="h-3 w-3" /> {fmtDue(t.due_date)}
                                         </span>
+                                        <span className="text-[10px] text-slate-500">
+                                          Created {t.created_at ? t.created_at.slice(0, 10) : "—"}
+                                        </span>
                                         {manageAll && t.assignee_name && (
                                           <span className="text-[10px] text-slate-500 truncate max-w-[120px]">{t.assignee_name}</span>
                                         )}

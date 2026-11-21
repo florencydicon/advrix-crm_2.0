@@ -203,7 +203,7 @@ export default function ClientDetailModal({
   const [taskTitles, setTaskTitles] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
-  const [existingTasks, setExistingTasks] = useState<Array<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null }>>([]);
+  const [existingTasks, setExistingTasks] = useState<Array<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null; created_at: string }>>([]);
   const [isPending, startTransition] = useTransition();
 
   const refreshDetail = async () => {
@@ -259,7 +259,7 @@ export default function ClientDetailModal({
         setEditName(res.project.name || p.name);
         setEditBrief(res.project.brief || "");
         setEditDeadline(res.project.deadline ? res.project.deadline.slice(0,10) : "");
-        const serverTasks: Array<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null }> = res.tasks || [];
+        const serverTasks: Array<{ id: string; title: string; step_key: string | null; status: string; priority: string; due_date: string | null; created_at: string }> = res.tasks || [];
         setExistingTasks(serverTasks);
         // Pre-fill priority from the subtasks' actual priority (most common)
         if (serverTasks.length > 0) {
@@ -464,6 +464,7 @@ export default function ClientDetailModal({
                           </div>
                           <div className="flex items-center gap-1.5 mt-1 ml-7">
                             <PriorityBadge priority={t.priority} />
+                            <span className="text-[11px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
                             {t.due_date && <span className="text-[11px] text-slate-500">Due {t.due_date.slice(0, 10)}</span>}
                           </div>
                         </div>
@@ -640,6 +641,7 @@ export default function ClientDetailModal({
                             <div className="flex items-center gap-1.5 mt-1.5">
                               <StatusBadge status={t.status} />
                               <PriorityBadge priority={t.priority} />
+                              <span className="text-[11px] text-slate-500">Created {t.created_at ? t.created_at.slice(0, 10) : "—"}</span>
                               {t.due_date && <span className="ml-auto text-[11px] text-slate-500">{t.due_date.slice(0,10)}</span>}
                             </div>
                           </button>

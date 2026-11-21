@@ -93,6 +93,7 @@ export default function SharedBoard({
                 <th className="px-4 py-3">Task</th>
                 <th className="px-4 py-3">Project</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Created</th>
                 <th className="px-4 py-3">Due date</th>
               </tr>
             </thead>
@@ -108,6 +109,9 @@ export default function SharedBoard({
                   <td className="px-4 py-3 text-sm text-slate-400">{r.project_name}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={r.status} />
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-400 tabular-nums whitespace-nowrap">
+                    {r.created_at ? r.created_at.slice(0, 10) : "—"}
                   </td>
                   <td className="px-4 py-3 text-sm tabular-nums whitespace-nowrap">
                     {overdue ? (
@@ -125,7 +129,7 @@ export default function SharedBoard({
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-6">
+                  <td colSpan={5} className="p-6">
                     <EmptyState title="No tasks to show yet" />
                   </td>
                 </tr>
