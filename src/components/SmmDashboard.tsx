@@ -110,29 +110,29 @@ const ActiveDesktopRow = memo(function ActiveDesktopRow({
           </span>
         )}
       </td>
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-2.5 overflow-hidden">
         <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
           {taskTypeLabel(t.group_key)}
         </span>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         <StatusBadge status={t.status} />
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         <PriorityBadge priority={t.priority} />
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-400">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap text-xs text-slate-400">
         {formatDateOnly(t.created_at)}
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         <span className={`text-xs tabular-nums ${overdue ? "text-rose-300 font-semibold" : "text-slate-400"}`}>
           {overdue ? `${t.due_date?.slice(0, 10)} ⚠` : (t.due_date ? t.due_date.slice(0, 10) : "—")}
         </span>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-500">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap text-xs text-slate-500">
         {(t.assignees || [])[(t.current_step ?? 0) % Math.max((t.assignees?.length || 1), 1)]?.name || "—"}
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         {t.status === "approved" ? (
           <button
             type="button"
@@ -254,21 +254,21 @@ const HistoryDesktopRow = memo(function HistoryDesktopRow({
       <td className="px-3 py-2.5">
         <p className="text-sm text-white font-medium leading-tight truncate max-w-[180px]">{t.title}</p>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         <span className="badge bg-white/5 text-slate-300 border border-white/[0.06]">
           {taskTypeLabel(t.group_key)}
         </span>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         <StatusBadge status={t.status} />
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         <PriorityBadge priority={t.priority} />
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-400">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap text-xs text-slate-400">
         {formatDateOnly(t.created_at)}
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td className="px-3 py-2.5 overflow-hidden whitespace-nowrap">
         <span className="text-xs tabular-nums text-slate-400">
           {t.due_date ? t.due_date.slice(0, 10) : "—"}
         </span>
@@ -608,18 +608,18 @@ export default function SmmDashboard({
         ) : (
           <div className="card overflow-hidden">
             <AdvancedFilterBar api={af} />
-            <div className="hidden md:block overflow-x-auto mt-2">
-              <table className="w-full border-collapse min-w-[760px]">
+            <div className="hidden md:block overflow-x-auto scrollbar-hide mt-2">
+              <table className="w-full table-fixed border-collapse">
                 <thead className="sticky top-0 z-10">
                   <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
-                    <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
-                    <th className="px-3 py-2.5 min-w-[160px]">Project</th>
-                    <th className="px-3 py-2.5 min-w-[200px]">Task</th>
-                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Task Type</th>
-                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
-                    <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
-                    <th className="px-3 py-2.5 min-w-[120px] whitespace-nowrap">Created</th>
-                    <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
+                    <th className="px-4 py-2.5 w-[145px] sticky left-0 bg-night-850 z-20">Client</th>
+                    <th className="px-3 py-2.5 w-[110px]">Project</th>
+                    <th className="px-3 py-2.5 w-[180px]">Task</th>
+                    <th className="px-3 py-2.5 w-[95px] whitespace-nowrap">Task Type</th>
+                    <th className="px-3 py-2.5 w-[105px] whitespace-nowrap">Status</th>
+                    <th className="px-3 py-2.5 w-[85px] whitespace-nowrap">Priority</th>
+                    <th className="px-3 py-2.5 w-[95px] whitespace-nowrap">Created</th>
+                    <th className="px-3 py-2.5 w-[95px] whitespace-nowrap">Due</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
@@ -662,12 +662,12 @@ export default function SmmDashboard({
                 />
               )}
               <div className="hidden md:block card overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse min-w-[880px]">
+                <div className="overflow-x-auto scrollbar-hide">
+                  <table className="w-full table-fixed border-collapse">
                     <thead className="sticky top-0 z-10">
                       <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-white/[0.06]">
                         {canSelectTasks && (
-                          <th className="px-3 py-2.5 w-10">
+                          <th className="px-3 py-2.5 w-[34px]">
                             <input
                               type="checkbox"
                               aria-label="Select all tasks"
@@ -685,16 +685,16 @@ export default function SmmDashboard({
                             />
                           </th>
                         )}
-                        <th className="px-4 py-2.5 min-w-[200px] sticky left-0 bg-night-850 z-20">Client</th>
-                        <th className="px-3 py-2.5 min-w-[160px]">Project</th>
-                        <th className="px-3 py-2.5 min-w-[200px]">Task</th>
-                        <th className="px-3 py-2.5 min-w-[140px] whitespace-nowrap">Task Type</th>
-                        <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Status</th>
-                        <th className="px-3 py-2.5 min-w-[130px] whitespace-nowrap">Priority</th>
-                        <th className="px-3 py-2.5 min-w-[120px] whitespace-nowrap">Created</th>
-                        <th className="px-3 py-2.5 w-32 whitespace-nowrap">Due</th>
-                        <th className="px-3 py-2.5 w-16">Stage</th>
-                        <th className="px-3 py-2.5 w-24 whitespace-nowrap">Action</th>
+                        <th className="px-4 py-2.5 w-[130px] sticky left-0 bg-night-850 z-20">Client</th>
+                        <th className="px-3 py-2.5 w-[95px]">Project</th>
+                        <th className="px-3 py-2.5 w-[135px]">Task</th>
+                        <th className="px-3 py-2.5 w-[80px] whitespace-nowrap">Task Type</th>
+                        <th className="px-3 py-2.5 w-[90px] whitespace-nowrap">Status</th>
+                        <th className="px-3 py-2.5 w-[70px] whitespace-nowrap">Priority</th>
+                        <th className="px-3 py-2.5 w-[95px] whitespace-nowrap">Created</th>
+                        <th className="px-3 py-2.5 w-[85px] whitespace-nowrap">Due</th>
+                        <th className="px-3 py-2.5 w-[40px]">Stage</th>
+                        <th className="px-3 py-2.5 w-[75px] whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.04]">
